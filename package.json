@@ -1,6 +1,7 @@
 {
   "name": "dsh-minicad",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "description": "面向 DSH agent 的参数化零件工作台",
@@ -23,6 +24,7 @@
     "python/uv.lock",
     "cordis.patch.yml",
     "README.md",
+    "LICENSE",
     "NOTICE.md",
     "AGENTS.md"
   ],

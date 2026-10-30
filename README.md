@@ -1,5 +1,7 @@
 # MiniCAD for DeepSeek Harness
 
+本项目采用 [MIT 许可证](LICENSE)。第三方依赖保留各自许可证，见 [NOTICE.md](NOTICE.md)。
+
 [English](#english)
 
 面向 DSH agent 的参数化 CAD 工作台。自然语言和 PDF 参考图纸进入同一个设计任务；用户与 agent 共用源码、参数、精确实体和版本历史。
@@ -104,6 +106,8 @@ npx @deepseek-ai/dsh@0.2.1-rc.3 plugin --profile web remove dsh-minicad -w
 桌面版通过应用的「插件」页面移除。宿主应用安装变更或重启后入口消失。卸载不删除设计数据。
 
 ## English
+
+Licensed under the [MIT License](LICENSE). Third-party dependencies retain their own licenses; see [NOTICE.md](NOTICE.md).
 
 MiniCAD is an agent-first parametric CAD workbench for DeepSeek Harness. It uses JavaScript / React / Three.js for the workbench and Python / build123d / OCCT for exact solids. The user and the DSH agent share a persistent project, editable source and parameters, references, and immutable revisions.
 
