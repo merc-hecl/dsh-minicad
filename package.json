@@ -1,0 +1,61 @@
+{
+  "name": "dsh-minicad",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "面向 DSH agent 的参数化零件工作台",
+  "main": "src/host/index.js",
+  "exports": {
+    ".": "./src/host/index.js",
+    "./tools": "./src/host/tools.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/host",
+    "src/client",
+    "src/shared",
+    "scripts/build.mjs",
+    "scripts/dev.mjs",
+    "lib",
+    "python/*.py",
+    "python/pyproject.toml",
+    "python/uv.lock",
+    "cordis.patch.yml",
+    "README.md",
+    "NOTICE.md",
+    "AGENTS.md"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "setup": "uv sync --project python --frozen && npm run build",
+    "dev": "node scripts/dev.mjs",
+    "check": "node --check src/host/index.js && node --check src/host/worker.js && npm run build",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.5",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

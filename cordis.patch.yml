@@ -1,0 +1,14 @@
+- insert:
+    - id: minicad
+      name: dsh-minicad
+      config: {}
+    - id: minicad-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: minicad
+        name: MiniCAD
+        description: 参数化零件设计与图纸建模
+        order: 20
+        plugins:
+          - name: dsh-minicad/tools
+            config: {}

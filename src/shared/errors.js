@@ -1,0 +1,32 @@
+// Stable translation keys for authored errors. OCCT/Python diagnostics remain details.
+const rules = [
+  ["revisionConflict", /设计已更新/],
+  ["projectMissing", /设计任务不存在/],
+  ["invalidSolid", /封闭实体/],
+  ["checksFailed", /尺寸检查未通过/],
+  ["pdfOnly", /20 MB|PDF 文件/],
+  ["encryptedPDF", /解密 PDF/],
+  ["revisionMissing", /版本不存在/],
+  ["referenceMissing", /参考文件不存在/],
+  ["pageRange", /页码超出范围/],
+  ["projectUnbound", /未绑定 MiniCAD/],
+  ["projectBound", /已绑定另一个/],
+  ["nameRequired", /请输入设计名称/],
+  ["sourceRequired", /定义 build\(parameters\)/],
+  ["invalidJSON", /parameters 必须/],
+  ["invalidCheck", /检查项或公差无效|尺寸表达式/],
+  ["meshLimit", /50 万三角形/],
+  ["noModel", /请先完成建模/],
+  ["stepFailed", /STEP 回读/],
+  ["unavailable", /不支持的|插件已卸载|MiniCAD 已关闭/],
+  ["workerStopped", /服务已退出|操作已取消/],
+  ["setupRequired", /无法启动 Python/],
+  ["buildBusy", /正在构建/],
+  ["promptLength", /30000/],
+  ["messageId", /缺少消息标识/],
+  ["requestLarge", /请求过大/],
+  ["modelCredentials", /no API key|API_KEY|unauthorized|401/i],
+];
+export function errorKey(message) {
+  return rules.find(([, regex]) => regex.test(message))?.[0] || "error";
+}

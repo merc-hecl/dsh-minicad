@@ -1,0 +1,10 @@
+node_modules/
+.venv/
+python/.venv/
+**/__pycache__/
+lib/
+dist/
+.local/
+test-results/
+playwright-report/
+docs/research/

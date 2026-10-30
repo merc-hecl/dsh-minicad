@@ -1,0 +1,14 @@
+[project]
+name = "dsh-minicad-worker"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "build123d==0.10.0",
+    "pypdf>=6,<7",
+    "pypdfium2>=4.30,<6",
+    "reportlab>=4,<5",
+]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple"
+default = true
