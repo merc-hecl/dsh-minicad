@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
-export function Viewport({ design, view, wire, fitToken, onError }) {
+export function Viewport({ id, active = true, design, view, wire, fitToken, onError }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   useEffect(() => {
@@ -193,5 +193,5 @@ export function Viewport({ design, view, wire, fitToken, onError }) {
       if (o.isMesh) o.material.wireframe = wire;
     });
   }, [wire, design]);
-  return <div ref={mount} className="mc-viewport" aria-label="3D" />;
+  return <div id={id} ref={mount} role="tabpanel" aria-hidden={!active} className="mc-viewport" aria-label="3D" />;
 }

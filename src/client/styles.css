@@ -16,7 +16,8 @@
   overflow: hidden;
   background: var(--mc-bg);
   color: var(--mc-text);
-  font: 14px/1.5 inherit;
+  /* DSH theme-presenter updates these typography tokens with Appearance settings. */
+  font: var(--dsw-font-markdown-base, 14px/24px sans-serif);
 }
 /* Windows AppFrame already reserves its caption height above the content.
    macOS draws its chrome over the content and still needs this clearance. */
@@ -29,29 +30,18 @@ body[data-ds-dark-theme] .mc-workbench {
   --mc-accent: #7aaaff;
   --mc-selected: #353638;
 }
-.mc-workbench {
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 1.5;
-}
 .mc-workbench * {
   box-sizing: border-box;
 }
 .mc-button,
 .mc-dialog input,
 .mc-dialog textarea,
-.mc-select {
+.mc-export-option {
   font: inherit;
 }
 .mc-button {
   cursor: pointer;
 }
-.mc-button:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-.mc-button:focus-visible,
-.mc-select:focus-visible,
 .mc-dialog input:focus-visible,
 .mc-dialog textarea:focus-visible {
   outline: 2px solid var(--mc-accent);
@@ -61,7 +51,6 @@ body[data-ds-dark-theme] .mc-workbench {
   display: flex;
   align-items: center;
   gap: 14px;
-  font-size: 12px;
   padding: 6px 0;
 }
 .mc-check-row code {
@@ -93,12 +82,10 @@ body[data-ds-dark-theme] .mc-workbench {
 .mc-header strong {
   font-weight: 600;
   letter-spacing: -0.3px;
-  font-size: 17px;
 }
 .mc-header .mc-crumb {
   margin-left: 150px;
   color: var(--mc-muted);
-  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -110,16 +97,13 @@ body[data-ds-dark-theme] .mc-workbench {
   color: var(--mc-muted);
 }
 .mc-button {
-  gap: 8px !important;
   white-space: nowrap;
 }
 .mc-icon {
-  width: 36px !important;
-  min-width: 36px !important;
-  padding: 0 !important;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  flex: none;
 }
 .mc-panel {
   background: var(--mc-panel);
@@ -143,11 +127,20 @@ body[data-ds-dark-theme] .mc-workbench {
   display: flex;
   align-items: center;
   font-weight: 500;
-  height: 32px;
+  gap: 4px;
+  min-height: 36px;
 }
-.mc-new {
-  width: 100%;
-  justify-content: flex-start !important;
+.mc-side-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-workbench[data-project-panel-collapsed] .mc-sidebar {
+  bottom: auto;
+  width: auto;
+  padding: 0;
 }
 .mc-project-list {
   overflow: auto;
@@ -166,9 +159,37 @@ body[data-ds-dark-theme] .mc-workbench {
   min-width: 0;
   justify-content: flex-start !important;
 }
-.mc-project-row span {
+.mc-project-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* DSH workspace rows swap the folder for a disclosure arrow on hover. */
+.mc-folder-slot {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.mc-folder-arrow {
+  display: none;
+  color: var(--mc-muted);
+  transition: transform 150ms var(--ds-ease-in-out, ease-in-out);
+}
+.mc-project-toggle[aria-expanded="true"] .mc-folder-arrow {
+  transform: rotate(90deg);
+}
+.mc-project-row:hover .mc-folder-icon,
+.mc-project-toggle:focus-visible .mc-folder-icon {
+  display: none;
+}
+.mc-project-row:hover .mc-folder-arrow,
+.mc-project-toggle:focus-visible .mc-folder-arrow {
+  display: inline-flex;
+}
+.mc-project-list[hidden],
+.mc-tree[hidden] {
+  display: none;
 }
 .mc-active {
   background: var(--mc-selected) !important;
@@ -180,54 +201,28 @@ body[data-ds-dark-theme] .mc-workbench {
   margin-left: 15px;
 }
 .mc-tree button {
-  display: flex !important;
+  display: flex;
   width: 100%;
   justify-content: flex-start !important;
-  font-size: 12px !important;
-  height: 32px !important;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.mc-side-footer {
-  border-top: 1px solid var(--mc-border);
-  padding-top: 12px;
-  font-size: 11px;
-  display: flex;
-  justify-content: space-between;
-  color: var(--mc-muted);
 }
 .mc-view-tabs {
   position: absolute;
   top: calc(80px + var(--mc-top-inset));
   left: calc(50% + 80px);
   transform: translateX(-50%);
-  padding: 4px;
-  display: flex;
-  gap: 8px;
-  border-radius: 12px;
-}
-.mc-view-tabs button {
-  height: 32px !important;
-  min-width: 72px;
 }
 .mc-camera {
   position: absolute;
   top: calc(80px + var(--mc-top-inset));
   right: 20px;
 }
-.mc-select {
-  background: var(--mc-panel);
-  color: var(--mc-text);
-  border: 1px solid var(--mc-border);
-  border-radius: 10px;
-  padding: 8px 10px;
-  max-width: 240px;
-}
 .mc-tools {
   position: absolute;
   right: 20px;
   top: 36%;
-  padding: 7px;
+  padding: 4px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -243,17 +238,17 @@ body[data-ds-dark-theme] .mc-workbench {
   transform: translateY(-50%);
 }
 .mc-empty h1 {
-  font-size: 26px;
+  font-size: var(--dsw-font-markdown-h1-font-size);
+  line-height: var(--dsw-font-markdown-h1-line-height);
   font-weight: 500;
   letter-spacing: -0.8px;
   margin: 0 0 12px;
 }
 .mc-empty p {
-  font-size: 13px;
   color: var(--mc-muted);
   margin: 0;
 }
-.mc-cube {
+.mc-brand-icon {
   width: 44px;
   height: 44px;
   margin: 0 auto 22px;
@@ -282,7 +277,6 @@ body[data-ds-dark-theme] .mc-workbench {
   right: 0;
   text-align: center;
   color: var(--mc-muted);
-  font-size: 11px;
   pointer-events: none;
 }
 .mc-sheet {
@@ -305,7 +299,6 @@ body[data-ds-dark-theme] .mc-workbench {
   position: absolute;
   left: 305px;
   top: 125px;
-  font-size: 11px;
   color: var(--mc-muted);
   display: flex;
   gap: 15px;
@@ -342,7 +335,8 @@ body[data-ds-dark-theme] .mc-workbench {
 .mc-dialog-header h2 {
   margin: 0;
   font-weight: 500;
-  font-size: 18px;
+  font-size: var(--dsw-font-markdown-h3-font-size);
+  line-height: var(--dsw-font-markdown-h3-line-height);
   flex: 1;
 }
 .mc-dialog-content {
@@ -366,10 +360,7 @@ body[data-ds-dark-theme] .mc-workbench {
 }
 .mc-code {
   height: 330px;
-  font:
-    12px/1.7 ui-monospace,
-    Consolas,
-    monospace !important;
+  font: var(--dsw-font-markdown-code-block, 11px/19px monospace) !important;
   resize: vertical;
   tab-size: 4;
 }
@@ -409,7 +400,6 @@ body[data-ds-dark-theme] .mc-workbench {
 .mc-history-row small {
   display: block;
   color: var(--mc-muted);
-  font-size: 11px;
 }
 .mc-reference {
   display: block;
@@ -442,18 +432,29 @@ body[data-ds-dark-theme] .mc-workbench {
   flex: 1;
 }
 .mc-error details {
-  font-size: 11px;
   margin-top: 8px;
   color: var(--mc-muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .mc-badge {
-  font-size: 10px;
   padding: 3px 7px;
   border-radius: 6px;
   background: var(--mc-selected);
   color: var(--mc-accent);
+}
+.mc-secondary,
+.mc-check-row,
+.mc-header .mc-crumb,
+.mc-empty p,
+.mc-help,
+.mc-metrics,
+.mc-export-option small,
+.mc-history-row small,
+.mc-error details,
+.mc-badge {
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
 }
 @media (max-width: 1000px) {
   .mc-sidebar {
@@ -500,9 +501,6 @@ body[data-ds-dark-theme] .mc-workbench {
     left: 230px;
     right: 20px;
   }
-  .mc-empty h1 {
-    font-size: 21px;
-  }
   .mc-sheet {
     left: 230px;
     bottom: 260px;
@@ -520,7 +518,25 @@ body[data-ds-dark-theme] .mc-workbench {
   .mc-tools {
     top: 205px;
   }
-  .mc-sidebar.collapsed {
-    display: none;
-  }
+}
+/* Reclaim the panel's space when it is stowed, including narrow windows. */
+.mc-workbench[data-project-panel-collapsed] .mc-bottom {
+  left: 50%;
+  right: auto;
+  width: min(780px, calc(100% - 40px));
+  transform: translateX(-50%);
+}
+.mc-workbench[data-project-panel-collapsed] .mc-view-tabs {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.mc-workbench[data-project-panel-collapsed] .mc-empty {
+  left: 80px;
+  right: 80px;
+}
+.mc-workbench[data-project-panel-collapsed] .mc-sheet {
+  left: 80px;
+}
+.mc-workbench[data-project-panel-collapsed] .mc-metrics {
+  left: 80px;
 }

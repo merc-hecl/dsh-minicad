@@ -1,5 +1,6 @@
 import React from "react";
-import { Workbench, Cube, NativeComposer } from "./workbench.jsx";
+import { Workbench, NativeComposer } from "./workbench.jsx";
+import { ForgeIcon } from "./forge-icon.jsx";
 import { zh, en } from "./locale.js";
 import css from "./styles.css";
 export const inject = [
@@ -81,7 +82,7 @@ export function apply(ctx) {
         label: () => "MiniCAD",
         locale: "minicad",
       },
-      Cube,
+      ForgeIcon,
     ),
   );
 }

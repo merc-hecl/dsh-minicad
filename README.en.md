@@ -14,8 +14,10 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 - Solid validity, volume, bounding-box, and specified dimension checks before saving. Failed builds preserve the previous revision; stale writes are rejected.
 - Dimension expressions tied to parameters, revision restoration, and recovery after restarting.
 - STEP export with read-back validation, STL, SVG, PDF, and editable project ZIP exports.
-- Chinese / English and light / dark appearance follow DSH settings.
+- Chinese / English, light / dark appearance, and text/code fonts and sizes follow DSH global settings.
 - Entering the workbench collapses DSH's left sidebar. The top-left back arrow expands it and opens DSH's new-conversation home.
+- Use the panel icon to collapse or expand design projects. The top-right `+` creates a design; clicking a design name toggles its contents.
+- Camera menus, Model / Drawing segmented controls, and action buttons use native DSH components and sizing.
 
 ## Local installation
 

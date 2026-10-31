@@ -7,17 +7,26 @@ import React, {
 } from "react";
 import {
   Button,
+  Menu,
+  SegmentedControl,
   IconPlusOutlineRegular,
   IconChevronLeftOutlineRegular,
+  IconChevronDownOutlineRegular,
   IconCloseOutlineRegular,
   IconFolderCloseRegular,
+  IconFolderOpenRegular,
+  IconTriangleRightFillRegular,
+  IconPanelLeftOutlineRegular,
   IconEllipsisOutlineRegular,
   IconCheckOutlineRegular,
   IconDownloadOutlineRegular,
   IconClockOutlineRegular,
+  IconFullscreenOutlineRegular,
+  IconSlidersTwoOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { Viewport } from "./viewport.jsx";
 import { errorKey } from "./locale.js";
+import { ForgeIcon } from "./forge-icon.jsx";
 
 export function Cube({ size = 22, ...props }) {
   return (
@@ -34,15 +43,16 @@ export function Cube({ size = 22, ...props }) {
     </svg>
   );
 }
-const Btn = ({ children, icon: Icon, label, ...props }) => (
+const Btn = ({ children, icon: Icon, label, className = "", ...props }) => (
   <Button
     variant="ghost"
-    className={`mc-button ${!children ? "mc-icon" : ""}`}
+    size="md"
+    icon={Icon && <Icon size={16} />}
+    className={`mc-button ${!children ? "mc-icon" : ""} ${className}`}
     aria-label={label}
     title={label}
     {...props}
   >
-    {Icon && <Icon size={18} />}
     {children}
   </Button>
 );
@@ -73,6 +83,8 @@ export function Workbench({
   ).active;
   const [projects, setProjects] = useState([]),
     [project, setProject] = useState(null);
+  const [panelCollapsed, setPanelCollapsed] = useState(false),
+    [projectExpanded, setProjectExpanded] = useState(true);
   const [selected, setSelected] = useState(""),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(null);
@@ -82,6 +94,7 @@ export function Workbench({
     [view, setView] = useState("iso"),
     [wire, setWire] = useState(false),
     [fit, setFit] = useState(0);
+  const [cameraMenuOpen, setCameraMenuOpen] = useState(false);
   const [modal, setModal] = useState(null),
     [value, setValue] = useState(""),
     [editHead, setEditHead] = useState(0);
@@ -119,6 +132,7 @@ export function Workbench({
     lastStatusError.current = "";
     setError(null);
     setSelected(id);
+    setProjectExpanded(true);
     setLoading(true);
     setProject(null);
     setModal(null);
@@ -348,8 +362,14 @@ export function Workbench({
     }).format(timestamp * 1000);
   const editable = ["create", "rename", "parameters", "source"].includes(modal);
   return (
-    <div ref={workbench} className="mc-workbench">
+    <div
+      ref={workbench}
+      className="mc-workbench"
+      data-project-panel-collapsed={panelCollapsed || undefined}
+    >
       <Viewport
+        id="mc-view-model-panel"
+        active={tab === "model"}
         design={design}
         view={view}
         wire={wire}
@@ -382,27 +402,30 @@ export function Workbench({
           {t("export")}
         </Btn>
       </header>
-      <aside className="mc-sidebar mc-panel">
+      <aside className={`mc-sidebar ${panelCollapsed ? "" : "mc-panel"}`} aria-label={t("projects")}>
         <div className="mc-side-heading">
-          {t("projects")}
-          <span className="mc-spacer" />
           <Btn
-            icon={IconPlusOutlineRegular}
-            label={t("newProject")}
-            onClick={() => open("create")}
+            icon={IconPanelLeftOutlineRegular}
+            variant={panelCollapsed ? "outline" : "ghost"}
+            label={t(panelCollapsed ? "expandProjects" : "collapseProjects")}
+            aria-expanded={!panelCollapsed}
+            aria-controls="mc-project-list"
+            onClick={() => setPanelCollapsed((collapsed) => !collapsed)}
           />
+          {!panelCollapsed && (
+            <>
+              <span className="mc-side-title" title={t("projects")}>{t("projects")}</span>
+              <Btn
+                icon={IconPlusOutlineRegular}
+                label={t("newProject")}
+                onClick={() => open("create")}
+              />
+            </>
+          )}
         </div>
-        <Btn
-          icon={IconPlusOutlineRegular}
-          variant="outline"
-          className="mc-new mc-button"
-          onClick={() => open("create")}
-        >
-          {t("newProject")}
-        </Btn>
-        <div className="mc-project-list">
+        <div id="mc-project-list" className="mc-project-list" hidden={panelCollapsed}>
           {!projects.length && (
-            <p className="mc-muted" style={{ fontSize: 12 }}>
+            <p className="mc-muted mc-secondary">
               {t("noProjects")}
             </p>
           )}
@@ -410,11 +433,23 @@ export function Workbench({
             <div key={p.id} className="mc-project">
               <div className="mc-project-row">
                 <Btn
-                  icon={IconFolderCloseRegular}
-                  className={`mc-button ${p.id === selected ? "mc-active" : ""}`}
-                  onClick={() => load(p.id)}
+                  className={`mc-button mc-project-toggle ${p.id === selected ? "mc-active" : ""}`}
+                  label={p.title}
+                  aria-expanded={p.id === selected && projectExpanded}
+                  onClick={() => {
+                    if (p.id === selected) setProjectExpanded((expanded) => !expanded);
+                    else load(p.id);
+                  }}
                 >
-                  <span>{p.title}</span>
+                  <span className="mc-folder-slot" aria-hidden="true">
+                    {p.id === selected && projectExpanded ? (
+                      <IconFolderOpenRegular className="mc-folder-icon" size={16} />
+                    ) : (
+                      <IconFolderCloseRegular className="mc-folder-icon" size={16} />
+                    )}
+                    <IconTriangleRightFillRegular className="mc-folder-arrow" size={16} />
+                  </span>
+                  <span className="mc-project-title">{p.title}</span>
                 </Btn>
                 {p.id === selected && (
                   <Btn
@@ -425,7 +460,7 @@ export function Workbench({
                 )}
               </div>
               {p.id === selected && project && (
-                <div className="mc-tree">
+                <div className="mc-tree" hidden={!projectExpanded}>
                   <Btn
                     icon={Cube}
                     onClick={() => {
@@ -458,69 +493,65 @@ export function Workbench({
             </div>
           ))}
         </div>
-        <div className="mc-side-footer">
-          <span>{t("unit")}</span>
-          <span>
-            {design ? (
-              <>
-                <IconCheckOutlineRegular size={12} /> {t("valid")}
-              </>
-            ) : (
-              "MiniCAD"
-            )}
-          </span>
-        </div>
       </aside>
-      <div className="mc-view-tabs mc-panel">
-        {["model", "drawing"].map((k) => (
-          <Btn
-            key={k}
-            className={`mc-button ${tab === k ? "mc-active" : ""}`}
-            disabled={k === "drawing" && !design}
-            onClick={() => setTab(k)}
-          >
-            {t(k)}
-          </Btn>
-        ))}
-      </div>
+      <SegmentedControl
+        id="mc-view"
+        className="mc-view-tabs"
+        label={t("model")}
+        value={tab}
+        options={["model", "drawing"].map((value) => ({
+          value,
+          label: t(value),
+          disabled: value === "drawing" && !design,
+        }))}
+        onChange={setTab}
+      />
       {tab === "model" && (
         <>
-          <select
-            className="mc-camera mc-select"
-            aria-label={t("model")}
-            value={view}
-            onChange={(e) => setView(e.target.value)}
-          >
-            {["iso", "top", "front", "right"].map((v) => (
-              <option key={v} value={v}>
-                {t(v)}
-              </option>
-            ))}
-          </select>
+          <Menu
+            className="mc-camera"
+            open={cameraMenuOpen}
+            onClose={() => setCameraMenuOpen(false)}
+            items={["iso", "top", "front", "right"].map((id) => ({ id, label: t(id) }))}
+            selectedId={view}
+            onSelect={(id) => {
+              setView(id);
+              setCameraMenuOpen(false);
+            }}
+            align="end"
+            portal
+            anchor={
+              <Btn
+                variant="outline"
+                aria-haspopup="menu"
+                aria-expanded={cameraMenuOpen}
+                onClick={() => setCameraMenuOpen((open) => !open)}
+              >
+                {t(view)}
+                <IconChevronDownOutlineRegular size={16} />
+              </Btn>
+            }
+          />
           <div className="mc-tools mc-panel">
-            <Btn label={t("fit")} onClick={() => setFit((f) => f + 1)}>
-              ⌗
-            </Btn>
+            <Btn icon={IconFullscreenOutlineRegular} label={t("fit")} onClick={() => setFit((f) => f + 1)} />
             <Btn
+              icon={Cube}
               label={t(wire ? "solid" : "wire")}
               onClick={() => setWire((w) => !w)}
-            >
-              <Cube size={18} />
-            </Btn>
+            />
             <Btn
+              icon={IconSlidersTwoOutlineRegular}
               label={t("parameters")}
               disabled={!design}
               onClick={() => open("parameters")}
-            >
-              ≡
-            </Btn>
+            />
           </div>
         </>
       )}
       {!design && !loading && (
         <div className="mc-empty">
-          <div className="mc-cube">
-            <Cube size={44} />
+          <div className="mc-brand-icon">
+            <ForgeIcon size={44} />
           </div>
           <h1>{t("emptyTitle")}</h1>
           <p>{t("emptyHint")}</p>
@@ -532,7 +563,7 @@ export function Workbench({
         </div>
       )}
       {design && tab === "drawing" && (
-        <div className="mc-sheet">
+        <div id="mc-view-drawing-panel" role="tabpanel" className="mc-sheet">
           <img
             alt={t("drawing")}
             src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(design.drawing)}`}
@@ -701,7 +732,7 @@ export function Workbench({
                       </button>
                     ))}
                   </div>
-                  <p className="mc-muted" style={{ fontSize: 12 }}>
+                  <p className="mc-muted mc-secondary">
                     {t("drawingNote")}
                   </p>
                 </>
