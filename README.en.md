@@ -6,19 +6,12 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 
 ## Features
 
-- DSH sidebar entry and an immersive Three.js canvas with orthographic views, unrestricted 360° rotation, right-drag panning, and cursor-centered wheel zoom. Wireframe mode displays solid geometry edges without tessellation diagonals, using theme-aware, high-contrast blue and a fixed screen-space line width to stand apart from the background grid.
-- A separate directory and DSH conversation for each design, with real tool calls through models configured in DSH.
-- The input area uses DSH's native conversation composer; DSH owns model names, reasoning effort, send/stop controls, and drafts.
-- Parametric solid modeling with build123d / OCCT, with editable source code and parameters.
-- PDF text extraction, page rendering, previews, and agent access. Scanned drawings require a model that supports image input; text-only models can use only extracted text.
-- Solid validity, volume, bounding-box, and specified dimension checks before saving. Failed builds preserve the previous revision; stale writes are rejected.
-- Dimension expressions tied to parameters, revision restoration, and recovery after restarting.
-- STEP export with read-back validation, STL, SVG, PDF, and editable project ZIP exports.
-- Chinese / English, light / dark appearance, and text/code fonts and sizes follow DSH global settings.
-- Entering the workbench collapses DSH's left sidebar. The top-left back arrow expands it and opens DSH's new-conversation home.
-- Use the panel icon to collapse or expand design projects. The top-right `+` creates a design; clicking a design name toggles its contents.
-- Camera menus, Model / Drawing segmented controls, action buttons, and hover tooltips use native DSH components and sizing.
-- A single-cell millimetre scale bar and major/minor grid adapt to zoom, with grid spacing following 1, 2, and 5 increments. The background grid is rendered separately to avoid model-camera clipping when zoomed out.
+- Natural-language modeling: create and modify parametric 3D models through the DSH agent.
+- Drawing references: import and preview PDF drawings for the agent to read.
+- Parameter and source editing: adjust model parameters or edit modeling source code directly.
+- Model viewing: view 3D models and reference drawings.
+- Design and revision management: organize models and conversations by design, and save and restore revisions.
+- Export: STEP, STL, SVG, PDF, and editable project ZIP files.
 
 ## Local installation
 
@@ -55,6 +48,8 @@ For a Web profile without pnpm, place the repository in the target profile's `no
 
 The agent should ask for clarification when dimensions are incomplete or multiple views do not uniquely determine the geometry. Geometric validity checks do not establish structural strength, manufacturability, or complete dimensional correctness.
 
+Scanned drawings require a model that supports image input; text-only models can use only text extracted from the PDF.
+
 SVG / PDF exports currently provide three-view reference sheets with overall dimensions. They do not include complete hole-location dimension chains, geometric tolerances, surface roughness, or manufacturing annotations. Production drawings still require engineering review and additional annotations. The current implementation supports parametric single-part and multi-solid modeling, without assembly constraint solving or CAM toolpaths.
 
 ## Storage and runtime boundaries
@@ -84,7 +79,7 @@ npm test
 
 `dev` uses a real DSH `minicad-dev` profile on port 3079 and stores project data in `.local/designs`. It reuses credentials and settings from the current DSH_HOME. Set `DSH_ELECTRON` and `DSH_CLI` to the installed Desktop executable and its bundled `dsh/lib/bin.js` to use that host instead of installing another one. Set `PORT` to override the port.
 
-Write automated tests only for the modeling kernel. Verify the UI through actual use and screenshots; see [AGENTS.md](AGENTS.md). `check` checks host syntax and builds the client; it is not a UI test.
+Write automated tests only for the modeling kernel service, which the agent verifies. All other changes are accepted by the user; see [AGENTS.md](AGENTS.md). `check` checks host syntax and builds the client; it is not a UI test.
 
 Source layout: `src/client` contains the workbench, `src/host` contains the DSH service and agent tools, and `python/worker.py` contains persistence and modeling. The UI and the agent share the same service interface, and all design changes include `expectedRevision`.
 
