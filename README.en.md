@@ -8,16 +8,18 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 
 - DSH sidebar entry and an immersive Three.js canvas with orthographic views, orbit, pan, zoom, and wireframe display.
 - A separate directory and DSH conversation for each design, with real tool calls through models configured in DSH.
+- The input area uses DSH's native conversation composer; DSH owns model names, reasoning effort, send/stop controls, and drafts.
 - Parametric solid modeling with build123d / OCCT, with editable source code and parameters.
 - PDF text extraction, page rendering, previews, and agent access. Scanned drawings require a model that supports image input; text-only models can use only extracted text.
 - Solid validity, volume, bounding-box, and specified dimension checks before saving. Failed builds preserve the previous revision; stale writes are rejected.
 - Dimension expressions tied to parameters, revision restoration, and recovery after restarting.
 - STEP export with read-back validation, STL, SVG, PDF, and editable project ZIP exports.
 - Chinese / English and light / dark appearance follow DSH settings.
+- Entering the workbench collapses DSH's left sidebar. The top-left back arrow expands it and opens DSH's new-conversation home.
 
 ## Local installation
 
-Requires Node.js 22.19+, [uv](https://docs.astral.sh/uv/getting-started/installation/), pnpm, and DSH. The current development compatibility target is DSH **0.2.1-rc.3**. DSH plugin APIs are changing rapidly; other versions require verification.
+Requires Node.js 22.19+, [uv](https://docs.astral.sh/uv/getting-started/installation/), pnpm, and DSH. The current development compatibility target is DSH **0.2.1-rc.5**. DSH plugin APIs are changing rapidly; other versions require verification.
 
 ```powershell
 npm install
@@ -33,7 +35,7 @@ The Electron application exclusively manages Desktop plugins. In DSH's **Plugins
 For a Web profile, use the CLI:
 
 ```powershell
-npx @deepseek-ai/dsh@0.2.1-rc.3 plugin --profile web add link:F:/Projects/dsh-minicad -w
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add link:F:/Projects/dsh-minicad -w
 ```
 
 If dsh is installed globally, use `dsh plugin --profile web add link:F:/Projects/dsh-minicad -w`. Restart the Web host after installation and open MiniCAD from the sidebar. This repository has not been published to npm; use the local path instead of a package name.
@@ -42,7 +44,7 @@ For a Web profile without pnpm, place the repository in the target profile's `no
 
 ## Usage
 
-1. Create a design and describe its dimensions, units, features, and constraints. Optionally attach a PDF of up to 20 MB.
+1. Create a design and describe its dimensions, units, features, and constraints. Add files through DSH's native composer; the workbench has no separate Add PDF or Design conversation controls. When no designs exist, the workbench prepares a blank design and its DSH session on first open.
 2. Select a model already configured in DSH. MiniCAD does not store separate model credentials.
 3. The agent reads the current revision and calls modeling tools. The canvas displays the actual model after a successful build.
 4. Edit values in the parameter panel or edit `build(parameters)` in the source panel. Saving rebuilds and validates the model.
@@ -98,7 +100,7 @@ Source layout: `src/client` contains the workbench, `src/host` contains the DSH 
 After editing local code, run `npm run build`. The client supports DSH HMR; host code changes require a restart.
 
 ```powershell
-npx @deepseek-ai/dsh@0.2.1-rc.3 plugin --profile web remove dsh-minicad -w
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web remove dsh-minicad -w
 ```
 
 For Desktop, remove the plugin through the application's **Plugins** page. Its sidebar entry disappears when the host finishes removal or restarts. Removing the plugin does not delete design data.

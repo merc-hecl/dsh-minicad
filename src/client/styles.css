@@ -1,4 +1,5 @@
 .mc-workbench {
+  --mc-top-inset: 0px;
   --mc-bg: var(--dsw-alias-bg-base, #f9fafb);
   --mc-panel: var(--dsw-alias-bg-layer-1, #fff);
   --mc-raised: var(--dsw-alias-bg-layer-2, #fff);
@@ -17,6 +18,11 @@
   color: var(--mc-text);
   font: 14px/1.5 inherit;
 }
+/* Windows AppFrame already reserves its caption height above the content.
+   macOS draws its chrome over the content and still needs this clearance. */
+html[data-platform="darwin"] .mc-workbench {
+  --mc-top-inset: var(--dsh-frame-top-clearance, 48px);
+}
 body[data-ds-dark-theme] .mc-workbench {
   --mc-muted: #adb2b8;
   --mc-border: #3a3a3c;
@@ -31,20 +37,23 @@ body[data-ds-dark-theme] .mc-workbench {
 .mc-workbench * {
   box-sizing: border-box;
 }
-.mc-workbench button,
-.mc-workbench input,
-.mc-workbench textarea,
-.mc-workbench select {
+.mc-button,
+.mc-dialog input,
+.mc-dialog textarea,
+.mc-select {
   font: inherit;
 }
-.mc-workbench button {
+.mc-button {
   cursor: pointer;
 }
-.mc-workbench button:disabled {
+.mc-button:disabled {
   cursor: default;
   opacity: 0.45;
 }
-.mc-workbench :focus-visible {
+.mc-button:focus-visible,
+.mc-select:focus-visible,
+.mc-dialog input:focus-visible,
+.mc-dialog textarea:focus-visible {
   outline: 2px solid var(--mc-accent);
   outline-offset: 3px;
 }
@@ -61,6 +70,7 @@ body[data-ds-dark-theme] .mc-workbench {
 }
 .mc-viewport {
   position: absolute;
+  z-index: 0;
   inset: 0;
 }
 .mc-viewport canvas {
@@ -74,8 +84,8 @@ body[data-ds-dark-theme] .mc-workbench {
   z-index: 2;
   left: 20px;
   right: 20px;
-  top: calc(16px + var(--dsh-frame-top-clearance, 0px));
-  height: 40px;
+  top: calc(10px + var(--mc-top-inset));
+  height: 36px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -120,7 +130,7 @@ body[data-ds-dark-theme] .mc-workbench {
 .mc-sidebar {
   position: absolute;
   z-index: 3;
-  top: calc(80px + var(--dsh-frame-top-clearance, 0px));
+  top: calc(80px + var(--mc-top-inset));
   left: 20px;
   bottom: 172px;
   width: 256px;
@@ -188,7 +198,7 @@ body[data-ds-dark-theme] .mc-workbench {
 }
 .mc-view-tabs {
   position: absolute;
-  top: calc(80px + var(--dsh-frame-top-clearance, 0px));
+  top: calc(80px + var(--mc-top-inset));
   left: calc(50% + 80px);
   transform: translateX(-50%);
   padding: 4px;
@@ -202,7 +212,7 @@ body[data-ds-dark-theme] .mc-workbench {
 }
 .mc-camera {
   position: absolute;
-  top: calc(80px + var(--dsh-frame-top-clearance, 0px));
+  top: calc(80px + var(--mc-top-inset));
   right: 20px;
 }
 .mc-select {
@@ -257,99 +267,23 @@ body[data-ds-dark-theme] .mc-workbench {
   transform: translateX(-50%);
   width: min(780px, calc(100% - 370px));
 }
-.mc-last {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 20px 12px;
-  font-size: 12px;
-  color: var(--mc-muted);
-  max-width: 100%;
-  overflow: hidden;
-}
-.mc-last > span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-}
-.mc-composer {
-  padding: 17px 20px 15px;
-  border-radius: 24px;
-  background: var(--mc-raised);
-  box-shadow: 0 8px 30px #0f11150d;
-}
-.mc-context {
-  font-size: 12px;
-  color: var(--mc-muted);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 24px;
-}
-.mc-composer textarea {
-  width: 100%;
-  height: 44px;
-  max-height: 160px;
-  resize: vertical;
-  background: none;
-  color: var(--mc-text);
-  border: 0;
-  outline: none;
-  padding: 7px 0;
-  font-size: 15px;
-  line-height: 23px;
-}
-.mc-composer textarea::placeholder {
-  color: var(--mc-muted);
-}
-.mc-composer-footer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 36px;
-}
-.mc-composer-footer .mc-select {
-  border: none;
-  background: none;
-  color: var(--mc-muted);
-  font-size: 12px;
-  max-width: 225px;
-}
-.mc-send {
-  border-radius: 50% !important;
-}
-.mc-attachments {
-  display: flex;
-  gap: 6px;
-  overflow: auto;
-  padding: 4px 0;
-}
-.mc-attachments button {
-  font-size: 11px !important;
-  height: 26px !important;
+/* The native embedded Conversation normally clips its transcript scrollport.
+   Here it contains only the composer: allow menus to open above the input card.
+   Keep native takeover scrolling and the editor's own scroll container intact. */
+.mc-bottom [data-conversation-content],
+.mc-bottom [data-conversation-scroll]:not(:has([data-conversation-composer-overlay])) {
+  overflow: visible;
+  scrollbar-gutter: auto;
 }
 .mc-help {
   position: absolute;
-  bottom: 17px;
-  left: 300px;
+  bottom: -31px;
+  left: 0;
   right: 0;
   text-align: center;
   color: var(--mc-muted);
   font-size: 11px;
   pointer-events: none;
-}
-.mc-busy-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--mc-accent);
-  border-radius: 100%;
-  animation: mc-pulse 1.3s infinite;
-}
-@keyframes mc-pulse {
-  50% {
-    opacity: 0.2;
-  }
 }
 .mc-sheet {
   position: absolute;
@@ -477,21 +411,6 @@ body[data-ds-dark-theme] .mc-workbench {
   color: var(--mc-muted);
   font-size: 11px;
 }
-.mc-message {
-  padding: 14px 0;
-  border-bottom: 1px solid var(--mc-border);
-}
-.mc-message strong {
-  font-size: 12px;
-  color: var(--mc-muted);
-}
-.mc-message p {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: 13px;
-  line-height: 1.8;
-  margin: 8px 0;
-}
 .mc-reference {
   display: block;
   max-height: 60vh;
@@ -557,12 +476,7 @@ body[data-ds-dark-theme] .mc-workbench {
   .mc-metrics {
     left: 260px;
   }
-  .mc-composer-footer {
-    gap: 4px;
-  }
-  .mc-composer-footer .mc-select {
-    max-width: 150px;
-  }
+
 }
 @media (max-width: 760px) {
   .mc-sidebar {
@@ -580,8 +494,7 @@ body[data-ds-dark-theme] .mc-workbench {
     bottom: 35px;
   }
   .mc-help {
-    left: 0;
-    bottom: 10px;
+    bottom: -25px;
   }
   .mc-empty {
     left: 230px;

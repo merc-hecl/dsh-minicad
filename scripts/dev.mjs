@@ -12,7 +12,7 @@ const home = process.env.DSH_HOME?.trim() || join(homedir(), ".dsh");
 const electron = process.env.DSH_ELECTRON;
 const cli = process.env.DSH_CLI;
 const command = electron || (process.platform === "win32" ? "npx.cmd" : "npx");
-const prefix = electron ? [cli] : ["--yes", "@deepseek-ai/dsh@0.2.1-rc.3"];
+const prefix = electron ? [cli] : ["--yes", "@deepseek-ai/dsh@0.2.1-rc.5"];
 if (electron && !cli)
   throw new Error(
     "DSH_CLI must point to the installed dsh/lib/bin.js when DSH_ELECTRON is set.",

@@ -1,8 +1,10 @@
 import React from "react";
-import { Workbench, Cube } from "./workbench.jsx";
+import { Workbench, Cube, NativeComposer } from "./workbench.jsx";
 import { zh, en } from "./locale.js";
 import css from "./styles.css";
-export const inject = ["slots", "layout", "locale"];
+export const inject = [
+  "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace",
+];
 export function apply(ctx) {
   ctx.effect(
     () => ctx.locale.register("minicad", { zh, en }),
@@ -36,18 +38,39 @@ export function apply(ctx) {
       });
     return data;
   };
+  const setSidebarCollapsed = (workbench, collapsed) => {
+    // DSH rc.5 exposes toggleSidebar but no state getter or explicit setter.
+    // Read AppFrame's published state marker; leave all layout writes to DSH.
+    const current = workbench.closest("[data-sidebar-collapsed]") !== null;
+    if (current !== collapsed) ctx.layout.toggleSidebar();
+  };
   ctx.slots.inject("main", () =>
     ctx.slots.register(
-      { name: "main", key: "minicad", locale: "minicad" },
-      () => (
+      {
+        name: "main",
+        key: "minicad",
+        locale: "minicad",
+        children: { "minicad.composer": { kind: "single", scope: "session" } },
+      },
+      ({ SessionProvider, renderSlot }) => (
         <Workbench
           t={t}
           locale={locale}
-          back={() => ctx.layout.selectPanel(null)}
+          enter={(element) => setSidebarCollapsed(element, true)}
+          back={(element) => {
+            setSidebarCollapsed(element, false);
+            ctx.uiWorkspace.startSession();
+          }}
           request={request}
+          SessionProvider={SessionProvider}
+          renderSlot={renderSlot}
+          retainSession={(id) => ctx.sessions.retain(id, { source: "minicad" })}
         />
       ),
     ),
+  );
+  ctx.slots.inject("minicad.composer", () =>
+    ctx.slots.register({ name: "minicad.composer" }, NativeComposer),
   );
   ctx.slots.inject("sidebar.panellist", () =>
     ctx.slots.register(

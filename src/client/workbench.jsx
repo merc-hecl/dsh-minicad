@@ -1,6 +1,7 @@
 import React, {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useSyncExternalStore,
 } from "react";
@@ -12,8 +13,6 @@ import {
   IconFolderCloseRegular,
   IconEllipsisOutlineRegular,
   IconCheckOutlineRegular,
-  IconSendOutlineRegular,
-  IconStopFillRegular,
   IconDownloadOutlineRegular,
   IconClockOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
@@ -48,7 +47,26 @@ const Btn = ({ children, icon: Icon, label, ...props }) => (
   </Button>
 );
 
-export function Workbench({ locale, t, back, request }) {
+const NoConversationView = () => null;
+const COMPOSER_SLOTS = { views: NoConversationView };
+
+// Use DSH 0.2.1-rc.5's public Factory, which owns its child slots exclusively.
+// Only omit the transcript here; retain the complete native composer and takeovers.
+export function NativeComposer({ renderFactorySlot }) {
+  return renderFactorySlot(
+    "conversation.content",
+    { variant: "embedded", phase: "active", hero: false },
+    { slots: COMPOSER_SLOTS },
+  );
+}
+
+export function Workbench({
+  locale, t, enter, back, request, SessionProvider, renderSlot, retainSession,
+}) {
+  const workbench = useRef(null);
+  useLayoutEffect(() => {
+    enter(workbench.current);
+  }, []);
   const language = useSyncExternalStore(
     locale.subscribe,
     locale.getSnapshot,
@@ -58,8 +76,7 @@ export function Workbench({ locale, t, back, request }) {
   const [selected, setSelected] = useState(""),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(null);
-  const [drafts, setDrafts] = useState({}),
-    [busy, setBusy] = useState(false),
+  const [busy, setBusy] = useState(false),
     [running, setRunning] = useState(false);
   const [tab, setTab] = useState("model"),
     [view, setView] = useState("iso"),
@@ -68,13 +85,11 @@ export function Workbench({ locale, t, back, request }) {
   const [modal, setModal] = useState(null),
     [value, setValue] = useState(""),
     [editHead, setEditHead] = useState(0);
-  const [models, setModels] = useState([]),
-    [modelSelection, setModelSelection] = useState("");
+  const [sessionReference, setSessionReference] = useState(null);
   const [reference, setReference] = useState(null),
     [refPage, setRefPage] = useState(1),
     [refId, setRefId] = useState("");
-  const fileInput = useRef(null),
-    selection = useRef(""),
+  const selection = useRef(""),
     projectRef = useRef(null),
     alive = useRef(true);
   const languageRef = useRef(language),
@@ -112,7 +127,6 @@ export function Workbench({ locale, t, back, request }) {
       const p = await api("get", { projectId: id });
       if (selection.current === id && alive.current) {
         setProject(p);
-        setModelSelection(p.modelSelection || "");
       }
     } catch (e) {
       showError(e);
@@ -123,31 +137,40 @@ export function Workbench({ locale, t, back, request }) {
   useEffect(() => {
     alive.current = true;
     refreshList()
-      .then((p) => {
-        if (alive.current && p[0]) load(p[0].id);
-        else setLoading(false);
+      .then(async (p) => {
+        if (!alive.current) return;
+        // A native composer needs a real Session even before its first message.
+        const first = p[0] || (await api("create", { title: t("untitled") }));
+        if (!alive.current) return;
+        if (!p.length) await refreshList();
+        await load(first.id);
       })
       .catch((e) => {
         showError(e);
         setLoading(false);
       });
-    api("models")
-      .then((c) => {
-        if (alive.current)
-          setModels(
-            c.groups?.flatMap((g) =>
-              g.models.map((m) => ({
-                value: `${g.id}\n${m.id}`,
-                label: m.name || m.id,
-              })),
-            ) || [],
-          );
-      })
-      .catch(showError);
     return () => {
       alive.current = false;
     };
   }, []);
+  useEffect(() => {
+    const id = project?.session_id;
+    if (!id) return;
+    const reference = retainSession(id);
+    let disposed = false;
+    reference.ready
+      .then(() => {
+        if (!disposed) setSessionReference(reference);
+      })
+      .catch((e) => {
+        if (!disposed) showError(e);
+      });
+    return () => {
+      disposed = true;
+      setSessionReference(null);
+      reference.release();
+    };
+  }, [project?.session_id]);
   useEffect(() => {
     if (!selected) return;
     let disposed = false,
@@ -166,10 +189,7 @@ export function Workbench({ locale, t, back, request }) {
             setProject(p);
             refreshList().catch(showError);
           }
-        } else
-          setProject((p) =>
-            p?.id === selected ? { ...p, messages: state.messages } : p,
-          );
+        }
         timer = setTimeout(poll, state.running ? 1000 : 3500);
       } catch (e) {
         if (!disposed) {
@@ -190,9 +210,7 @@ export function Workbench({ locale, t, back, request }) {
     api("get", { projectId: id })
       .then((p) => {
         if (alive.current && selection.current === id)
-          setProject((current) =>
-            current?.id === id ? { ...p, messages: current.messages } : current,
-          );
+          setProject(p);
       })
       .catch(showError);
   }, [language]);
@@ -256,64 +274,6 @@ export function Workbench({ locale, t, back, request }) {
               ? project.design.source
               : "",
     );
-  }
-  async function send() {
-    const text = (drafts[selected] || "").trim();
-    if (!text || running || busy) return;
-    await action(async () => {
-      let p = project;
-      if (!p) {
-        p = await api("create", { title: text.split("\n")[0].slice(0, 40) });
-        await refreshList();
-        selection.current = p.id;
-        setSelected(p.id);
-        setProject(p);
-      }
-      await api("prompt", {
-        projectId: p.id,
-        text,
-        requestId: crypto.randomUUID(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      });
-      setDrafts((d) => ({ ...d, [selected]: "" }));
-      if (selection.current === p.id) setRunning(true);
-      const state = await api("status", { projectId: p.id });
-      if (selection.current === p.id)
-        setProject((v) => ({ ...v, messages: state.messages }));
-    });
-  }
-  async function attach(file) {
-    if (!file) return;
-    if (
-      !file.name.toLowerCase().endsWith(".pdf") ||
-      file.size > 20 * 1024 * 1024
-    ) {
-      setError({ key: "pdfOnly" });
-      return;
-    }
-    await action(async () => {
-      let p = project;
-      if (!p) {
-        p = await api("create", { title: file.name.replace(/\.pdf$/i, "") });
-        selection.current = p.id;
-        setSelected(p.id);
-      }
-      const data = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const saved = await api("attach", {
-        projectId: p.id,
-        name: file.name,
-        data,
-      });
-      const full = await api("get", { projectId: p.id });
-      if (selection.current === p.id) setProject(full);
-      await refreshList();
-      await openReference(saved.attachments.at(-1).id, p.id);
-    });
   }
   async function openReference(id, projectId = selected, page = 1) {
     if (selection.current !== projectId) return;
@@ -380,8 +340,7 @@ export function Workbench({ locale, t, back, request }) {
       await refreshList();
     });
   }
-  const design = project?.design,
-    latest = project?.messages?.filter((m) => m.role === "assistant").at(-1);
+  const design = project?.design;
   const date = (timestamp) =>
     new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
       dateStyle: "medium",
@@ -389,7 +348,7 @@ export function Workbench({ locale, t, back, request }) {
     }).format(timestamp * 1000);
   const editable = ["create", "rename", "parameters", "source"].includes(modal);
   return (
-    <div className="mc-workbench">
+    <div ref={workbench} className="mc-workbench">
       <Viewport
         design={design}
         view={view}
@@ -401,7 +360,7 @@ export function Workbench({ locale, t, back, request }) {
         <Btn
           icon={IconChevronLeftOutlineRegular}
           label={t("back")}
-          onClick={back}
+          onClick={() => back(workbench.current)}
         />
         <strong>MiniCAD</strong>
         <span className="mc-crumb">
@@ -592,123 +551,13 @@ export function Workbench({ locale, t, back, request }) {
         </div>
       )}
       <section className="mc-bottom">
-        <div className="mc-last">
-          {running && <i className="mc-busy-dot" />}
-          <span>
-            {busy ? t("working") : running ? t("thinking") : latest?.text || ""}
-          </span>
-          {project && (
-            <Btn label={t("conversation")} onClick={() => open("conversation")}>
-              {t("conversation")}
-              {project.messages.length ? ` · ${project.messages.length}` : ""}
-            </Btn>
-          )}
-        </div>
-        <div className="mc-composer mc-panel">
-          <div className="mc-context">
-            {project ? t("context", { name: project.title }) : t("newProject")}
-            <span className="mc-spacer" />
-            {design && <span className="mc-badge">v{project.head}</span>}
-          </div>
-          {project?.attachments.length > 0 && (
-            <div className="mc-attachments">
-              {project.attachments.map((a) => (
-                <Btn key={a.id} onClick={() => openReference(a.id)}>
-                  {a.name}
-                </Btn>
-              ))}
-            </div>
-          )}
-          <textarea
-            aria-label={t("placeholder")}
-            placeholder={t(project ? "placeholder" : "firstPlaceholder")}
-            value={drafts[selected] || ""}
-            onChange={(e) =>
-              setDrafts((d) => ({ ...d, [selected]: e.target.value }))
-            }
-            onKeyDown={(e) => {
-              if (
-                e.key === "Enter" &&
-                !e.shiftKey &&
-                !e.nativeEvent.isComposing
-              ) {
-                e.preventDefault();
-                send();
-              }
-            }}
-          />
-          <div className="mc-composer-footer">
-            <Btn
-              icon={IconPlusOutlineRegular}
-              disabled={busy || running}
-              onClick={() => fileInput.current.click()}
-            >
-              {t("attach")}
-            </Btn>
-            <input
-              ref={fileInput}
-              type="file"
-              accept="application/pdf,.pdf"
-              hidden
-              onChange={(e) => {
-                attach(e.target.files[0]);
-                e.target.value = "";
-              }}
-            />
-            <span className="mc-spacer" />
-            <select
-              className="mc-select"
-              aria-label={t("chooseModel")}
-              value={modelSelection}
-              disabled={busy || running}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) return;
-                action(async () => {
-                  let p = project;
-                  if (!p) {
-                    p = await api("create", { title: t("untitled") });
-                    await refreshList();
-                    await load(p.id);
-                  }
-                  const [provider, model] = v.split("\n");
-                  await api("model", { projectId: p.id, provider, model });
-                  setModelSelection(v);
-                });
-              }}
-            >
-              <option value="">{t("chooseModel")}</option>
-              {models.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            {running ? (
-              <Btn
-                icon={IconStopFillRegular}
-                label={t("stop")}
-                onClick={() =>
-                  action(async () => {
-                    await api("cancel", { projectId: selected });
-                    setRunning(false);
-                  })
-                }
-              />
-            ) : (
-              <Btn
-                icon={IconSendOutlineRegular}
-                label={t("send")}
-                variant="primary"
-                className="mc-button mc-icon mc-send"
-                disabled={busy || !(drafts[selected] || "").trim()}
-                onClick={send}
-              />
-            )}
-          </div>
-        </div>
+        {sessionReference && project && sessionReference.sessionId === project.session_id ? (
+          <SessionProvider session={sessionReference}>
+            {renderSlot("minicad.composer", {})}
+          </SessionProvider>
+        ) : <p className="mc-muted">{t("loading")}</p>}
+        <div className="mc-help">{t("controls")}</div>
       </section>
-      <div className="mc-help">{t("controls")}</div>
       {modal && (
         <div
           className="mc-overlay"
@@ -781,17 +630,6 @@ export function Workbench({ locale, t, back, request }) {
                   )}
                 </>
               )}
-              {modal === "conversation" &&
-                (project.messages.length ? (
-                  project.messages.map((m) => (
-                    <article key={m.id} className="mc-message">
-                      <strong>{t(m.role === "user" ? "you" : "agent")}</strong>
-                      <p>{m.text}</p>
-                    </article>
-                  ))
-                ) : (
-                  <p className="mc-muted">{t("noMessages")}</p>
-                ))}
               {modal === "history" &&
                 project.revisions.map((r) => (
                   <div key={r.revision} className="mc-history-row">

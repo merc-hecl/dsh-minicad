@@ -78,7 +78,7 @@ export async function apply(ctx, config = {}) {
     )
     .catch((error) => ctx.logger.warn(`MiniCAD: ${error.message}`));
   // Use the supported, checkpointed projection; recover responses after restart.
-  // Only plain assistant text enters the workbench, never reasoning/tool payloads.
+  // Include native composer submissions from the real Session, never reasoning/tool payloads.
   const transcriptValue = z.object({
     messages: z.array(
       z.object({
@@ -94,23 +94,28 @@ export async function apply(ctx, config = {}) {
     () =>
       ctx.sessionProjections.register({
         key: "minicadTranscript",
-        stateVersion: 1,
+        stateVersion: 2,
         stateSchema: transcriptSchema,
         init: () => ({ messages: [] }),
         apply: (state, event) => {
-          if (event.type !== "assistant/message") return state;
-          const message = event.data.message;
-          const text = message.content
+          const user = event.type === "user/message";
+          if (!user && event.type !== "assistant/message") return state;
+          if (user && event.data.source.kind !== "user") return state;
+          const content = user ? event.data.content : event.data.message.content;
+          const plainText = content
             .filter((part) => part.type === "text")
             .map((part) => part.text)
             .join("\n");
+          const text = user
+            ? plainText.split("\n\n<minicad-project-context>")[0]
+            : plainText;
           if (!text) return state;
           return {
             messages: [
               ...state.messages,
               {
-                id: message.id,
-                role: "assistant",
+                id: user ? `user:${event.seq}` : event.data.message.id,
+                role: user ? "user" : "assistant",
                 text: text.slice(0, 100000),
                 created: event.time / 1000,
               },
@@ -124,6 +129,9 @@ export async function apply(ctx, config = {}) {
   ctx.on("agent/error", ({ agent, error }) => {
     if (bySession.has(agent.id))
       lastError.set(agent.id, String(error?.message || error));
+  });
+  ctx.on("agent/status", ({ agent, status }) => {
+    if (status === "running" && bySession.has(agent.id)) lastError.delete(agent.id);
   });
 
   async function ensureSession(project) {
@@ -158,10 +166,7 @@ export async function apply(ctx, config = {}) {
             signal,
           )
         : null;
-      const messages = [
-        ...p.messages.filter((m) => m.role === "user"),
-        ...(projection?.values?.minicadTranscript?.messages || []),
-      ].sort((a, b) => a.created - b.created);
+      const messages = projection?.values?.minicadTranscript?.messages || p.messages;
       return {
         head: p.head,
         messages,

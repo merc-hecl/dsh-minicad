@@ -8,16 +8,18 @@
 
 - DSH 侧栏入口、沉浸式 Three.js 画布、正交视图、旋转/平移/缩放、线框显示。
 - 独立设计目录与 DSH 会话绑定；通过 DSH 当前配置的模型进行真实工具调用。
+- 输入区直接复用 DSH 原生会话输入框，模型名称、推理等级、发送/停止及草稿状态由 DSH 管理。
 - build123d / OCCT 参数化实体建模；源码与参数可直接编辑。
 - PDF 文本提取、逐页渲染、预览和 agent 读取。扫描图纸的理解需要支持视觉输入的模型；文本模型只能使用提取到的文本。
 - 保存前检查实体有效性、体积、包围盒和指定尺寸。失败保留上一版；过期版本写入被拒绝。
 - 参数关联的尺寸表达式、版本恢复和重启后恢复。
 - STEP（导出后回读校验）、STL、SVG、PDF、可编辑项目 ZIP。
 - 中文 / 英文与浅色 / 暗色跟随 DSH 设置。
+- 进入工作台自动收起 DSH 左侧边栏；左上角返回箭头展开侧边栏并打开 DSH 新会话首页。
 
 ## 本地安装
 
-需要 Node.js 22.19+、[uv](https://docs.astral.sh/uv/getting-started/installation/)、pnpm，以及 DSH。当前开发兼容目标为 DSH **0.2.1-rc.3**。DSH 插件 API 仍在快速变化，其他版本需重新验证。
+需要 Node.js 22.19+、[uv](https://docs.astral.sh/uv/getting-started/installation/)、pnpm，以及 DSH。当前开发兼容目标为 DSH **0.2.1-rc.5**。DSH 插件 API 仍在快速变化，其他版本需重新验证。
 
 ```powershell
 npm install
@@ -33,7 +35,7 @@ npm run setup
 Web 配置使用 CLI：
 
 ```powershell
-npx @deepseek-ai/dsh@0.2.1-rc.3 plugin --profile web add link:F:/Projects/dsh-minicad -w
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add link:F:/Projects/dsh-minicad -w
 ```
 
 已有全局 dsh 时可用 `dsh plugin --profile web add link:F:/Projects/dsh-minicad -w`。安装后重启 Web 宿主，从侧栏点击 MiniCAD。本仓库尚未发布到 npm，不要使用不存在的 npm 安装包名。
@@ -42,7 +44,7 @@ Web 配置没有 pnpm 时，可把仓库放到目标 profile 的 `node_modules/d
 
 ## 使用
 
-1. 新建设计，输入尺寸、单位、特征和约束；可附加不超过 20 MB 的 PDF。
+1. 新建设计，输入尺寸、单位、特征和约束；文件通过 DSH 原生输入框添加，工作台不再提供独立的「添加 PDF」或「设计对话」入口。首次打开且没有设计时会自动准备一个空白设计及其 DSH 会话。
 2. 选择 DSH 中已经配置的模型。插件不保存自己的模型凭据。
 3. agent 读取当前版本并调用建模工具，成功后画布显示真实模型。
 4. 在参数面板编辑数值，或在源码面板编辑 `build(parameters)`。保存时重新构建并校验。
@@ -98,7 +100,7 @@ npm test
 更新本地代码后运行 `npm run build`；客户端支持 DSH HMR，主机代码改动需重启。
 
 ```powershell
-npx @deepseek-ai/dsh@0.2.1-rc.3 plugin --profile web remove dsh-minicad -w
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web remove dsh-minicad -w
 ```
 
 桌面版通过应用的「插件」页面移除。宿主完成卸载或重启后入口消失。卸载不删除设计数据。
