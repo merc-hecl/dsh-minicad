@@ -33,14 +33,10 @@ body[data-ds-dark-theme] .mc-workbench {
 .mc-workbench * {
   box-sizing: border-box;
 }
-.mc-button,
 .mc-dialog input,
 .mc-dialog textarea,
 .mc-export-option {
   font: inherit;
-}
-.mc-button {
-  cursor: pointer;
 }
 .mc-dialog input:focus-visible,
 .mc-dialog textarea:focus-visible {
@@ -67,6 +63,24 @@ body[data-ds-dark-theme] .mc-workbench {
   width: 100%;
   height: 100%;
   touch-action: none;
+}
+.mc-scale {
+  position: absolute;
+  z-index: 1;
+  left: 20px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.mc-scale-bar {
+  height: 7px;
+  border-bottom: 1px solid currentColor;
+  border-left: 1px solid currentColor;
+  border-right: 1px solid currentColor;
 }
 .mc-header {
   position: absolute;
@@ -110,6 +124,10 @@ body[data-ds-dark-theme] .mc-workbench {
   border: 1px solid var(--mc-border);
   border-radius: 16px;
   box-shadow: 0 4px 20px #0f111503;
+}
+.mc-tools,
+.mc-scale {
+  border-radius: 12px;
 }
 .mc-sidebar {
   position: absolute;
@@ -226,7 +244,6 @@ body[data-ds-dark-theme] .mc-workbench {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  border-radius: 12px;
 }
 .mc-empty {
   position: absolute;
@@ -270,6 +287,11 @@ body[data-ds-dark-theme] .mc-workbench {
   overflow: visible;
   scrollbar-gutter: auto;
 }
+/* The chat dock's fade covers transcripts; the workbench needs its grid visible
+   behind the native status row. Keep the input card's own surface intact. */
+.mc-workbench .mc-bottom [data-conversation-content] [data-composer-seat] {
+  background: transparent;
+}
 .mc-help {
   position: absolute;
   bottom: -31px;
@@ -294,14 +316,6 @@ body[data-ds-dark-theme] .mc-workbench {
   max-height: 100%;
   background: white;
   box-shadow: 0 4px 24px #00000014;
-}
-.mc-metrics {
-  position: absolute;
-  left: 305px;
-  top: 125px;
-  color: var(--mc-muted);
-  display: flex;
-  gap: 15px;
 }
 .mc-overlay {
   position: absolute;
@@ -448,7 +462,6 @@ body[data-ds-dark-theme] .mc-workbench {
 .mc-header .mc-crumb,
 .mc-empty p,
 .mc-help,
-.mc-metrics,
 .mc-export-option small,
 .mc-history-row small,
 .mc-error details,
@@ -474,12 +487,12 @@ body[data-ds-dark-theme] .mc-workbench {
     left: 260px;
     right: 30px;
   }
-  .mc-metrics {
-    left: 260px;
-  }
 
 }
 @media (max-width: 760px) {
+  .mc-scale {
+    bottom: 205px;
+  }
   .mc-sidebar {
     width: 200px;
     bottom: 240px;
@@ -504,9 +517,6 @@ body[data-ds-dark-theme] .mc-workbench {
   .mc-sheet {
     left: 230px;
     bottom: 260px;
-  }
-  .mc-metrics {
-    display: none;
   }
   .mc-view-tabs {
     left: 250px;
@@ -535,8 +545,5 @@ body[data-ds-dark-theme] .mc-workbench {
   right: 80px;
 }
 .mc-workbench[data-project-panel-collapsed] .mc-sheet {
-  left: 80px;
-}
-.mc-workbench[data-project-panel-collapsed] .mc-metrics {
   left: 80px;
 }

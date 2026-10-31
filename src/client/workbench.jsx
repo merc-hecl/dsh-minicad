@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import {
   Button,
+  Tooltip,
   Menu,
   SegmentedControl,
   IconPlusOutlineRegular,
@@ -43,19 +44,23 @@ export function Cube({ size = 22, ...props }) {
     </svg>
   );
 }
-const Btn = ({ children, icon: Icon, label, className = "", ...props }) => (
-  <Button
-    variant="ghost"
-    size="md"
-    icon={Icon && <Icon size={16} />}
-    className={`mc-button ${!children ? "mc-icon" : ""} ${className}`}
-    aria-label={label}
-    title={label}
-    {...props}
-  >
-    {children}
-  </Button>
-);
+const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
+  const button = (
+    <Button
+      variant="ghost"
+      size="md"
+      icon={Icon && <Icon size={16} />}
+      className={`mc-button ${!children ? "mc-icon" : ""} ${className}`}
+      aria-label={label}
+      {...props}
+    >
+      {children}
+    </Button>
+  );
+  return label ? (
+    <Tooltip label={label} delayMs={500} portal>{button}</Tooltip>
+  ) : button;
+};
 
 const NoConversationView = () => null;
 const COMPOSER_SLOTS = { views: NoConversationView };
@@ -390,7 +395,7 @@ export function Workbench({
         <span className="mc-spacer" />
         {project?.head > 0 && (
           <Btn icon={IconClockOutlineRegular} onClick={() => open("history")}>
-            v{project.head}
+            {`v${project.head}`}
           </Btn>
         )}
         <Btn
@@ -414,7 +419,9 @@ export function Workbench({
           />
           {!panelCollapsed && (
             <>
-              <span className="mc-side-title" title={t("projects")}>{t("projects")}</span>
+              <Tooltip label={t("projects")} delayMs={500} portal>
+                <span className="mc-side-title">{t("projects")}</span>
+              </Tooltip>
               <Btn
                 icon={IconPlusOutlineRegular}
                 label={t("newProject")}
@@ -568,17 +575,6 @@ export function Workbench({
             alt={t("drawing")}
             src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(design.drawing)}`}
           />
-        </div>
-      )}
-      {design && (
-        <div className="mc-metrics">
-          <span>
-            {[design.metrics.sizeX, design.metrics.sizeY, design.metrics.sizeZ]
-              .map((n) => Number(n.toFixed(2)))
-              .join(" × ")}{" "}
-            mm
-          </span>
-          <span>{design.metrics.volume.toFixed(2)} mm³</span>
         </div>
       )}
       <section className="mc-bottom">

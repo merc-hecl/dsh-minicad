@@ -6,7 +6,7 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 
 ## Features
 
-- DSH sidebar entry and an immersive Three.js canvas with orthographic views, orbit, pan, zoom, and wireframe display.
+- DSH sidebar entry and an immersive Three.js canvas with orthographic views, unrestricted 360° rotation, right-drag panning, and cursor-centered wheel zoom. Wireframe mode displays solid geometry edges without tessellation diagonals.
 - A separate directory and DSH conversation for each design, with real tool calls through models configured in DSH.
 - The input area uses DSH's native conversation composer; DSH owns model names, reasoning effort, send/stop controls, and drafts.
 - Parametric solid modeling with build123d / OCCT, with editable source code and parameters.
@@ -17,7 +17,8 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 - Chinese / English, light / dark appearance, and text/code fonts and sizes follow DSH global settings.
 - Entering the workbench collapses DSH's left sidebar. The top-left back arrow expands it and opens DSH's new-conversation home.
 - Use the panel icon to collapse or expand design projects. The top-right `+` creates a design; clicking a design name toggles its contents.
-- Camera menus, Model / Drawing segmented controls, and action buttons use native DSH components and sizing.
+- Camera menus, Model / Drawing segmented controls, action buttons, and hover tooltips use native DSH components and sizing.
+- A single-cell millimetre scale bar and major/minor grid adapt to zoom, with grid spacing following 1, 2, and 5 increments. The background grid is rendered separately to avoid model-camera clipping when zoomed out.
 
 ## Local installation
 
