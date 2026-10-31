@@ -6,8 +6,8 @@
 
 ## 功能
 
-- 自然语言建模：通过 DSH agent 创建和修改参数化三维模型。
-- 图纸参考：导入、预览 PDF 图纸，并供 agent 读取。
+- 自然语言建模：通过 DSH agent 调用 SMLib 工具创建、查询和局部编辑三维模型。
+- 图纸参考：通过 DSH 附件提供 PDF 图纸，供 agent 结合宿主能力读取。
 - 参数与源码编辑：调整模型参数，或通过 agent 修改建模源码。
 - 模型查看：查看三维模型和参考图纸。
 - 设计库与任务管理：按设计库组织零件任务，各任务拥有独立会话、建模资源和版本历史。
@@ -15,14 +15,14 @@
 
 ## 本地安装
 
-需要 Node.js 22.19+、[uv](https://docs.astral.sh/uv/getting-started/installation/)、pnpm，以及 DSH。当前开发兼容目标为 DSH **0.2.1-rc.5**。DSH 插件 API 仍在快速变化，其他版本需重新验证。
+需要 Node.js 22.19+、pnpm，以及 DSH。当前开发兼容目标为 DSH **0.2.1-rc.5**。DSH 插件 API 仍在快速变化，其他版本需重新验证。
 
 ```powershell
 npm install
 npm run setup
 ```
 
-`setup` 通过 `uv sync --project python --frozen` 安装锁定的 Python 环境，再构建客户端。运行时使用 `uv run --project python --frozen python`；不要用 pip 或 `python -m venv` 手工修改环境。
+`setup` 构建客户端。SMLib 的 WebAssembly 内核随 npm 依赖安装，在独立 Node 进程中运行。
 
 若 pnpm 尚未安装：`npm install -g pnpm`。
 
@@ -50,21 +50,21 @@ Web 配置没有 pnpm 时，可把仓库放到目标 profile 的 `node_modules/d
 
 尺寸不完整或多视图不能唯一确定几何时，agent 应询问用户。不要把一次几何有效性检查理解为结构强度、加工可行性或尺寸语义完全正确。
 
-扫描图纸的理解需要支持视觉输入的模型；文本模型只能使用 PDF 中提取到的文本。
+PDF 解析与扫描图纸理解使用 DSH 的附件、脚本或多模态能力，取决于当前宿主工具与模型。
 
 SVG / PDF 当前为三视图参考图，包含外形尺寸说明；尚不包含完整孔位尺寸链、形位公差、表面粗糙度和制造工艺标注。需要可直接投产的图纸时仍须工程审核和补充标注。当前产品覆盖单零件/多实体参数建模，不提供装配约束求解与 CAM 刀路。
 
 ## 存储与运行边界
 
-文件按「设计库 / 设计任务 / 建模资源」组织。每个任务使用以创建时名称命名的普通子文件夹，同名时追加序号；后续修改显示标题不会更改文件夹名称。源码、参数和实体放在任务内，例如 `底板/model.py`、`底板/model.parameters.json`、`底板/model.brep`。也可使用 `parts/plate.py` 等任务内相对路径。可以在外部编辑器修改源码和参数，下一次读取、构建使用磁盘上的内容。各任务的模型和版本互相独立。
+文件按「设计库 / 设计任务 / 建模资源」组织。每个任务使用以创建时名称命名的普通子文件夹，同名时追加序号；后续修改显示标题不会更改文件夹名称。源码、参数和实体放在任务内，例如 `底板/model.js`、`底板/model.parameters.json`、`底板/model.smb`。也可使用 `parts/plate.js` 等任务内相对路径。可以在外部编辑器修改源码和参数，下一次读取、构建使用磁盘上的内容。各任务的模型和版本互相独立。
 
-设计库的 `minicad.json` 保存任务目录、会话绑定、当前建模文件和版本记录；任务内的 `.cad-history/<源码文件名（不含扩展名）>/v0001/` 等目录保存成功构建的源码、参数、BREP 和预览快照。参考 PDF 保存在各任务的 `references/` 中。复制整个设计库即可带走模型和历史，重新通过文件夹选择框打开。对话记录由 DSH 原生会话保存。前端列表显示「设计库 → 零件设计任务」。
+设计库的 `minicad.json` 保存任务目录、会话绑定、当前建模文件和版本记录；任务内的 `.cad-history/<源码文件名（不含扩展名）>/v0001/` 等目录保存成功构建的源码、参数、SMLib 实体和预览快照。参考 PDF 保存在各任务的 `references/` 中。复制整个设计库即可带走模型和历史，重新通过文件夹选择框打开。对话记录由 DSH 原生会话保存。前端列表显示「设计库 → 零件设计任务」。
 
 将任务移至其他设计库时，其整个文件夹随之迁移，包含源码、参考文件和历史；目标目录已有同名文件夹时使用新的序号，避免覆盖。重命名设计库只改显示名称，不改磁盘文件夹名称。
 
 已打开目录的路径保存在 `$DSH_HOME/storages/minicad/libraries.json`；未配置 DSH_HOME 时使用 `~/.dsh/storages/minicad/libraries.json`。默认设计库位于同级的 `default/` 目录。`dataDir` 可覆盖此设置目录的位置。
 
-建模源码以当前用户权限在独立 Python 服务进程执行；**进程隔离不等于安全沙箱**。仅运行可信来源的设计代码。PDF 和文档内容在 agent 指令中明确作为参考数据处理。默认单次任务超时 120 秒，停止操作会终止正在执行的建模进程，已提交版本保留。
+建模源码以当前用户权限在独立 Node 服务进程执行；**进程隔离不等于安全沙箱**。仅运行可信来源的设计代码。PDF 和文档内容在 agent 指令中明确作为参考数据处理。默认单次任务超时 120 秒，停止操作会终止正在执行的建模进程，已提交版本保留。
 
 可通过 profile 补丁覆盖：
 
@@ -76,6 +76,18 @@ SVG / PDF 当前为三视图参考图，包含外形尺寸说明；尚不包含�
 ```
 
 配置覆盖为整行配置替换。不要让多个 DSH 进程同时写入同一个 MiniCAD 数据目录。
+
+## 建模接口
+
+agent 优先使用 `cad_query` 查询几何，再用 `cad_edit` 创建或局部修改实体。`cad_build` 支持 JavaScript 参数化源码，`cad_api` 可查询当前安装的 API。源码定义 `build(parameters, cad)`，`cad` 提供 SMLib 的建模函数和任务内资源读取：
+
+```javascript
+function build(parameters, cad) {
+  return cad.Box(parameters.length, 40, 8).cut(cad.Cylinder(4, 10));
+}
+```
+
+局部编辑也保存在源码中，参数重算会重新执行整个模型。面、边查询引用只对应返回的版本；成功编辑后应重新查询。`cad.readModel("resources/input.step")` 可导入任务内的 STEP、BREP 或 SMLib 资源，这些资源随版本快照和项目 ZIP 保存。导出文件会写入任务内的 `exports/`。
 
 ## 开发与验证
 
@@ -89,14 +101,14 @@ npm test
 
 只对建模内核服务编写自动化测试，并由 agent 自行验证；其余改动交由用户验收。见 [AGENTS.md](AGENTS.md)。`check` 检查主机语法并构建客户端，不是 UI 测试。
 
-源码结构：`src/client` 为工作台，`src/host` 为 DSH 服务和 agent 工具，`python/worker.py` 为持久化/建模服务。UI 与 agent 共用同一服务接口，所有设计修改都带 `expectedRevision`。
+源码结构：`src/client` 为工作台，`src/host` 为 DSH 服务和 agent 工具，`src/kernel` 为 SMLib 建模与文件存储服务。UI 与 agent 共用同一服务接口，所有设计修改都带 `expectedRevision`。
 
 ## 排障与移除
 
 | 现象 | 检查 |
 |---|---|
 | 找不到侧栏 MiniCAD | 确认正确的 profile 已安装插件，并重启 DSH |
-| Python 服务无法启动 | 确认 uv 在 DSH 的 PATH 中，运行 `npm run setup` |
+| 建模服务无法启动 | 确认依赖已安装，运行 `npm install` 和 `npm run setup` |
 | 模型认证失败 | 在 DSH 配置模型或选择已登录账号提供的模型 |
 | HTTP 401 | 先从宿主启动链接登录；401 不能证明插件路由已注册 |
 | HTTP 404 | 确认 bundle、主机服务与正确端口 |

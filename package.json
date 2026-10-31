@@ -14,14 +14,12 @@
   },
   "files": [
     "src/host",
+    "src/kernel",
     "src/client",
     "src/shared",
     "scripts/build.mjs",
     "scripts/dev.mjs",
     "lib",
-    "python/*.py",
-    "python/pyproject.toml",
-    "python/uv.lock",
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
@@ -35,9 +33,9 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "setup": "uv sync --project python --frozen && npm run build",
+    "setup": "npm run build",
     "dev": "node scripts/dev.mjs",
-    "check": "node --check src/host/index.js && node --check src/host/worker.js && npm run build",
+    "check": "node --check src/host/index.js && node --check src/host/tools.js && node --check src/kernel/store.js && node --check src/kernel/model.js && npm run build",
     "test": "node --test tests/*.test.mjs"
   },
   "dsh": {
@@ -56,7 +54,9 @@
     }
   },
   "dependencies": {
+    "@classcad/smlibwasm": "0.6.2",
     "@deepseek-ai/schemastery": "^3.18.5",
+    "fflate": "0.8.2",
     "three": "^0.186.1"
   },
   "devDependencies": {

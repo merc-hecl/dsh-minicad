@@ -13,7 +13,6 @@ import {
   Tag,
   IconPlusOutlineRegular,
   IconChevronLeftOutlineRegular,
-  IconChevronRightOutlineRegular,
   IconCloseOutlineRegular,
   IconFolderCloseRegular,
   IconFolderOpenRegular,
@@ -115,9 +114,7 @@ export function Workbench({
     [value, setValue] = useState(""),
     [editHead, setEditHead] = useState(0);
   const [sessionReference, setSessionReference] = useState(null);
-  const [reference, setReference] = useState(null),
-    [refPage, setRefPage] = useState(1),
-    [refId, setRefId] = useState("");
+  const [reference, setReference] = useState(null);
   const selection = useRef(""),
     projectRef = useRef(null),
     alive = useRef(true);
@@ -313,22 +310,10 @@ export function Workbench({
             : "",
     );
   }
-  async function openReference(id, projectId = selected, page = 1) {
+  function openReference(id, projectId = selected) {
     if (selection.current !== projectId) return;
-    setRefId(id);
-    setRefPage(page);
-    setReference(null);
+    setReference({ name: project?.attachments.find((item) => item.id === id)?.name || t("pdfPreview"), url: "/api/minicad/reference?" + new URLSearchParams({ projectId, attachmentId: id }) });
     setModal("reference");
-    try {
-      const data = await api("reference", {
-        projectId,
-        attachmentId: id,
-        page,
-      });
-      if (selection.current === projectId) setReference(data);
-    } catch (e) {
-      showError(e);
-    }
   }
   async function saveEditor(parameterValues) {
     await action(async () => {
@@ -660,34 +645,7 @@ export function Workbench({
           )}
           {modal === "reference" &&
             (reference ? (
-              <>
-                <div className="mc-reference-nav">
-                  <Btn
-                    icon={IconChevronLeftOutlineRegular}
-                    disabled={refPage <= 1}
-                    label={t("previous")}
-                    onClick={() =>
-                      openReference(refId, selected, refPage - 1)
-                    }
-                  />
-                  <span>
-                    {t("page", { page: refPage, total: reference.pages })}
-                  </span>
-                  <Btn
-                    icon={IconChevronRightOutlineRegular}
-                    disabled={refPage >= reference.pages}
-                    label={t("next")}
-                    onClick={() =>
-                      openReference(refId, selected, refPage + 1)
-                    }
-                  />
-                </div>
-                <img
-                  className="mc-reference"
-                  alt={`${reference.name} ${refPage}`}
-                  src={`data:image/png;base64,${reference.image}`}
-                />
-              </>
+              <iframe className="mc-reference" title={reference.name} src={reference.url} />
             ) : (
               <span role="status" className="mc-loading"><StateDot state="ongoing" />{t("loading")}</span>
             ))}

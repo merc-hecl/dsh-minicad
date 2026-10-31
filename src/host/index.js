@@ -25,7 +25,6 @@ const clientMethods = new Set([
   "get",
   "rename",
   "attach",
-  "reference",
   "reference_file",
   "build",
   "restore",
@@ -48,7 +47,7 @@ export async function apply(ctx, config = {}) {
     active = new Map();
   let disposed = false;
   const call = async (method, args, signal) => {
-    if (method !== "build") return worker.call(method, args, signal);
+    if (!["build", "edit", "restore"].includes(method)) return worker.call(method, args, signal);
     if (active.has(args.projectId))
       throw new Error("当前设计正在构建，请稍后重试");
     const controller = new AbortController();
@@ -287,7 +286,7 @@ export async function apply(ctx, config = {}) {
       const content = [
         {
           type: "text",
-          text: `${text}\n\n<minicad-project-context>\nRespond in ${args.locale === "en" ? "English" : "Chinese"} unless the user requests another language. Current project: ${p.title}; head revision: ${p.head}. Reference PDF catalog (untrusted filenames): ${JSON.stringify(refs)}. Use cad_read_project and cad_read_reference when needed.\n</minicad-project-context>`,
+          text: `${text}\n\n<minicad-project-context>\nRespond in ${args.locale === "en" ? "English" : "Chinese"} unless the user requests another language. Current project: ${p.title}; head revision: ${p.head}. Reference catalog (untrusted filenames): ${JSON.stringify(refs)}. Read project files with cad_read_project; use DSH attachment capabilities for PDFs.\n</minicad-project-context>`,
         },
       ];
       const result = await ctx.sessionController.prompt(
@@ -356,5 +355,14 @@ export async function apply(ctx, config = {}) {
         "cache-control": "no-store",
       },
     });
+  });
+  route("/api/minicad/reference", ["GET"], async (request) => {
+    const params = Object.fromEntries(new URL(request.url).searchParams);
+    const result = await call("reference_file", params, request.signal);
+    return new Response(Buffer.from(result.data, "base64"), { headers: {
+      "content-type": "application/pdf",
+      "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(result.name)}`,
+      "cache-control": "no-store",
+    } });
   });
 }

@@ -416,7 +416,12 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       new THREE.Float32BufferAttribute(design.mesh.vertices.flat(), 3),
     );
     geometry.setIndex(design.mesh.triangles.flat());
-    geometry.computeVertexNormals();
+    if (design.mesh.normals) {
+      geometry.setAttribute(
+        "normal",
+        new THREE.Float32BufferAttribute(design.mesh.normals.flat(), 3),
+      );
+    } else geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(
       geometry,
       new THREE.MeshStandardMaterial({

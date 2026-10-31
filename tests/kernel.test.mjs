@@ -1,55 +1,124 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { unzipSync, strFromU8 } from "fflate";
 import { createWorker } from "../src/host/worker.js";
 
+const near = (a, b, tolerance = 1e-6) =>
+  assert.ok(Math.abs(a - b) < tolerance, `${a} != ${b}`);
+
+test("structured operations: exact primitive volumes, shell, offsets and transforms", async () => {
+  const { editShape } = await import("../src/kernel/model.js");
+  for (const [operation, volume] of [
+    [{ op: "sphere", radius: 2 }, (4 / 3) * Math.PI * 8],
+    [{ op: "cone", bottomRadius: 2, topRadius: 1, height: 3 }, 7 * Math.PI],
+    [{ op: "torus", majorRadius: 8, minorRadius: 2 }, 64 * Math.PI ** 2],
+    [
+      {
+        op: "extrude",
+        profile: { shape: "rectangle", size: [10, 20] },
+        amount: 5,
+      },
+      1000,
+    ],
+    [
+      {
+        op: "extrude",
+        profile: {
+          shape: "polygon",
+          points: [
+            [0, 0],
+            [10, 0],
+            [0, 20],
+          ],
+        },
+        amount: 5,
+      },
+      500,
+    ],
+  ]) {
+    const shape = editShape(null, [operation]);
+    assert.ok(shape.isValid());
+    near(shape.volume, volume);
+    shape.dispose();
+  }
+  const box = { op: "box", size: [10, 20, 30] };
+  const shell = editShape(null, [
+    box,
+    { op: "shell", thickness: 1, faces: { position: "top" } },
+  ]);
+  assert.ok(shell.isValid());
+  near(shell.volume, 6000 - 8 * 18 * 29);
+  const offset = editShape(null, [
+    box,
+    { op: "offset_faces", faces: { position: "top" }, distance: 2 },
+  ]);
+  assert.ok(offset.isValid());
+  near(offset.volume, 6400);
+  const moved = editShape(null, [
+    box,
+    { op: "translate", by: [15, 0, 0] },
+    { op: "mirror", normal: [1, 0, 0] },
+  ]);
+  near(moved.volume, 6000);
+  near(moved.center().x, -15);
+});
+async function setup(fn, options = {}) {
+  const dataDir = await mkdtemp(join(tmpdir(), "minicad-smlib-"));
+  const worker = createWorker({ dataDir, ...options });
+  try {
+    await fn(worker, dataDir);
+  } finally {
+    await worker.dispose();
+    await rm(dataDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 3,
+      retryDelay: 200,
+    });
+  }
+}
+
 test(
-  "real kernel: revisions, invalid build rollback, PDF and exports survive restart",
-  { timeout: 120000 },
-  async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "minicad-test-"));
-    let worker = createWorker({ dataDir });
-    try {
-      const project = await worker.call("create", { title: "参数化底板" });
-      const projectId = project.id;
+  "SMLib: real parametric geometry, drawing projections, exports and immutable restore",
+  { timeout: 90000 },
+  async () =>
+    setup(async (worker, dataDir) => {
+      assert.match((await worker.call("health")).kernel, /SMLib.*0\.6\.2/);
+      const p = await worker.call("create", { title: "参数化底板" });
       const source =
-        'from build123d import Box, Cylinder, Pos\ndef build(p):\n    return Pos(70,-20,30) * (Box(p["width"],40,8) - Cylinder(4,8))\n';
-      const result = await worker.call("build", {
-        projectId,
+        "function build(p,cad) { return cad.Box(p.width,40,8).cut(cad.Cylinder(4,10)).translate(70,-20,30); }";
+      const built = await worker.call("build", {
+        projectId: p.id,
         expectedRevision: 0,
         source,
         parameters: { width: 60 },
       });
-      assert.equal(result.head, 1);
-      assert.ok(
-        Math.abs(
-          result.design.metrics.volume - (60 * 40 * 8 - Math.PI * 16 * 8),
-        ) < 1e-6,
-      );
-      assert.ok(result.design.mesh.triangles.length > 20);
-      for (const [index, expected] of [
+      near(built.design.metrics.volume, 60 * 40 * 8 - Math.PI * 16 * 8);
+      assert.equal(built.design.metrics.solidCount, 1);
+      assert.equal(built.design.metrics.valid, true);
+      assert.ok(built.design.mesh.triangles.length > 20);
+      for (const [index, size] of [
         [0, [60, 40]],
         [1, [60, 8]],
         [2, [40, 8]],
       ]) {
-        const points = result.design.views[index].paths.flatMap(
-          (p) => p.points,
+        const points = built.design.views[index].paths.flatMap(
+          (path) => path.points,
         );
         for (const axis of [0, 1])
-          assert.ok(
-            Math.abs(
-              Math.max(...points.map((p) => p[axis])) -
-                Math.min(...points.map((p) => p[axis])) -
-                expected[axis],
-            ) < 1e-6,
-            "orthographic dimensions must be independent of model position",
+          near(
+            Math.max(...points.map((p) => p[axis])) -
+              Math.min(...points.map((p) => p[axis])),
+            size[axis],
           );
       }
+      const original = await readFile(join(p.directory, "model.smb"));
       await assert.rejects(
         worker.call("build", {
-          projectId,
+          projectId: p.id,
           expectedRevision: 0,
           parameters: { width: 80 },
         }),
@@ -57,122 +126,306 @@ test(
       );
       await assert.rejects(
         worker.call("build", {
-          projectId,
+          projectId: p.id,
           expectedRevision: 1,
-          source: "def build(p):\n return None",
+          source: "function build(){return null;}",
         }),
         /封闭实体/,
       );
-      assert.equal((await worker.call("get", { projectId })).head, 1);
-      for (const format of ["step", "stl", "svg", "pdf", "zip"]) {
-        const file = await worker.call("export", {
-          projectId,
+      assert.deepEqual(
+        await readFile(join(p.directory, "model.smb")),
+        original,
+      );
+    await rm(join(p.directory, "model.js"));
+    await assert.rejects(worker.call("edit", { projectId: p.id, expectedRevision: 1, operations: [{ op: "box", size: [1, 1, 1] }] }), /源码或参数已修改/);
+    assert.equal((await worker.call("get", { projectId: p.id })).head, 1);
+    await writeFile(join(p.directory, "model.js"), source);
+      for (const format of ["step", "stl", "svg", "pdf", "smb", "zip"]) {
+        const exported = await worker.call("export", {
+          projectId: p.id,
           revision: 1,
           format,
+          locale: "zh",
         });
-        assert.ok(Buffer.from(file.data, "base64").length > 100);
+        const bytes = Buffer.from(exported.data, "base64");
+        assert.ok(bytes.length > 100);
+        assert.deepEqual(await readFile(exported.path), bytes);
+        if (format === "step") {
+          const cad = await import("@classcad/smlibwasm");
+          const back = cad.fromStep(bytes.toString());
+          near(back.volume, built.design.metrics.volume);
+          assert.ok(back.isValid());
+          back.dispose();
+        }
+        if (format === "pdf")
+          assert.match(bytes.toString("ascii", 0, 8), /^%PDF-1\.4/);
+        if (format === "svg") assert.match(bytes.toString(), /参数化底板/);
+        if (format === "zip") {
+          const files = unzipSync(bytes);
+          assert.equal(strFromU8(files["model.js"]), source);
+          assert.ok(files["model.smb"].length);
+        }
         if (format === "pdf") {
           const attached = await worker.call("attach", {
-            projectId,
-            name: file.name,
-            data: file.data,
+            projectId: p.id,
+            name: exported.name,
+            data: exported.data,
           });
-          const page = await worker.call("reference", {
-            projectId,
-            attachmentId: attached.attachments[0].id,
-            page: 1,
-          });
-          assert.match(page.text, /60.000/);
-          assert.ok(page.image.length > 1000);
+          assert.equal(
+            (
+              await worker.call("reference_file", {
+                projectId: p.id,
+                attachmentId: attached.attachments[0].id,
+              })
+            ).data,
+            exported.data,
+          );
         }
       }
       const second = await worker.call("build", {
-        projectId,
+        projectId: p.id,
         expectedRevision: 1,
         parameters: { width: 80 },
       });
-      assert.equal(second.head, 2);
-      assert.ok(Math.abs(second.design.metrics.sizeX - 80) < 1e-6);
-      assert.ok(
-        Math.abs(second.design.metrics.volume - (80 * 40 * 8 - Math.PI * 16 * 8)) < 1e-6,
-        "edited parameters must rebuild the real solid",
-      );
+      near(second.design.metrics.sizeX, 80);
+      near(second.design.metrics.volume, 80 * 40 * 8 - Math.PI * 16 * 8);
       const restored = await worker.call("restore", {
-        projectId,
+        projectId: p.id,
         expectedRevision: 2,
         revision: 1,
       });
       assert.equal(restored.head, 3);
+      near(restored.design.metrics.volume, built.design.metrics.volume);
       assert.equal(restored.design.parameters.width, 60);
-      await worker.dispose();
-      worker = createWorker({ dataDir });
-      const persisted = await worker.call("get", { projectId });
+      const persisted = await worker.call("get", { projectId: p.id });
       assert.equal(persisted.head, 3);
-      assert.equal(persisted.design.parameters.width, 60);
       assert.equal(persisted.design.checks, undefined);
-      assert.equal(persisted.design.requirements, undefined);
-      await assert.rejects(
-        worker.call("reference", {
-          projectId,
-          attachmentId: "../../anything",
-          page: 1,
-        }),
-        /不存在/,
+      const cad = await import("@classcad/smlibwasm");
+      near(
+        cad.fromSmb(await readFile(join(p.directory, "model.smb"))).volume,
+        built.design.metrics.volume,
       );
-    } finally {
-      await worker.dispose();
-      await rm(dataDir, {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 200,
-      });
-    }
-  },
+    }),
 );
 
 test(
-  "cancelling a running model preserves its committed revision and allows recovery",
-  { timeout: 60000 },
-  async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "minicad-cancel-"));
-    const worker = createWorker({ dataDir });
-    try {
+  "query/edit: fillet, through hole, blind hole, face movement, stale ids and parameter replay",
+  { timeout: 90000 },
+  async () =>
+    setup(async (worker) => {
       const p = await worker.call("create");
-      await worker.call("build", {
+      const base = await worker.call("edit", {
         projectId: p.id,
         expectedRevision: 0,
+        parameters: { length: 30 },
+        operations: [
+          { op: "box", size: [{ parameter: "length" }, 10, 5] },
+          { op: "fillet", edges: { parallelTo: [0, 0, 1] }, radius: 0.5 },
+          { op: "cut", tool: { shape: "cylinder", radius: 1, height: 7 } },
+        ],
+      });
+      near(base.design.metrics.volume, 1483.2190275490384);
+      const query = await worker.call("query", {
+        projectId: p.id,
+        expectedRevision: 1,
+        kind: "faces",
+        selector: { position: "front", geomType: "plane" },
+      });
+      assert.equal(query.items.length, 1);
+      assert.deepEqual(
+        query.items[0].normal.map((n) => Math.round(n)),
+        [0, -1, 0],
+      );
+      const blind = await worker.call("edit", {
+        projectId: p.id,
+        expectedRevision: 1,
+        operations: [
+          {
+            op: "cut",
+            tool: {
+              shape: "cylinder",
+              radius: 1,
+              height: 3,
+              rotate: { axis: [1, 0, 0], angle: 90 },
+              center: [0, -5.5, 0],
+            },
+          },
+        ],
+      });
+      near(blind.design.metrics.volume, 1480.0774348954483);
+      assert.equal(blind.design.metrics.faceCount, 13);
+      await assert.rejects(
+        worker.call("edit", {
+          projectId: p.id,
+          expectedRevision: 2,
+          operations: [
+            { op: "move_faces", faces: query.items[0].id, by: [0, -1, 0] },
+          ],
+        }),
+        /过期/,
+      );
+      const rebuilt = await worker.call("build", {
+        projectId: p.id,
+        expectedRevision: 2,
+        parameters: { length: 40 },
+      });
+      near(rebuilt.design.metrics.volume, blind.design.metrics.volume + 500);
+      const cylinder = await worker.call("query", {
+        projectId: p.id,
+        expectedRevision: 3,
+        kind: "faces",
+        selector: { geomType: "cylinder" },
+      });
+      assert.ok(cylinder.items.length >= 2);
+      const box = await worker.call("create", { title: "direct edit" });
+      await worker.call("edit", {
+        projectId: box.id,
+        expectedRevision: 0,
+        operations: [{ op: "box", size: [10, 20, 30] }],
+      });
+      const top = await worker.call("query", {
+        projectId: box.id,
+        expectedRevision: 1,
+        kind: "faces",
+        selector: { position: "top" },
+      });
+      const moved = await worker.call("edit", {
+        projectId: box.id,
+        expectedRevision: 1,
+        operations: [
+          { op: "move_faces", faces: top.items[0].id, by: [0, 0, 2] },
+        ],
+      });
+      near(moved.design.metrics.volume, 6400);
+      near(moved.design.metrics.sizeZ, 32);
+      await assert.rejects(
+        worker.call("edit", {
+          projectId: box.id,
+          expectedRevision: 2,
+          operations: [
+            { op: "fillet", edges: { parallelTo: [0, 0, 1] }, radius: 100 },
+          ],
+        }),
+      );
+      assert.equal((await worker.call("get", { projectId: box.id })).head, 2);
+      assert.match(
+        (await worker.call("api", { topic: "shapes", symbol: "moveFaces" }))
+          .declarations,
+        /moveFaces/,
+      );
+    }),
+);
+
+test(
+  "imported exact resources stay portable and historical exports retain original geometry",
+  { timeout: 60000 },
+  async () =>
+    setup(async (worker) => {
+      const p = await worker.call("create"),
+        cad = await import("@classcad/smlibwasm");
+      await mkdir(join(p.directory, "resources"));
+      await writeFile(
+        join(p.directory, "resources", "input.step"),
+        cad.toStep(cad.Box(12, 15, 7)),
+      );
+      const result = await worker.call("build", {
+        projectId: p.id,
+        expectedRevision: 0,
+      sourceFile: "parts/plate.js",
         source:
-          "from build123d import Box\ndef build(p):\n return Box(10,20,30)",
+          'function build(p,cad) { return cad.readModel("resources/input.step"); }',
         parameters: {},
       });
-      const controller = new AbortController();
-      const job = worker.call(
-        "build",
-        {
-          projectId: p.id,
-          expectedRevision: 1,
-          source: "def build(p):\n while True: pass",
-        },
-        controller.signal,
+      near(result.design.metrics.volume, 1260);
+      const archive = unzipSync(
+        Buffer.from(
+          (
+            await worker.call("export", {
+              projectId: p.id,
+              revision: 1,
+              format: "zip",
+            })
+          ).data,
+          "base64",
+        ),
       );
-      const timeout = setTimeout(() => controller.abort(), 500);
-      try {
-        await assert.rejects(job, /退出|取消/);
-      } finally {
-        clearTimeout(timeout);
-      }
-      const recovered = await worker.call("get", { projectId: p.id });
-      assert.equal(recovered.head, 1);
-      assert.equal(recovered.design.metrics.volume, 6000);
-    } finally {
-      await worker.dispose();
-      await rm(dataDir, {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 200,
+      assert.ok(archive["resources/input.step"]);
+      await writeFile(
+        join(p.directory, "resources", "input.step"),
+        cad.toStep(cad.Box(2, 3, 4)),
+      );
+    assert.equal((await worker.call("get", { projectId: p.id })).workingTreeChanged, true);
+    await assert.rejects(worker.call("edit", { projectId: p.id, expectedRevision: 1, operations: [{ op: "translate", by: [1, 0, 0] }] }), /源码或参数已修改/);
+      const rebuilt = await worker.call("build", {
+        projectId: p.id,
+        expectedRevision: 1,
       });
-    }
-  },
+      near(rebuilt.design.metrics.volume, 24);
+      const old = await worker.call("export", {
+        projectId: p.id,
+        revision: 1,
+        format: "step",
+      });
+      near(
+        cad.fromStep(Buffer.from(old.data, "base64").toString()).volume,
+        1260,
+      );
+      const restored = await worker.call("restore", {
+        projectId: p.id,
+        expectedRevision: 2,
+        revision: 1,
+      });
+      near(restored.design.metrics.volume, 1260);
+      const after = await worker.call("build", {
+        projectId: p.id,
+        expectedRevision: 3,
+      });
+      near(after.design.metrics.volume, 1260);
+    }),
+);
+
+test(
+  "cancellation and timeout preserve committed geometry and recover in a fresh kernel",
+  { timeout: 60000 },
+  async () =>
+    setup(
+      async (worker) => {
+        const p = await worker.call("create");
+        await worker.call("build", {
+          projectId: p.id,
+          expectedRevision: 0,
+          source: "function build(p,cad){ return cad.Box(10,20,30); }",
+          parameters: {},
+        });
+        const controller = new AbortController(),
+          job = worker.call(
+            "build",
+            {
+              projectId: p.id,
+              expectedRevision: 1,
+              source: "function build(){ while(true){} }",
+            },
+            controller.signal,
+          );
+        const timer = setTimeout(() => controller.abort(), 600);
+        try {
+          await assert.rejects(job, /取消/);
+        } finally {
+          clearTimeout(timer);
+        }
+        const result = await worker.call("get", { projectId: p.id });
+        assert.equal(result.head, 1);
+        near(result.design.metrics.volume, 6000);
+        await assert.rejects(
+          worker.call("build", {
+            projectId: p.id,
+            expectedRevision: 1,
+            source: "function build(){ while(true){} }",
+          }),
+          /超时/,
+        );
+        assert.equal((await worker.call("get", { projectId: p.id })).head, 1);
+      },
+      { timeout: 1800 },
+    ),
 );

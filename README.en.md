@@ -7,7 +7,7 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 ## Features
 
 - Natural-language modeling: create and modify parametric 3D models through the DSH agent.
-- Drawing references: import and preview PDF drawings for the agent to read.
+- Drawing references: provide PDFs through DSH attachments for the agent to read using host capabilities.
 - Parameter and source editing: adjust model parameters or modify modeling source code through the agent.
 - Model viewing: view 3D models and reference drawings.
 - Library and task management: organize part-design tasks in libraries, each with its own conversation, modeling resources, and revision history.
@@ -15,14 +15,14 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 
 ## Local installation
 
-Requires Node.js 22.19+, [uv](https://docs.astral.sh/uv/getting-started/installation/), pnpm, and DSH. The current development compatibility target is DSH **0.2.1-rc.5**. DSH plugin APIs are changing rapidly; other versions require verification.
+Requires Node.js 22.19+, pnpm, and DSH. The current development compatibility target is DSH **0.2.1-rc.5**. DSH plugin APIs are changing rapidly; other versions require verification.
 
 ```powershell
 npm install
 npm run setup
 ```
 
-`setup` installs the locked Python environment with `uv sync --project python --frozen`, then builds the client. The runtime uses `uv run --project python --frozen python`. Do not modify the environment manually with pip or `python -m venv`.
+`setup` builds the client. The SMLib WebAssembly kernel is installed with npm dependencies and runs in a separate Node process.
 
 If pnpm is not installed, run `npm install -g pnpm`.
 
@@ -50,21 +50,21 @@ The sidebar follows Library → Part-design task. Create or rename libraries, us
 
 The agent should ask for clarification when dimensions are incomplete or multiple views do not uniquely determine the geometry. Geometric validity checks do not establish structural strength, manufacturability, or complete dimensional correctness.
 
-Scanned drawings require a model that supports image input; text-only models can use only text extracted from the PDF.
+PDF parsing and scanned drawing interpretation use DSH attachments, scripting, or multimodal input, depending on the host tools and selected model.
 
 SVG / PDF exports currently provide three-view reference sheets with overall dimensions. They do not include complete hole-location dimension chains, geometric tolerances, surface roughness, or manufacturing annotations. Production drawings still require engineering review and additional annotations. The current implementation supports parametric single-part and multi-solid modeling, without assembly constraint solving or CAM toolpaths.
 
 ## Storage and runtime boundaries
 
-Files follow Library / Design task / Modeling resources. Each task uses an ordinary subfolder named after its initial title, adding a number when the name already exists. Later title changes leave the folder name unchanged. Source, parameters, and solids live inside the task, for example `plate/model.py`, `plate/model.parameters.json`, and `plate/model.brep`. Task-relative paths such as `parts/plate.py` are also supported. Edit source and parameters in an external editor; the next read or build uses the files on disk. Models and revisions are independent between tasks.
+Files follow Library / Design task / Modeling resources. Each task uses an ordinary subfolder named after its initial title, adding a number when the name already exists. Later title changes leave the folder name unchanged. Source, parameters, and solids live inside the task, for example `plate/model.js`, `plate/model.parameters.json`, and `plate/model.smb`. Task-relative paths such as `parts/plate.js` are also supported. Edit source and parameters in an external editor; the next read or build uses the files on disk. Models and revisions are independent between tasks.
 
-The library's `minicad.json` stores task folders, session bindings, selected modeling files, and revision records. Each task's `.cad-history/<source path without extension>/v0001/` folders preserve successful builds with source, parameters, BREP, and preview snapshots. Reference PDFs live in that task's `references/` folder. Copy the entire library to take models and history with you, then reopen it through the folder picker. DSH's native sessions store conversations. The frontend list shows Library → Part-design task.
+The library's `minicad.json` stores task folders, session bindings, selected modeling files, and revision records. Each task's `.cad-history/<source path without extension>/v0001/` folders preserve successful builds with source, parameters, SMLib solids, and preview snapshots. Reference PDFs live in that task's `references/` folder. Copy the entire library to take models and history with you, then reopen it through the folder picker. DSH's native sessions store conversations. The frontend list shows Library → Part-design task.
 
 Moving a task to another library moves its entire folder, including source files, references, and history. If the destination already has a folder with that name, a number is appended to avoid overwriting it. Renaming a library changes its display name and leaves the disk folder name unchanged.
 
 Paths of opened directories are stored in `$DSH_HOME/storages/minicad/libraries.json`, or `~/.dsh/storages/minicad/libraries.json` when DSH_HOME is unset. The default library uses the adjacent `default/` directory. Set `dataDir` to override this settings directory.
 
-Modeling code runs with the current user's privileges in a separate Python service process. **Process isolation is not a security sandbox.** Run only trusted design code. The agent instructions explicitly treat PDFs and documents as reference data. The default operation timeout is 120 seconds. Stopping a running build terminates its worker process while preserving committed revisions.
+Modeling code runs with the current user's privileges in a separate Node service process. **Process isolation is not a security sandbox.** Run only trusted design code. The agent instructions explicitly treat PDFs and documents as reference data. The default operation timeout is 120 seconds. Stopping a running build terminates its worker process while preserving committed revisions.
 
 Override settings through a profile patch:
 
@@ -76,6 +76,18 @@ Override settings through a profile patch:
 ```
 
 Configuration overrides replace the entire configuration row. Do not let multiple DSH processes write to the same MiniCAD data directory.
+
+## Modeling interfaces
+
+Agents use `cad_query` to inspect geometry and `cad_edit` to create or edit solids. `cad_build` accepts JavaScript parametric source, and `cad_api` reads the installed API declarations. Define `build(parameters, cad)`; `cad` provides SMLib modeling functions and task-local resource loading:
+
+```javascript
+function build(parameters, cad) {
+  return cad.Box(parameters.length, 40, 8).cut(cad.Cylinder(4, 10));
+}
+```
+
+Local edits are recorded in source and replayed when parameters change. Face and edge references belong to the queried revision; query again after an edit. `cad.readModel("resources/input.step")` imports task-local STEP, BREP, or SMLib resources, which are included in snapshots and editable ZIP exports. Exported files are written to the task's `exports/` directory.
 
 ## Development and verification
 
@@ -89,14 +101,14 @@ npm test
 
 Write automated tests only for the modeling kernel service, which the agent verifies. All other changes are accepted by the user; see [AGENTS.md](AGENTS.md). `check` checks host syntax and builds the client; it is not a UI test.
 
-Source layout: `src/client` contains the workbench, `src/host` contains the DSH service and agent tools, and `python/worker.py` contains persistence and modeling. The UI and the agent share the same service interface, and all design changes include `expectedRevision`.
+Source layout: `src/client` contains the workbench, `src/host` contains the DSH service and agent tools, and `src/kernel` contains SMLib modeling and file persistence. The UI and the agent share the same service interface, and all design changes include `expectedRevision`.
 
 ## Troubleshooting and removal
 
 | Symptom | Check |
 |---|---|
 | MiniCAD is missing from the sidebar | Confirm installation in the correct profile and restart DSH |
-| Python service fails to start | Ensure uv is on DSH's PATH and run `npm run setup` |
+| Modeling service fails to start | Run `npm install` and `npm run setup` |
 | Model authentication fails | Configure a model in DSH or select one provided by a signed-in account |
 | HTTP 401 | Sign in through the host's launch URL first; a 401 does not prove that the plugin route is registered |
 | HTTP 404 | Check the bundle, host service, and port |

@@ -379,17 +379,10 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
 }
 .mc-reference {
   display: block;
-  max-height: 60vh;
-  max-width: 100%;
-  margin: auto;
+  width: 100%;
+  height: 60vh;
+  border: 0;
   background: white;
-}
-.mc-reference-nav {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 20px;
-  margin: 12px 0;
 }
 .mc-error {
   position: absolute;
