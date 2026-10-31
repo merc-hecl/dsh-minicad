@@ -473,7 +473,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
     s.theme();
   }, [wire, design]);
   return (
-    <div id={id} ref={mount} role="tabpanel" aria-hidden={!active} className="mc-viewport" aria-label="3D">
+    <div id={id} ref={mount} aria-hidden={!active} className="mc-viewport" aria-label="3D">
       <ViewCube
         ref={cube}
         active={active}

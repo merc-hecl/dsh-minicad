@@ -27,6 +27,7 @@
     "README.en.md",
     "LICENSE",
     "NOTICE.md",
+    "docs/licenses",
     "AGENTS.md"
   ],
   "engines": {

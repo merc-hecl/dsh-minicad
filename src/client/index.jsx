@@ -1,10 +1,11 @@
 import React from "react";
-import { Workbench, NativeComposer } from "./workbench.jsx";
+import { Workbench, Composer } from "./workbench.jsx";
 import { ForgeIcon } from "./forge-icon.jsx";
 import { zh, en } from "./locale.js";
 import css from "./styles.css";
+import workspaceCss from "./design-navigator.css";
 export const inject = [
-  "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace",
+  "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts",
 ];
 export function apply(ctx) {
   ctx.effect(
@@ -14,7 +15,7 @@ export function apply(ctx) {
   ctx.effect(() => {
     const style = document.createElement("style");
     style.dataset.plugin = "dsh-minicad";
-    style.textContent = css;
+    style.textContent = `${workspaceCss}\n${css}`;
     document.head.append(style);
     return () => style.remove();
   }, "minicad: styles");
@@ -51,7 +52,16 @@ export function apply(ctx) {
         name: "main",
         key: "minicad",
         locale: "minicad",
-        children: { "minicad.composer": { kind: "single", scope: "session" } },
+        children: {
+          "minicad.composer": { kind: "single", scope: "session" },
+          "minicad.directoryFlow": { kind: "single", scope: "root" },
+          "minicad.task.menu": { kind: "list", scope: "root", inject: { hooks: {
+            menuOpenState: (_standard, state) => () => state,
+            shortcuts: ctx.shortcuts.catalog,
+          } } },
+          "minicad.task.rowActions": { kind: "list", scope: "root" },
+          "minicad.task.renameDialog": { kind: "single", scope: "root" },
+        },
       },
       ({ SessionProvider, renderSlot }) => (
         <Workbench
@@ -66,13 +76,68 @@ export function apply(ctx) {
           SessionProvider={SessionProvider}
           renderSlot={renderSlot}
           retainSession={(id) => ctx.sessions.retain(id, { source: "minicad" })}
+          workspaceCatalog={{ subscribe: (listener) => ctx.workspaces.list.subscribe(listener), getSnapshot: () => ctx.workspaces.list.getSnapshot() }}
+          forkTask={(project) => new Promise((resolve, reject) => {
+            if (project.running) { reject(new Error(t("buildBusy"))); return; }
+            ctx.uiWorkspace.forkSession(project.session_id, (childId) => {
+              request("fork_project", { projectId: project.id, sessionId: childId }).then(resolve, reject);
+            }, { allowMigration: false }).catch(reject);
+          })}
         />
       ),
     ),
   );
   ctx.slots.inject("minicad.composer", () =>
-    ctx.slots.register({ name: "minicad.composer" }, NativeComposer),
+    ctx.slots.register({ name: "minicad.composer" }, Composer),
   );
+  // Reuse the installed action components, their injected behavior, shortcuts and dialogs.
+  // Only fork and rename bridge back to MiniCAD's task selection and independent files.
+  const mirror = (target, source, select, adapt) => ctx.slots.inject(target, () => {
+    let entries = [], disposers = [];
+    const sync = () => {
+      const next = ctx.slots.entriesOfSlot(source).filter(select);
+      if (next.length === entries.length && next.every((entry, index) => entry === entries[index])) return;
+      disposers.forEach((dispose) => dispose());
+      entries = next;
+      disposers = next.map((entry, index) => {
+        const Component = entry.component;
+        return ctx.slots.register({ name: target, id: `action-${index}`, order: index, inject: entry.inject, locale: entry.locale },
+          (props) => <Component {...props} {...adapt(props)} />);
+      });
+    };
+    const unsubscribe = ctx.slots.subscribe(source, sync);
+    sync();
+    return () => { unsubscribe(); disposers.forEach((dispose) => dispose()); };
+  });
+  mirror("minicad.task.menu", "sidebar.workspaces.session.menu.item", () => true, (props) => ({
+    forkSession: props.onForkTask,
+    requestSessionRename: props.onRenameTask,
+  }));
+  mirror("minicad.task.rowActions", "sidebar.workspaces.session.row.action", () => true, () => ({}));
+  mirror("minicad.task.renameDialog", "shell.overlay", (entry) => entry.component.name === "SessionRenameDialog", (props) => ({
+    useRenameRequest: (select) => select(props.renameTarget),
+    settleSessionRename: props.onSettleRename,
+    renameSession: props.onRenameTask,
+  }));
+  // Reuse the active native/browse occupant without redeclaring the host's hole.
+  // DSH 0.2.1-rc.5 exposes component/inject on its public slot-entry records.
+  ctx.slots.inject("minicad.directoryFlow", () => {
+    let current, dispose;
+    const sync = () => {
+      const entry = ctx.slots.entriesOfSlot("sidebar.workspaces.directoryFlow")[0];
+      if (entry === current) return;
+      dispose?.();
+      current = entry;
+      dispose = entry ? ctx.slots.register({
+        name: "minicad.directoryFlow",
+        inject: entry.inject,
+        locale: entry.locale,
+      }, entry.component) : undefined;
+    };
+    const unsubscribe = ctx.slots.subscribe("sidebar.workspaces.directoryFlow", sync);
+    sync();
+    return () => { unsubscribe(); dispose?.(); };
+  });
   ctx.slots.inject("sidebar.panellist", () =>
     ctx.slots.register(
       {

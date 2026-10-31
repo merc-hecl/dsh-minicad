@@ -6,6 +6,7 @@ export const inject = [
   "sessionController",
   "agents",
   "sessionProjections",
+  "workingDirectory",
 ];
 export const Config = z.object({
   dataDir: z.string().default(""),
@@ -30,6 +31,11 @@ const clientMethods = new Set([
   "restore",
   "export",
   "health",
+  "libraries",
+  "create_library",
+  "rename_library",
+  "move_project",
+  "remove_library",
 ]);
 
 export async function apply(ctx, config = {}) {
@@ -60,8 +66,14 @@ export async function apply(ctx, config = {}) {
   const projectForSession = async (sessionId) => {
     const p = await call("by_session", { sessionId });
     bySession.set(sessionId, p.id);
+    await alignDirectory(p);
     return p;
   };
+  async function alignDirectory(project, signal) {
+    const agent = ctx.agents.get(project.session_id);
+    if (agent && ctx.workingDirectory.get(agent.session) !== project.workspaceDirectory)
+      await ctx.workingDirectory.set(agent, project.workspaceDirectory, signal);
+  }
   ctx.provide("minicad", { call, projectForSession });
   ctx.effect(
     () => () => {
@@ -77,6 +89,19 @@ export async function apply(ctx, config = {}) {
       }),
     )
     .catch((error) => ctx.logger.warn(`MiniCAD: ${error.message}`));
+  // DSH 0.2.1-rc.5 owns initial-intent title generation and manual title pins.
+  ctx.on("session/event", (session, event) => {
+    const user = event.type === "user/message" && event.data.source.kind === "user";
+    if (event.type !== "session/title" && !user) return;
+    startup.then(async () => {
+      const projectId = bySession.get(session.id);
+      if (!projectId || disposed) return;
+      if (user) {
+        const text = event.data.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").split("\n\n<minicad-project-context>")[0];
+        await call("message", { projectId, id: `user:${event.seq}`, role: "user", text, created: event.time / 1000 });
+      } else await call("rename", { projectId, title: event.data.title });
+    }).catch((error) => ctx.logger.warn(`MiniCAD title: ${error.message}`));
+  });
   // Use the supported, checkpointed projection; recover responses after restart.
   // Include native composer submissions from the real Session, never reasoning/tool payloads.
   const transcriptValue = z.object({
@@ -137,7 +162,7 @@ export async function apply(ctx, config = {}) {
   async function ensureSession(project) {
     if (project.session_id) return project;
     const created = await ctx.sessionController.create({
-      cwd: project.directory,
+      cwd: project.workspaceDirectory,
       agentPreset: "minicad",
     });
     const bound = await call("bind", {
@@ -145,21 +170,58 @@ export async function apply(ctx, config = {}) {
       sessionId: created.sessionId,
     });
     bySession.set(created.sessionId, project.id);
-    await ctx.sessionController.rename({
-      sessionId: created.sessionId,
-      title: project.title,
-    });
     return bound;
   }
   async function rpc(method, args, signal) {
     await startup;
     if (method === "create") return ensureSession(await call("create", args));
+    if (method === "fork_project") {
+      const source = await call("get", { projectId: args.projectId, geometry: false });
+      if (active.has(source.id) || ctx.agents.get(source.session_id)?.status === "running")
+        throw new Error("当前设计正在构建，请稍后重试");
+      const projection = await ctx.sessionController.projections({ sessionId: args.sessionId }, signal);
+      if (!projection) throw new Error("设计任务不存在");
+      const branch = await call("fork_project", { ...args, title: projection.values?.title || source.title }, signal);
+      bySession.set(branch.session_id, branch.id);
+      await alignDirectory(branch, signal);
+      return branch;
+    }
+    if (method === "remove_library") {
+      const tasks = (await call("list")).filter((project) => project.library_id === args.libraryId);
+      if (tasks.some((project) => active.has(project.id) || ctx.agents.get(project.session_id)?.status === "running"))
+        throw new Error("当前设计正在构建，请稍后重试");
+    }
+    if (method === "discard_empty") {
+      // Session projections are authoritative while the user/message callback is still queued.
+      const project = (await call("list")).find((item) => item.id === args.projectId);
+      if (!project || project.has_messages || project.head) return { discarded: false };
+      if (project.session_id) {
+        const projection = await ctx.sessionController.projections({ sessionId: project.session_id }, signal);
+        const metadata = projection?.values?.sessionListMetadata;
+        if ((projection && metadata?.blank !== true) || metadata?.lastPromptAt != null || projection?.values?.minicadTranscript?.messages.length)
+          return { discarded: false };
+      }
+      if (active.has(project.id) || ctx.agents.get(project.session_id)?.status === "running")
+        return { discarded: false };
+      const result = await call("discard_empty", args, signal);
+      if (result.discarded && project.session_id) {
+        bySession.delete(project.session_id);
+        lastError.delete(project.session_id);
+      }
+      return result;
+    }
+    if (method === "move_project") {
+      const project = await call("get", { projectId: args.projectId, geometry: false });
+      if (active.has(project.id) || ctx.agents.get(project.session_id)?.status === "running")
+        throw new Error("当前设计正在构建，请稍后重试");
+    }
     if (method === "models") return ctx.sessionController.modelCatalog();
     if (method === "status") {
       const p = await call("get", {
         projectId: args.projectId,
         geometry: false,
       });
+      await alignDirectory(p, signal);
       const projection = p.session_id
         ? await ctx.sessionController.projections(
             { sessionId: p.session_id },
@@ -167,8 +229,18 @@ export async function apply(ctx, config = {}) {
           )
         : null;
       const messages = projection?.values?.minicadTranscript?.messages || p.messages;
+      const title = projection?.values?.title || p.title;
+      if (title !== p.title) await call("rename", { projectId: p.id, title });
       return {
         head: p.head,
+        sourceVersion: p.sourceVersion,
+        workspaceDirectory: p.workspaceDirectory,
+        sourceFile: p.sourceFile,
+        title,
+        projects: (await call("list")).map((project) => ({
+          ...project,
+          running: ctx.agents.get(project.session_id)?.status === "running" || active.has(project.id),
+        })),
         messages,
         running:
           ctx.agents.get(p.session_id)?.status === "running" ||
@@ -228,17 +300,12 @@ export async function apply(ctx, config = {}) {
         },
         signal,
       );
-      await call("message", {
-        projectId: p.id,
-        id: args.requestId,
-        role: "user",
-        text,
-      });
       return result;
     }
     if (!clientMethods.has(method))
       throw Object.assign(new Error("不支持的操作"), { status: 404 });
     const result = await call(method, args, signal);
+    if (method === "get" || method === "move_project") await alignDirectory(result, signal);
     if (method === "rename" && result.session_id)
       await ctx.sessionController.rename({
         sessionId: result.session_id,

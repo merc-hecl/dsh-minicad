@@ -215,7 +215,7 @@ export const ViewCube = forwardRef(function ViewCube({ active, t, onSelect, onDr
         {FACES.map((face) => {
           const label = `${t(face.id)} (${face.label})`;
           return (
-            <Tooltip key={face.id} label={label} delayMs={500} portal>
+            <Tooltip key={face.id} label={label} portal>
               <g
                 ref={(node) => {
                   if (node) faceNodes.current.set(face.id, node);

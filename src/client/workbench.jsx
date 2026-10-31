@@ -8,16 +8,17 @@ import React, {
 import {
   Button,
   Tooltip,
-  SegmentedControl,
+  Input,
+  StateDot,
+  Tag,
   IconPlusOutlineRegular,
   IconChevronLeftOutlineRegular,
+  IconChevronRightOutlineRegular,
   IconCloseOutlineRegular,
   IconFolderCloseRegular,
   IconFolderOpenRegular,
-  IconTriangleRightFillRegular,
   IconPanelLeftOutlineRegular,
   IconEllipsisOutlineRegular,
-  IconCheckOutlineRegular,
   IconDownloadOutlineRegular,
   IconClockOutlineRegular,
   IconRefreshOutlineRegular,
@@ -26,6 +27,9 @@ import {
 import { Viewport } from "./viewport.jsx";
 import { errorKey } from "./locale.js";
 import { ForgeIcon } from "./forge-icon.jsx";
+import { ParameterDialog } from "./parameter-dialog.jsx";
+import { ErrorDetails, WorkbenchDialog } from "./workbench-dialog.jsx";
+import { DesignNavigator } from "./design-navigator.jsx";
 
 export function Cube({ size = 22, ...props }) {
   return (
@@ -48,7 +52,7 @@ const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
       variant="ghost"
       size="md"
       icon={Icon && <Icon size={16} />}
-      className={`mc-button ${!children ? "mc-icon" : ""} ${className}`}
+      className={className}
       aria-label={label}
       {...props}
     >
@@ -56,7 +60,7 @@ const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
     </Button>
   );
   return label ? (
-    <Tooltip label={label} delayMs={500} portal>{button}</Tooltip>
+    <Tooltip label={label} portal>{button}</Tooltip>
   ) : button;
 };
 
@@ -65,7 +69,7 @@ const COMPOSER_SLOTS = { views: NoConversationView };
 
 // Use DSH 0.2.1-rc.5's public Factory, which owns its child slots exclusively.
 // Only omit the transcript here; retain the complete native composer and takeovers.
-export function NativeComposer({ renderFactorySlot }) {
+export function Composer({ renderFactorySlot }) {
   return renderFactorySlot(
     "conversation.content",
     { variant: "embedded", phase: "active", hero: false },
@@ -74,7 +78,7 @@ export function NativeComposer({ renderFactorySlot }) {
 }
 
 export function Workbench({
-  locale, t, enter, back, request, SessionProvider, renderSlot, retainSession,
+  locale, t, enter, back, request, SessionProvider, renderSlot, retainSession, workspaceCatalog, forkTask,
 }) {
   const workbench = useRef(null);
   const bottom = useRef(null);
@@ -94,15 +98,18 @@ export function Workbench({
   ).active;
   const [projects, setProjects] = useState([]),
     [project, setProject] = useState(null);
-  const [panelCollapsed, setPanelCollapsed] = useState(false),
-    [projectExpanded, setProjectExpanded] = useState(true);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [libraries, setLibraries] = useState([]);
+  const workspaceState = useSyncExternalStore(workspaceCatalog.subscribe, workspaceCatalog.getSnapshot);
+  const [renameTarget, setRenameTarget] = useState(null);
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState("");
   const [selected, setSelected] = useState(""),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(null);
   const [busy, setBusy] = useState(false),
     [running, setRunning] = useState(false);
-  const [tab, setTab] = useState("model"),
-    [wire, setWire] = useState(false),
+  const [wire, setWire] = useState(false),
     [resetView, setResetView] = useState(0);
   const [modal, setModal] = useState(null),
     [value, setValue] = useState(""),
@@ -132,16 +139,37 @@ export function Workbench({
       locale: languageRef.current === "zh" ? "zh" : "en",
     });
   async function refreshList() {
-    const p = await api("list");
-    if (alive.current) setProjects(p);
+    const [p, groups] = await Promise.all([api("list"), api("libraries")]);
+    if (alive.current) { setProjects(p); setLibraries(groups); }
     return p;
   }
+  const abandonedTasks = useRef(new Set()), discardingTasks = useRef(new Set());
+  async function discardAbandonedTasks(currentId) {
+    let changed = false;
+    for (const id of [...abandonedTasks.current]) {
+      if (selection.current !== currentId || !alive.current) break;
+      abandonedTasks.current.delete(id);
+      if (id === currentId || discardingTasks.current.has(id)) continue;
+      discardingTasks.current.add(id);
+      try {
+        const result = await api("discard_empty", { projectId: id });
+        changed ||= result.discarded;
+      } finally {
+        discardingTasks.current.delete(id);
+      }
+    }
+    if (changed) await refreshList();
+  }
   async function load(id) {
+    if (discardingTasks.current.has(id)) return;
+    const previous = projects.find((task) => task.id === selection.current);
+    if (selection.current && selection.current !== id && !previous?.has_messages && !previous?.head)
+      abandonedTasks.current.add(selection.current);
+    abandonedTasks.current.delete(id);
     selection.current = id;
     lastStatusError.current = "";
     setError(null);
     setSelected(id);
-    setProjectExpanded(true);
     setLoading(true);
     setProject(null);
     setModal(null);
@@ -150,6 +178,7 @@ export function Workbench({
       const p = await api("get", { projectId: id });
       if (selection.current === id && alive.current) {
         setProject(p);
+        await discardAbandonedTasks(id);
       }
     } catch (e) {
       showError(e);
@@ -157,15 +186,26 @@ export function Workbench({
       if (selection.current === id) setLoading(false);
     }
   }
+  function clearSelection() {
+    selection.current = "";
+    setSelected("");
+    setProject(null);
+    setModal(null);
+    setRunning(false);
+    setLoading(false);
+  }
   useEffect(() => {
     alive.current = true;
     refreshList()
       .then(async (p) => {
         if (!alive.current) return;
         // A native composer needs a real Session even before its first message.
-        const first = p[0] || (await api("create", { title: t("untitled") }));
+        const available = p.filter((task) => !workspaceCatalog.getSnapshot().archivedSessionIds?.includes(task.session_id));
+        const groups = available.length ? [] : await api("libraries");
+        const first = available[0] || (groups.length ? await api("create", { libraryId: groups[0].id, title: t("untitled") }) : null);
         if (!alive.current) return;
-        if (!p.length) await refreshList();
+        if (!first) { clearSelection(); return; }
+        if (!available.length) await refreshList();
         await load(first.id);
       })
       .catch((e) => {
@@ -176,6 +216,12 @@ export function Workbench({
       alive.current = false;
     };
   }, []);
+  useEffect(() => {
+    if (!project?.session_id || !workspaceState.archivedSessionIds?.includes(project.session_id)) return;
+    const next = projects.find((task) => task.id !== selected && !workspaceState.archivedSessionIds.includes(task.session_id));
+    if (next) load(next.id);
+    else clearSelection();
+  }, [workspaceState.archivedSessionIds, project?.session_id]);
   useEffect(() => {
     const id = project?.session_id;
     if (!id) return;
@@ -203,10 +249,14 @@ export function Workbench({
         const state = await api("status", { projectId: selected });
         if (disposed || selection.current !== selected) return;
         setRunning(state.running);
+        if (state.projects) setProjects(state.projects);
         if (state.error && state.error !== lastStatusError.current)
           setError({ key: errorKey(state.error), detail: state.error });
         lastStatusError.current = state.error || "";
-        if (projectRef.current && state.head !== projectRef.current.head) {
+        if (state.title && state.title !== projectRef.current?.title) {
+          setProject((current) => current ? { ...current, title: state.title } : current);
+        }
+        if (projectRef.current && (state.head !== projectRef.current.head || state.sourceVersion !== projectRef.current.sourceVersion || state.workspaceDirectory !== projectRef.current.workspaceDirectory || state.sourceFile !== projectRef.current.sourceFile)) {
           const p = await api("get", { projectId: selected });
           if (!disposed && selection.current === selected) {
             setProject(p);
@@ -237,41 +287,6 @@ export function Workbench({
       })
       .catch(showError);
   }, [language]);
-  useEffect(() => {
-    if (!modal) return;
-    const dialog = document.querySelector('.mc-workbench [role="dialog"]');
-    const previous = document.activeElement;
-    const elements = () => [
-      ...dialog.querySelectorAll(
-        'button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]',
-      ),
-    ];
-    (dialog.querySelector("[autofocus]") || elements()[0])?.focus();
-    const key = (e) => {
-      if (e.key === "Escape" && !busy) {
-        e.preventDefault();
-        setModal(null);
-      }
-      if (e.key === "Tab") {
-        const items = elements(),
-          first = items[0],
-          last = items.at(-1);
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        }
-        if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
-        }
-      }
-    };
-    dialog.addEventListener("keydown", key);
-    return () => {
-      dialog.removeEventListener("keydown", key);
-      previous?.focus();
-    };
-  }, [modal, busy]);
   async function action(fn) {
     if (busy) return;
     setBusy(true);
@@ -284,6 +299,8 @@ export function Workbench({
     }
   }
   function open(kind) {
+    setError(null);
+    setEditTarget("");
     setModal(kind);
     setEditHead(project?.head || 0);
     setValue(
@@ -291,11 +308,9 @@ export function Workbench({
         ? ""
         : kind === "rename"
           ? project.title
-          : kind === "parameters"
-            ? JSON.stringify(project.design.parameters, null, 2)
-            : kind === "source"
-              ? project.design.source
-              : "",
+          : kind === "source"
+            ? project.design.source
+            : "",
     );
   }
   async function openReference(id, projectId = selected, page = 1) {
@@ -315,18 +330,15 @@ export function Workbench({
       showError(e);
     }
   }
-  async function saveEditor() {
-    if (modal === "parameters") {
-      const invalid = [
-        ...document.querySelectorAll(".mc-dialog input, .mc-dialog textarea"),
-      ].find((input) => !input.checkValidity());
-      if (invalid) {
-        invalid.reportValidity();
+  async function saveEditor(parameterValues) {
+    await action(async () => {
+      const id = editTarget || selected;
+      if (modal === "renameLibrary") {
+        await api("rename_library", { title: value, libraryId: editTarget });
+        await refreshList();
+        setModal(null);
         return;
       }
-    }
-    await action(async () => {
-      const id = selected;
       if (modal === "create") {
         const p = await api("create", { title: value.trim() || t("untitled") });
         await refreshList();
@@ -336,20 +348,11 @@ export function Workbench({
       if (modal === "rename") {
         await api("rename", { projectId: id, title: value });
         await refreshList();
-        setProject((p) => ({ ...p, title: value }));
+        if (selection.current === id) setProject((p) => ({ ...p, title: value }));
         setModal(null);
         return;
       }
-      let params;
-      if (modal === "parameters") {
-        try {
-          params = JSON.parse(value);
-          if (!params || Array.isArray(params) || typeof params !== "object")
-            throw new Error();
-        } catch {
-          throw { uiKey: "invalidJSON", message: t("invalidJSON") };
-        }
-      }
+      const params = modal === "parameters" ? parameterValues : undefined;
       const next = await api("build", {
         projectId: id,
         expectedRevision: editHead,
@@ -369,7 +372,8 @@ export function Workbench({
       dateStyle: "medium",
       timeStyle: "short",
     }).format(timestamp * 1000);
-  const editable = ["create", "rename", "parameters", "source"].includes(modal);
+  const editable = ["create", "rename", "source", "renameLibrary"].includes(modal);
+  const libraryEditor = modal === "renameLibrary";
   return (
     <div
       ref={workbench}
@@ -378,7 +382,6 @@ export function Workbench({
     >
       <Viewport
         id="mc-view-model-panel"
-        active={tab === "model"}
         design={design}
         wire={wire}
         resetToken={resetView}
@@ -393,7 +396,7 @@ export function Workbench({
         />
         <strong>MiniCAD</strong>
         <span className="mc-crumb">
-          {t("projects")}
+          {libraries.find((library) => library.id === project?.library_id)?.title || t("defaultLibrary")}
           {project ? ` / ${project.title}` : ""}
         </span>
         <span className="mc-spacer" />
@@ -411,114 +414,65 @@ export function Workbench({
           {t("export")}
         </Btn>
       </header>
-      <aside className={`mc-sidebar ${panelCollapsed ? "" : "mc-panel"}`} aria-label={t("projects")}>
-        <div className="mc-side-heading">
-          <Btn
-            icon={IconPanelLeftOutlineRegular}
-            variant={panelCollapsed ? "outline" : "ghost"}
-            label={t(panelCollapsed ? "expandProjects" : "collapseProjects")}
-            aria-expanded={!panelCollapsed}
-            aria-controls="mc-project-list"
-            onClick={() => setPanelCollapsed((collapsed) => !collapsed)}
-          />
-          {!panelCollapsed && (
-            <>
-              <Tooltip label={t("projects")} delayMs={500} portal>
-                <span className="mc-side-title">{t("projects")}</span>
-              </Tooltip>
-              <Btn
-                icon={IconPlusOutlineRegular}
-                label={t("newProject")}
-                onClick={() => open("create")}
-              />
-            </>
-          )}
-        </div>
-        <div id="mc-project-list" className="mc-project-list" hidden={panelCollapsed}>
-          {!projects.length && (
-            <p className="mc-muted mc-secondary">
-              {t("noProjects")}
-            </p>
-          )}
-          {projects.map((p) => (
-            <div key={p.id} className="mc-project">
-              <div className="mc-project-row">
-                <Btn
-                  className={`mc-button mc-project-toggle ${p.id === selected ? "mc-active" : ""}`}
-                  label={p.title}
-                  aria-expanded={p.id === selected && projectExpanded}
-                  onClick={() => {
-                    if (p.id === selected) setProjectExpanded((expanded) => !expanded);
-                    else load(p.id);
-                  }}
-                >
-                  <span className="mc-folder-slot" aria-hidden="true">
-                    {p.id === selected && projectExpanded ? (
-                      <IconFolderOpenRegular className="mc-folder-icon" size={16} />
-                    ) : (
-                      <IconFolderCloseRegular className="mc-folder-icon" size={16} />
-                    )}
-                    <IconTriangleRightFillRegular className="mc-folder-arrow" size={16} />
-                  </span>
-                  <span className="mc-project-title">{p.title}</span>
-                </Btn>
-                {p.id === selected && (
-                  <Btn
-                    icon={IconEllipsisOutlineRegular}
-                    label={t("rename")}
-                    onClick={() => open("rename")}
-                  />
-                )}
-              </div>
-              {p.id === selected && project && (
-                <div className="mc-tree" hidden={!projectExpanded}>
-                  <Btn
-                    icon={Cube}
-                    onClick={() => {
-                      setTab("model");
-                      setModal(null);
-                    }}
-                  >
-                    {t("model")}
-                  </Btn>
-                  <Btn disabled={!design} onClick={() => open("parameters")}>
-                    {t("parameters")}
-                  </Btn>
-                  <Btn disabled={!design} onClick={() => setTab("drawing")}>
-                    {t("drawing")}
-                  </Btn>
-                  <Btn disabled={!design} onClick={() => open("source")}>
-                    {t("source")}
-                  </Btn>
-                  {project.attachments.map((a) => (
-                    <Btn
-                      key={a.id}
-                      label={a.name}
-                      onClick={() => openReference(a.id)}
-                    >
-                      {a.name}
-                    </Btn>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+      <aside className={`mc-sidebar ${panelCollapsed ? "" : "mc-panel"}`} aria-label={t("libraries")}>
+        {panelCollapsed ? (
+          <Btn icon={IconPanelLeftOutlineRegular} variant="outline" label={t("expandProjects")} onClick={() => setPanelCollapsed(false)} />
+        ) : (
+          <DesignNavigator libraries={libraries} projects={projects} selected={selected} running={running} language={language} t={t}
+            workspaceState={workspaceState} renderTaskSlot={renderSlot}
+            onCollapse={() => setPanelCollapsed(true)}
+            libraryPickerBusy={libraryPickerOpen || busy}
+            onCreateLibrary={() => { if (!busy) { setError(null); setLibraryPickerOpen(true); } }}
+            onRenameLibrary={(library) => { setError(null); setEditTarget(library.id); setValue(library.title || t("defaultLibrary")); setModal("renameLibrary"); }}
+            onRename={(task) => setRenameTarget({ sessionId: task.session_id, currentTitle: task.title })}
+            onFork={(task) => action(async () => {
+              const branch = await forkTask({ ...task, running: task.running || (task.id === selected && running) });
+              await refreshList();
+              await load(branch.id);
+            })}
+            onDeleteLibrary={async (library) => {
+              await api("remove_library", { libraryId: library.id });
+              const tasks = await refreshList();
+              if (projectRef.current?.library_id === library.id) {
+                const next = tasks.find((task) => !workspaceState.archivedSessionIds?.includes(task.session_id));
+                if (next) await load(next.id);
+                else clearSelection();
+              }
+            }}
+            onMove={(task, libraryId) => action(async () => {
+              await api("move_project", { projectId: task.id, libraryId });
+              if (selection.current === task.id) setProject((current) => ({ ...current, library_id: libraryId }));
+              await refreshList();
+            })}
+            onCreate={(libraryId) => action(async () => {
+              const task = await api("create", { libraryId, title: t("untitled") });
+              await refreshList();
+              await load(task.id);
+            })}
+            onOpen={load}
+            attachments={project?.attachments || []}
+            onReference={openReference} />
+        )}
       </aside>
-      <SegmentedControl
-        id="mc-view"
-        className="mc-view-tabs"
-        label={t("model")}
-        value={tab}
-        options={["model", "drawing"].map((value) => ({
-          value,
-          label: t(value),
-          disabled: value === "drawing" && !design,
-        }))}
-        onChange={setTab}
-      />
-      {tab === "model" && (
-        <>
+      {renderSlot("minicad.directoryFlow", {
+        open: libraryPickerOpen,
+        busy,
+        onPicked: async (path) => {
+          await action(async () => {
+            const library = await api("create_library", { path });
+            const tasks = await refreshList();
+            let task = tasks.find((item) => item.library_id === library.id && !item.has_messages);
+            if (!task) {
+              task = await api("create", { libraryId: library.id, title: t("untitled") });
+              await refreshList();
+            }
+            await load(task.id);
+          });
+          setLibraryPickerOpen(false);
+        },
+        onCancel: () => setLibraryPickerOpen(false),
+        onError: (message) => { setLibraryPickerOpen(false); showError(new Error(message)); },
+      })}
           <div className="mc-tools mc-panel">
             <Btn icon={IconRefreshOutlineRegular} label={t("resetView")} onClick={() => setResetView((value) => value + 1)} />
             <Btn
@@ -533,8 +487,6 @@ export function Workbench({
               onClick={() => open("parameters")}
             />
           </div>
-        </>
-      )}
       {!design && !loading && (
         <div className="mc-empty">
           <div className="mc-brand-icon">
@@ -546,15 +498,7 @@ export function Workbench({
       )}
       {loading && (
         <div className="mc-empty">
-          <p>{t("loading")}</p>
-        </div>
-      )}
-      {design && tab === "drawing" && (
-        <div id="mc-view-drawing-panel" role="tabpanel" className="mc-sheet">
-          <img
-            alt={t("drawing")}
-            src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(design.drawing)}`}
-          />
+          <span role="status" className="mc-loading"><StateDot state="ongoing" />{t("loading")}</span>
         </div>
       )}
       <section ref={bottom} className="mc-bottom">
@@ -562,219 +506,194 @@ export function Workbench({
           <SessionProvider session={sessionReference}>
             {renderSlot("minicad.composer", {})}
           </SessionProvider>
-        ) : <p className="mc-muted">{t("loading")}</p>}
+        ) : selected || loading ? <span role="status" className="mc-loading mc-muted"><StateDot state="ongoing" />{t("loading")}</span> : (
+          <Btn icon={IconPlusOutlineRegular} onClick={() => {
+            if (!libraries.length) { setLibraryPickerOpen(true); return; }
+            action(async () => {
+              const task = await api("create", { libraryId: libraries[0].id, title: t("untitled") });
+              await refreshList(); await load(task.id);
+            });
+          }}>{t(libraries.length ? "newProject" : "newLibrary")}</Btn>
+        )}
         <div className="mc-help">{t("controls")}</div>
       </section>
-      {modal && (
-        <div
-          className="mc-overlay"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget && !busy) setModal(null);
-          }}
-        >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-label={t(modal === "reference" ? "pdfPreview" : modal)}
-            className={`mc-dialog mc-panel ${["reference", "source"].includes(modal) ? "mc-wide" : ""}`}
-          >
-            <header className="mc-dialog-header">
-              <h2>
-                {t(
-                  modal === "reference"
-                    ? "pdfPreview"
-                    : modal === "create"
-                      ? "newProject"
-                      : modal,
-                )}
-              </h2>
-              <Btn
-                icon={IconCloseOutlineRegular}
-                label={t("close")}
-                disabled={busy}
-                onClick={() => setModal(null)}
-              />
-            </header>
-            <div className="mc-dialog-content">
-              {["create", "rename"].includes(modal) && (
-                <label>
-                  {t("name")}
-                  <input
-                    className="mc-input"
-                    autoFocus
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveEditor();
-                    }}
-                  />
-                </label>
-              )}
-              {modal === "source" && (
-                <textarea
-                  className="mc-code"
-                  spellCheck={false}
-                  aria-label={t(modal)}
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                />
-              )}
-              {modal === "parameters" && (
-                <>
-                  <ParameterEditor value={value} setValue={setValue} t={t} />
-                  {design.checks.length > 0 && (
-                    <div className="mc-checks">
-                      <p className="mc-muted">{t("checks")}</p>
-                      {design.checks.map((c, i) => (
-                        <div key={i} className="mc-check-row">
-                          <span>{c.metric}</span>
-                          <code>{c.expression || c.expected}</code>
-                          <span>{c.actual.toFixed(3)}</span>
-                          <IconCheckOutlineRegular size={14} />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-              {modal === "history" &&
-                project.revisions.map((r) => (
-                  <div key={r.revision} className="mc-history-row">
-                    <div className="mc-spacer">
-                      <strong>v{r.revision}</strong> · {r.summary}
-                      <small>{date(r.created)}</small>
-                    </div>
-                    {r.revision === project.head ? (
-                      <span className="mc-badge">{t("current")}</span>
-                    ) : (
-                      <Btn
-                        disabled={busy || running}
-                        onClick={() =>
-                          action(async () => {
-                            const p = await api("restore", {
-                              projectId: selected,
-                              revision: r.revision,
-                              expectedRevision: project.head,
-                            });
-                            setProject(p);
-                            setModal(null);
-                          })
-                        }
-                      >
-                        {t("restore")}
-                      </Btn>
-                    )}
-                  </div>
-                ))}
-              {modal === "export" && (
-                <>
-                  <p className="mc-muted">
-                    {t("exportHint", { n: project.head })}
-                  </p>
-                  <div className="mc-export-options">
-                    {["step", "stl", "svg", "pdf", "zip"].map((format) => (
-                      <button
-                        className="mc-export-option"
-                        disabled={busy}
-                        key={format}
-                        onClick={() =>
-                          action(async () => {
-                            const result = await api("export", {
-                              projectId: selected,
-                              revision: project.head,
-                              format,
-                            });
-                            const bytes = Uint8Array.from(
-                              atob(result.data),
-                              (c) => c.charCodeAt(0),
-                            );
-                            const url = URL.createObjectURL(
-                              new Blob([bytes], { type: result.mediaType }),
-                            );
-                            const anchor = document.createElement("a");
-                            anchor.href = url;
-                            anchor.download = result.name;
-                            anchor.click();
-                            setTimeout(() => URL.revokeObjectURL(url), 1000);
-                          })
-                        }
-                      >
-                        <strong>
-                          {format === "zip"
-                            ? t("editable")
-                            : format.toUpperCase()}
-                        </strong>
-                        <small>{t(format + "Hint")}</small>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="mc-muted mc-secondary">
-                    {t("drawingNote")}
-                  </p>
-                </>
-              )}
-              {modal === "reference" &&
-                (reference ? (
-                  <>
-                    <div className="mc-reference-nav">
-                      <Btn
-                        disabled={refPage <= 1}
-                        label={t("previous")}
-                        onClick={() =>
-                          openReference(refId, selected, refPage - 1)
-                        }
-                      >
-                        ←
-                      </Btn>
-                      <span>
-                        {t("page", { page: refPage, total: reference.pages })}
-                      </span>
-                      <Btn
-                        disabled={refPage >= reference.pages}
-                        label={t("next")}
-                        onClick={() =>
-                          openReference(refId, selected, refPage + 1)
-                        }
-                      >
-                        →
-                      </Btn>
-                    </div>
-                    <img
-                      className="mc-reference"
-                      alt={`${reference.name} ${refPage}`}
-                      src={`data:image/png;base64,${reference.image}`}
-                    />
-                  </>
-                ) : (
-                  <p>{t("loading")}</p>
-                ))}
-            </div>
-            {editable && (
-              <footer className="mc-dialog-footer">
-                <Btn disabled={busy} onClick={() => setModal(null)}>
-                  {t("cancel")}
-                </Btn>
-                <Btn
-                  variant="primary"
-                  disabled={busy || (modal === "rename" && !value.trim())}
-                  onClick={saveEditor}
-                >
-                  {busy
-                    ? t("working")
-                    : t(
-                        modal === "create"
-                          ? "create"
-                          : modal === "rename"
-                            ? "rename"
-                            : "save",
-                      )}
-                </Btn>
-              </footer>
-            )}
-          </section>
-        </div>
+      {renderSlot("minicad.task.renameDialog", {
+        renameTarget,
+        onSettleRename: () => setRenameTarget(null),
+        onRenameTask: async (sessionId, title) => {
+          const task = projects.find((item) => item.session_id === sessionId);
+          if (!task) throw new Error(t("projectMissing"));
+          await api("rename", { projectId: task.id, title });
+          if (selection.current === task.id) setProject((current) => current ? { ...current, title } : current);
+          await refreshList();
+        },
+      })}
+      {modal === "parameters" && design && (
+        <ParameterDialog
+          parameters={design.parameters}
+          busy={busy}
+          error={error}
+          onClose={() => setModal(null)}
+          onSave={saveEditor}
+          t={t}
+        />
       )}
-      {error && (
+      {modal && modal !== "parameters" && (
+        <WorkbenchDialog
+          key={modal}
+          title={t(modal === "reference" ? "pdfPreview" : modal === "create" ? "newProject" : modal)}
+          className={["reference", "source"].includes(modal) ? "mc-wide" : modal === "history" ? "mc-history-dialog" : ""}
+          busy={busy}
+          error={error}
+          onClose={() => setModal(null)}
+          t={t}
+          footer={editable ? (
+            <>
+              <Button variant="outline" disabled={busy} onClick={() => setModal(null)}>
+                {t("cancel")}
+              </Button>
+              <Button
+                variant="primary"
+                disabled={busy || ((modal === "rename" || libraryEditor) && !value.trim())}
+                icon={busy ? <StateDot state="ongoing" /> : undefined}
+                onClick={() => saveEditor()}
+              >
+                {t(busy ? "working" : modal === "create" ? "create" : ["rename", "renameLibrary"].includes(modal) ? "rename" : "save")}
+              </Button>
+            </>
+          ) : undefined}
+        >
+          {(["create", "rename"].includes(modal) || libraryEditor) && (
+            <label className="mc-name-field" htmlFor="mc-design-name">
+              <span>{t(libraryEditor ? "libraryName" : "name")}</span>
+              <Input
+                id="mc-design-name"
+                data-modal-autofocus
+                disabled={busy}
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {
+                    e.preventDefault();
+                    if ((modal !== "rename" && !libraryEditor) || value.trim()) saveEditor();
+                  }
+                }}
+              />
+            </label>
+          )}
+          {modal === "source" && (
+            <textarea
+              className="mc-code"
+              disabled={busy}
+              spellCheck={false}
+              aria-label={t(modal)}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+          )}
+          {modal === "history" &&
+            project.revisions.map((r) => (
+              <div key={r.revision} className="mc-history-row">
+                <div className="mc-spacer">
+                  <strong>v{r.revision}</strong> · {r.summary}
+                  <small>{date(r.created)}</small>
+                </div>
+                {r.revision === project.head ? (
+                  <Tag tone="neutral">{t("current")}</Tag>
+                ) : (
+                  <Btn
+                    disabled={busy || running}
+                    onClick={() =>
+                      action(async () => {
+                        const p = await api("restore", {
+                          projectId: selected,
+                          revision: r.revision,
+                          expectedRevision: project.head,
+                        });
+                        setProject(p);
+                        setModal(null);
+                      })
+                    }
+                  >
+                    {t("restore")}
+                  </Btn>
+                )}
+              </div>
+            ))}
+          {modal === "history" && !project.revisions.length && <p>{t("noHistory")}</p>}
+          {modal === "export" && (
+            <div className="mc-export-options">
+              {["step", "stl", "svg", "pdf", "zip"].map((format) => (
+                <Button
+                  key={format}
+                  variant="outline"
+                  icon={<IconDownloadOutlineRegular size={16} />}
+                  disabled={busy}
+                  onClick={() =>
+                    action(async () => {
+                      const result = await api("export", {
+                        projectId: selected,
+                        revision: project.head,
+                        format,
+                      });
+                      const bytes = Uint8Array.from(
+                        atob(result.data),
+                        (c) => c.charCodeAt(0),
+                      );
+                      const url = URL.createObjectURL(
+                        new Blob([bytes], { type: result.mediaType }),
+                      );
+                      const anchor = document.createElement("a");
+                      anchor.href = url;
+                      anchor.download = result.name;
+                      anchor.click();
+                      setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    })
+                  }
+                >
+                  {format === "zip"
+                    ? t("editable")
+                    : format.toUpperCase()}
+                </Button>
+              ))}
+            </div>
+          )}
+          {modal === "reference" &&
+            (reference ? (
+              <>
+                <div className="mc-reference-nav">
+                  <Btn
+                    icon={IconChevronLeftOutlineRegular}
+                    disabled={refPage <= 1}
+                    label={t("previous")}
+                    onClick={() =>
+                      openReference(refId, selected, refPage - 1)
+                    }
+                  />
+                  <span>
+                    {t("page", { page: refPage, total: reference.pages })}
+                  </span>
+                  <Btn
+                    icon={IconChevronRightOutlineRegular}
+                    disabled={refPage >= reference.pages}
+                    label={t("next")}
+                    onClick={() =>
+                      openReference(refId, selected, refPage + 1)
+                    }
+                  />
+                </div>
+                <img
+                  className="mc-reference"
+                  alt={`${reference.name} ${refPage}`}
+                  src={`data:image/png;base64,${reference.image}`}
+                />
+              </>
+            ) : (
+              <span role="status" className="mc-loading"><StateDot state="ongoing" />{t("loading")}</span>
+            ))}
+        </WorkbenchDialog>
+      )}
+      {error && !modal && (
         <div role="alert" className="mc-error mc-panel">
           <div className="mc-error-head">
             <span>{t(error.key)}</span>
@@ -784,77 +703,9 @@ export function Workbench({
               onClick={() => setError(null)}
             />
           </div>
-          {error.detail && (
-            <details>
-              <summary>{t("details")}</summary>
-              {error.detail}
-            </details>
-          )}
+          {error.detail && <ErrorDetails detail={error.detail} t={t} />}
         </div>
       )}
     </div>
   );
-}
-
-function ParameterEditor({ value, setValue, t }) {
-  const data = JSON.parse(value || "{}");
-  const entries = Object.entries(data);
-  if (!entries.length) return <p className="mc-muted">{t("noParameters")}</p>;
-  return entries.map(([key, current]) => (
-    <label className="mc-param" key={key}>
-      <span>{key}</span>
-      {typeof current === "boolean" ? (
-        <input
-          type="checkbox"
-          checked={current}
-          onChange={(e) =>
-            setValue(JSON.stringify({ ...data, [key]: e.target.checked }))
-          }
-        />
-      ) : typeof current === "object" ? (
-        <textarea
-          className="mc-input"
-          defaultValue={JSON.stringify(current)}
-          onBlur={(e) => {
-            try {
-              setValue(
-                JSON.stringify({ ...data, [key]: JSON.parse(e.target.value) }),
-              );
-              e.target.setCustomValidity("");
-            } catch {
-              e.target.setCustomValidity(t("invalidJSON"));
-              e.target.reportValidity();
-            }
-          }}
-        />
-      ) : (
-        <input
-          className="mc-input"
-          type={typeof current === "number" ? "number" : "text"}
-          step="any"
-          defaultValue={current}
-          onChange={(e) => {
-            if (
-              typeof current === "number" &&
-              (e.target.value === "" ||
-                !Number.isFinite(Number(e.target.value)))
-            ) {
-              e.target.setCustomValidity(t("invalidNumber"));
-              return;
-            }
-            e.target.setCustomValidity("");
-            setValue(
-              JSON.stringify({
-                ...data,
-                [key]:
-                  typeof current === "number"
-                    ? Number(e.target.value)
-                    : e.target.value,
-              }),
-            );
-          }}
-        />
-      )}
-    </label>
-  ));
 }

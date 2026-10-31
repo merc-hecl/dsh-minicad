@@ -21,7 +21,6 @@ test(
         expectedRevision: 0,
         source,
         parameters: { width: 60 },
-        checks: [{ metric: "sizeX", expression: "width" }],
       });
       assert.equal(result.head, 1);
       assert.ok(
@@ -87,21 +86,17 @@ test(
           assert.ok(page.image.length > 1000);
         }
       }
-      await assert.rejects(
-        worker.call("build", {
-          projectId,
-          expectedRevision: 1,
-          checks: [{ metric: "sizeX", expression: '__import__("os")' }],
-        }),
-        /尺寸表达式/,
-      );
       const second = await worker.call("build", {
         projectId,
         expectedRevision: 1,
         parameters: { width: 80 },
       });
       assert.equal(second.head, 2);
-      assert.equal(second.design.checks[0].expected, 80);
+      assert.ok(Math.abs(second.design.metrics.sizeX - 80) < 1e-6);
+      assert.ok(
+        Math.abs(second.design.metrics.volume - (80 * 40 * 8 - Math.PI * 16 * 8)) < 1e-6,
+        "edited parameters must rebuild the real solid",
+      );
       const restored = await worker.call("restore", {
         projectId,
         expectedRevision: 2,
@@ -111,7 +106,11 @@ test(
       assert.equal(restored.design.parameters.width, 60);
       await worker.dispose();
       worker = createWorker({ dataDir });
-      assert.equal((await worker.call("get", { projectId })).head, 3);
+      const persisted = await worker.call("get", { projectId });
+      assert.equal(persisted.head, 3);
+      assert.equal(persisted.design.parameters.width, 60);
+      assert.equal(persisted.design.checks, undefined);
+      assert.equal(persisted.design.requirements, undefined);
       await assert.rejects(
         worker.call("reference", {
           projectId,

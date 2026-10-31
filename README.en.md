@@ -8,9 +8,9 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 
 - Natural-language modeling: create and modify parametric 3D models through the DSH agent.
 - Drawing references: import and preview PDF drawings for the agent to read.
-- Parameter and source editing: adjust model parameters or edit modeling source code directly.
+- Parameter and source editing: adjust model parameters or modify modeling source code through the agent.
 - Model viewing: view 3D models and reference drawings.
-- Design and revision management: organize models and conversations by design, and save and restore revisions.
+- Library and task management: organize part-design tasks in libraries, each with its own conversation, modeling resources, and revision history.
 - Export: STEP, STL, SVG, PDF, and editable project ZIP files.
 
 ## Local installation
@@ -40,11 +40,13 @@ For a Web profile without pnpm, place the repository in the target profile's `no
 
 ## Usage
 
-1. Create a design and describe its dimensions, units, features, and constraints. Add files through DSH's native composer; the workbench has no separate Add PDF or Design conversation controls. When no designs exist, the workbench prepares a blank design and its DSH session on first open.
+1. Click the folder button in the library header and choose a design directory through DSH's folder picker. The library takes the directory's name. Create part-design tasks in it and describe dimensions, units, features, and constraints. Add files through DSH's native composer. Each task has its own DSH session; the host generates its title from the initial intent, and you can rename it manually. When no designs exist, the workbench prepares a blank task in the default library and its DSH session on first open.
 2. Select a model already configured in DSH. MiniCAD does not store separate model credentials.
-3. The agent reads the current revision and calls modeling tools. The canvas displays the actual model after a successful build.
-4. Edit values in the parameter panel or edit `build(parameters)` in the source panel. Saving rebuilds and validates the model.
+3. Each task uses its own subfolder in the library as its working directory and starts empty. The agent reads the task's modeling file and current revision, then calls modeling tools. The canvas displays the actual model after a successful build.
+4. Edit values in the parameter panel or modify modeling source code through the agent. Saving rebuilds the model and validates solid geometry.
 5. Export the current revision or restore a previous one. Restoring creates a new revision with an increasing number, preventing stale requests from overwriting newer state.
+
+The sidebar follows Library → Part-design task. Create or rename libraries, use a task's menu to rename it, move it to another library, or view the current task's reference drawings, and find tasks through search and sorting.
 
 The agent should ask for clarification when dimensions are incomplete or multiple views do not uniquely determine the geometry. Geometric validity checks do not establish structural strength, manufacturability, or complete dimensional correctness.
 
@@ -54,7 +56,13 @@ SVG / PDF exports currently provide three-view reference sheets with overall dim
 
 ## Storage and runtime boundaries
 
-Data is stored in `$DSH_HOME/storages/minicad`, or `~/.dsh/storages/minicad` when DSH_HOME is unset. SQLite stores the project catalog and revision heads. Each successful build preserves its source, parameters, BREP, and preview state. PDFs belong to their design projects; cross-project attachment access is rejected. DSH's native sessions store model conversations.
+Files follow Library / Design task / Modeling resources. Each task uses an ordinary subfolder named after its initial title, adding a number when the name already exists. Later title changes leave the folder name unchanged. Source, parameters, and solids live inside the task, for example `plate/model.py`, `plate/model.parameters.json`, and `plate/model.brep`. Task-relative paths such as `parts/plate.py` are also supported. Edit source and parameters in an external editor; the next read or build uses the files on disk. Models and revisions are independent between tasks.
+
+The library's `minicad.json` stores task folders, session bindings, selected modeling files, and revision records. Each task's `.cad-history/<source path without extension>/v0001/` folders preserve successful builds with source, parameters, BREP, and preview snapshots. Reference PDFs live in that task's `references/` folder. Copy the entire library to take models and history with you, then reopen it through the folder picker. DSH's native sessions store conversations. The frontend list shows Library → Part-design task.
+
+Moving a task to another library moves its entire folder, including source files, references, and history. If the destination already has a folder with that name, a number is appended to avoid overwriting it. Renaming a library changes its display name and leaves the disk folder name unchanged.
+
+Paths of opened directories are stored in `$DSH_HOME/storages/minicad/libraries.json`, or `~/.dsh/storages/minicad/libraries.json` when DSH_HOME is unset. The default library uses the adjacent `default/` directory. Set `dataDir` to override this settings directory.
 
 Modeling code runs with the current user's privileges in a separate Python service process. **Process isolation is not a security sandbox.** Run only trusted design code. The agent instructions explicitly treat PDFs and documents as reference data. The default operation timeout is 120 seconds. Stopping a running build terminates its worker process while preserving committed revisions.
 

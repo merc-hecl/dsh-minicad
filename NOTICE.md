@@ -1,6 +1,8 @@
 # Third-party components
 
-MiniCAD uses the DSH host's React runtime, UI primitives, locale and theme services. It does not embed a copied DSH UI library.
+MiniCAD uses the DSH host's React runtime, UI primitives, locale and theme services.
+
+The design-library navigation adapts the workspace/session row presentation, styles and dictionaries from DeepSeek Harness 0.2.1-rc.5 (`packages/client/ui-workspace/src/client/rows/Rows` and `WorkspaceBrowser`). Scoped copies are in `src/client/design-navigation-rows.jsx` and `src/client/design-navigator.css`; MiniCAD supplies its own library/task data and menu actions. The original MIT license is preserved in [docs/licenses/dsh-workspace-MIT.txt](docs/licenses/dsh-workspace-MIT.txt).
 
 Runtime and build dependencies retain their own licenses, distributed with their packages:
 
