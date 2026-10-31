@@ -4,6 +4,7 @@ import { ArcballControls } from "three/addons/controls/ArcballControls.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
+import { ViewCube } from "./view-cube.jsx";
 
 // Keep grid intervals and scale labels in readable millimetre increments.
 function scaleStep(value) {
@@ -16,9 +17,10 @@ function millimetres(value) {
   return String(Number(value.toPrecision(6)));
 }
 
-export function Viewport({ id, active = true, design, view, wire, fitToken, onError }) {
+export function Viewport({ id, active = true, design, wire, resetToken, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
+  const cube = useRef(null);
   const [scale, setScale] = useState(null);
   useEffect(() => {
     const el = mount.current;
@@ -42,12 +44,13 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
       1000000,
     );
     camera.up.set(0, 0, 1);
-    camera.position.set(100, -130, 110);
-    const controls = new ArcballControls(camera, renderer.domElement);
+    camera.position.set(100, -140, 110);
+    let controls = new ArcballControls(camera, renderer.domElement);
     controls.cursorZoom = true;
     controls.enableGizmos = false;
     controls.setGizmosVisible(false);
     controls.enableFocus = false;
+    const initialRotation = camera.quaternion.clone();
     const model = new THREE.Group();
     scene.add(model);
     scene.add(new THREE.AmbientLight(0xffffff, 2.1));
@@ -75,8 +78,174 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
       model,
       span: 180,
       center: new THREE.Vector3(),
+      bounds: new THREE.Box3(),
       dark: false,
       wire: false,
+      defaultView: true,
+      orbitDistance: camera.position.length(),
+    };
+    let turn = null, cubeDrag = null, fitFrame = 0;
+    function leaveDefaultView() {
+      state.defaultView = false;
+      cancelAnimationFrame(fitFrame);
+      fitFrame = 0;
+    }
+    function stopMotion() {
+      turn = null;
+      // Dispose cancels inertia and active input. Never reset/reuse that
+      // controller: its saved projection, pivot and input state may be stale.
+      controls.enabled = false;
+      controls.dispose();
+    }
+    function currentTarget() {
+      // Arcball's public target is not updated by orthographic panning. Its
+      // camera-to-pivot distance stays constant through pan, orbit and zoom.
+      return camera.getWorldDirection(new THREE.Vector3())
+        .multiplyScalar(state.orbitDistance).add(camera.position);
+    }
+    function applyOrbit(target, quaternion) {
+      camera.quaternion.copy(quaternion);
+      camera.position.set(0, 0, state.orbitDistance)
+        .applyQuaternion(quaternion).add(target);
+      camera.up.set(0, 1, 0).applyQuaternion(quaternion);
+      camera.updateMatrixWorld();
+    }
+    function rebaseControls(target) {
+      const rotation = camera.quaternion.clone();
+      controls.dispose();
+      controls = new ArcballControls(camera, renderer.domElement);
+      controls.cursorZoom = true;
+      controls.enableGizmos = false;
+      controls.enableFocus = false;
+      controls.target.copy(target);
+      // Construction initially looks at the origin; restore the live pose
+      // before binding the actual (possibly panned) viewing center.
+      camera.quaternion.copy(rotation);
+      controls.setCamera(camera);
+      controls.update();
+      controls.saveState();
+      controls.setGizmosVisible(false);
+      state.controls = controls;
+    }
+    function finishTurn() {
+      if (!turn) return;
+      const target = turn.target;
+      turn = null;
+      rebaseControls(target);
+    }
+    // Manual navigation ends automatic initial framing and interrupts a snap.
+    function beginNavigation() {
+      leaveDefaultView();
+      finishTurn();
+    }
+    renderer.domElement.addEventListener("pointerdown", beginNavigation, true);
+    renderer.domElement.addEventListener("wheel", beginNavigation, { capture: true, passive: true });
+    state.orient = (normal) => {
+      leaveDefaultView();
+      stopMotion();
+      const direction = normal.clone().normalize();
+      const up = Math.abs(direction.z) > 0.99999
+        ? new THREE.Vector3(0, direction.z > 0 ? 1 : -1, 0)
+        : new THREE.Vector3(0, 0, 1);
+      turn = {
+        start: performance.now(),
+        duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240,
+        from: camera.quaternion.clone(),
+        to: new THREE.Quaternion().setFromRotationMatrix(
+          new THREE.Matrix4().lookAt(direction, new THREE.Vector3(), up),
+        ),
+        target: currentTarget(),
+      };
+      controls.enabled = false;
+    };
+    state.beginCubeDrag = () => {
+      leaveDefaultView();
+      stopMotion();
+      cubeDrag = { target: currentTarget(), from: camera.quaternion.clone() };
+      controls.enabled = false;
+    };
+    state.rotateCube = (start, end) => {
+      if (!cubeDrag) return;
+      // Same sphere/hyperboloid rotation rule as ArcballControls, in local
+      // camera coordinates. The inverse rotates the camera around the cube.
+      const axis = new THREE.Vector3().crossVectors(start, end);
+      if (axis.lengthSq() < 1e-12) return;
+      const angle = Math.max(start.distanceTo(end), start.angleTo(end)) * controls.rotateSpeed;
+      const rotation = cubeDrag.from.clone().multiply(
+        new THREE.Quaternion().setFromAxisAngle(axis.normalize(), -angle),
+      );
+      applyOrbit(cubeDrag.target, rotation);
+    };
+    state.endCubeDrag = () => {
+      if (!cubeDrag) return;
+      rebaseControls(cubeDrag.target);
+      cubeDrag = null;
+    };
+    state.fit = (rotation = camera.quaternion.clone()) => {
+      stopMotion();
+      cubeDrag = null;
+      camera.zoom = 1;
+      const target = state.center.clone();
+      if (!state.bounds.isEmpty()) {
+        const w = el.clientWidth, h = el.clientHeight;
+        if (!w || !h) {
+          rebaseControls(currentTarget());
+          return;
+        }
+        const viewport = el.getBoundingClientRect();
+        const area = { left: 24, right: w - 24, top: 24, bottom: h - 24 };
+        const owner = el.closest(".mc-workbench");
+        const rect = (selector) => owner?.querySelector(selector)?.getBoundingClientRect();
+        const sidebar = rect(".mc-sidebar"), composer = rect(".mc-bottom");
+        if (sidebar?.width) area.left = sidebar.right - viewport.left + 24;
+        if (composer?.height) area.bottom = composer.top - viewport.top - 24;
+        for (const selector of [".mc-header", ".mc-view-tabs"]) {
+          const box = rect(selector);
+          if (box?.height) area.top = Math.max(area.top, box.bottom - viewport.top + 16);
+        }
+        for (const selector of [".mc-tools", ".mc-view-cube:not([hidden])"]) {
+          const box = rect(selector);
+          if (box?.width && box.top - viewport.top < area.bottom && box.bottom - viewport.top > area.top)
+            area.right = Math.min(area.right, box.left - viewport.left - 16);
+        }
+        area.left = Math.min(area.left, w - 88);
+        area.right = Math.max(area.right, area.left + 64);
+        area.top = Math.min(area.top, h - 88);
+        area.bottom = Math.max(area.bottom, area.top + 64);
+        const inverse = rotation.clone().invert();
+        const projection = new THREE.Box3();
+        for (const x of [state.bounds.min.x, state.bounds.max.x])
+          for (const y of [state.bounds.min.y, state.bounds.max.y])
+            for (const z of [state.bounds.min.z, state.bounds.max.z])
+              projection.expandByPoint(new THREE.Vector3(x, y, z).sub(state.center).applyQuaternion(inverse));
+        const size = projection.getSize(new THREE.Vector3());
+        const mmPerPixel = Math.max(size.x / (area.right - area.left), size.y / (area.bottom - area.top), 1e-6) * 1.15;
+        state.span = mmPerPixel * h;
+        state.orbitDistance = Math.max(state.bounds.getSize(new THREE.Vector3()).length() * 3, 1);
+        target.addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(rotation),
+          (w / 2 - (area.left + area.right) / 2) * mmPerPixel);
+        target.addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(rotation),
+          ((area.top + area.bottom) / 2 - h / 2) * mmPerPixel);
+      } else {
+        state.span = 180;
+        state.orbitDistance = state.span * 3;
+      }
+      camera.far = Math.max(1000000, state.orbitDistance * 2);
+      applyOrbit(target, rotation);
+      resize();
+      rebaseControls(target);
+    };
+    state.resetView = () => {
+      state.defaultView = true;
+      state.fit(initialRotation);
+    };
+    state.scheduleFit = () => {
+      cancelAnimationFrame(fitFrame);
+      fitFrame = requestAnimationFrame(() => {
+        fitFrame = 0;
+        if (state.defaultView) state.resetView();
+        else state.fit();
+      });
     };
     let gridStep = 0, gridDivisions = 0, scaleZoom = 0, scaleHeight = 0;
     const direction = new THREE.Vector3();
@@ -150,14 +319,21 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
       camera.top = state.span / 2;
       camera.bottom = -camera.top;
       camera.updateProjectionMatrix();
-      controls.setTbRadius(controls.radiusFactor);
+      if (controls.enabled) controls.setTbRadius(controls.radiusFactor);
       // The projection span can change when a different model is fitted.
       scaleHeight = 0;
       updateGrid();
     }
     state.resize = resize;
-    const observer = new ResizeObserver(resize);
+    const observer = new ResizeObserver(() => {
+      resize();
+      // The native composer may finish mounting after the model arrives.
+      // Keep default framing aligned with Reset until the user navigates.
+      if (state.defaultView) state.scheduleFit();
+    });
     observer.observe(el);
+    const composer = el.closest(".mc-workbench")?.querySelector(".mc-bottom");
+    if (composer) observer.observe(composer);
     function theme() {
       state.dark = document.body.hasAttribute("data-ds-dark-theme");
       model.traverse((o) => {
@@ -183,6 +359,14 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
     theme();
     resize();
     renderer.setAnimationLoop(() => {
+      if (turn) {
+        const amount = turn.duration ? Math.min((performance.now() - turn.start) / turn.duration, 1) : 1;
+        const eased = amount * amount * (3 - 2 * amount);
+        const rotation = new THREE.Quaternion().slerpQuaternions(turn.from, turn.to, eased);
+        applyOrbit(turn.target, rotation);
+        if (amount === 1) finishTurn();
+      }
+      cube.current?.sync(camera, controls);
       updateGrid();
       renderer.clear();
       renderer.render(gridScene, gridCamera);
@@ -192,8 +376,11 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
     runtime.current = state;
     return () => {
       renderer.setAnimationLoop(null);
+      cancelAnimationFrame(fitFrame);
       observer.disconnect();
       themeObserver.disconnect();
+      renderer.domElement.removeEventListener("pointerdown", beginNavigation, true);
+      renderer.domElement.removeEventListener("wheel", beginNavigation, true);
       controls.dispose();
       for (const root of [scene, gridScene]) {
         root.traverse((o) => {
@@ -216,7 +403,13 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
       o.material.dispose();
       s.model.remove(o);
     }
-    if (!design?.mesh) return;
+    if (!design?.mesh) {
+      s.center.set(0, 0, 0);
+      s.bounds.makeEmpty();
+      s.span = 180;
+      s.defaultView = true;
+      return;
+    }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute(
       "position",
@@ -258,38 +451,16 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
       ),
     );
     const bounds = new THREE.Box3().setFromObject(mesh);
+    s.bounds.copy(bounds);
     bounds.getCenter(s.center);
-    s.span =
-      Math.max(...bounds.getSize(new THREE.Vector3()).toArray(), 1) * 2.8;
-    s.controls.target.copy(s.center);
-    s.camera.zoom = 1;
-    s.resize();
     s.theme();
   }, [design]);
   useEffect(() => {
-    const s = runtime.current;
-    if (!s) return;
-    const direction = {
-      iso: [1, -1.4, 1.1],
-      top: [0, 0, 1],
-      front: [0, -1, 0],
-      right: [1, 0, 0],
-    }[view] || [1, -1.4, 1.1];
-    // Stop any rotation inertia before applying a preset or fitting the model.
-    s.controls.reset();
-    s.camera.up.set(...(view === "top" ? [0, 1, 0] : [0, 0, 1]));
-    s.camera.position
-      .copy(s.center)
-      .add(new THREE.Vector3(...direction).multiplyScalar(s.span * 3));
-    s.camera.zoom = 1;
-    s.controls.target.copy(s.center);
-    s.camera.lookAt(s.center);
-    s.camera.updateProjectionMatrix();
-    s.controls.setCamera(s.camera);
-    s.controls.update();
-    s.controls.saveState();
-    s.controls.setGizmosVisible(false);
-  }, [view, fitToken, design]);
+    runtime.current?.scheduleFit();
+  }, [design]);
+  useEffect(() => {
+    if (resetToken > 0) runtime.current?.resetView();
+  }, [resetToken]);
   useEffect(() => {
     const s = runtime.current;
     if (!s) return;
@@ -303,6 +474,15 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
   }, [wire, design]);
   return (
     <div id={id} ref={mount} role="tabpanel" aria-hidden={!active} className="mc-viewport" aria-label="3D">
+      <ViewCube
+        ref={cube}
+        active={active}
+        t={t}
+        onSelect={(direction) => runtime.current?.orient(direction)}
+        onDragStart={() => runtime.current?.beginCubeDrag()}
+        onDrag={(start, end) => runtime.current?.rotateCube(start, end)}
+        onDragEnd={() => runtime.current?.endCubeDrag()}
+      />
       {active && scale && (
         <div className="mc-scale mc-panel mc-secondary" role="img" aria-label={`${millimetres(scale.distance)} mm`}>
           <span>{millimetres(scale.distance)} mm</span>

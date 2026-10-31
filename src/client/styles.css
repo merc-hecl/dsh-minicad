@@ -231,10 +231,127 @@ body[data-ds-dark-theme] .mc-workbench {
   left: calc(50% + 80px);
   transform: translateX(-50%);
 }
-.mc-camera {
+.mc-view-cube {
   position: absolute;
-  top: calc(80px + var(--mc-top-inset));
+  z-index: 1;
   right: 20px;
+  bottom: 60px;
+  width: 176px;
+  height: 176px;
+  touch-action: none;
+  user-select: none;
+}
+.mc-view-cube[hidden] {
+  display: none;
+}
+.mc-cube-body {
+  display: block;
+  width: 176px;
+  height: 176px;
+}
+.mc-cube-face {
+  cursor: pointer;
+  outline: none;
+}
+.mc-cube-face path {
+  stroke: #a6afbc;
+  stroke-width: 0.8px;
+  stroke-linejoin: round;
+}
+.mc-cube-face text {
+  font: 600 18px/24px Inter, sans-serif;
+  text-shadow: 0 0.8px 0 rgb(255 255 255 / 85%);
+  pointer-events: none;
+}
+.mc-cube-face[data-axis="x"] path {
+  fill: #e4e8ed;
+}
+.mc-cube-face[data-axis="x"] text {
+  fill: #965d61;
+}
+.mc-cube-face[data-axis="y"] path {
+  fill: #dadee5;
+}
+.mc-cube-face[data-axis="y"] text {
+  fill: #507a63;
+}
+.mc-cube-face[data-axis="z"] path {
+  fill: #f0f2f5;
+}
+.mc-cube-face[data-axis="z"] text {
+  fill: #56759d;
+}
+.mc-view-cube:not([data-dragging]) .mc-cube-face:hover path,
+.mc-cube-face[aria-pressed="true"] path {
+  fill: #dee8f6;
+}
+.mc-cube-face:focus-visible path {
+  stroke: var(--mc-accent);
+  stroke-width: 1.5px;
+}
+.mc-view-cube[data-dragging] .mc-cube-face {
+  cursor: grabbing;
+}
+body[data-ds-dark-theme] .mc-cube-face path {
+  stroke: #727a87;
+}
+body[data-ds-dark-theme] .mc-cube-face text {
+  text-shadow: 0 0.8px 0 rgb(255 255 255 / 12%);
+}
+body[data-ds-dark-theme] .mc-cube-face[data-axis="x"] path {
+  fill: #393f48;
+}
+body[data-ds-dark-theme] .mc-cube-face[data-axis="x"] text {
+  fill: #c99498;
+}
+body[data-ds-dark-theme] .mc-cube-face[data-axis="y"] path {
+  fill: #30353d;
+}
+body[data-ds-dark-theme] .mc-cube-face[data-axis="y"] text {
+  fill: #93b5a2;
+}
+body[data-ds-dark-theme] .mc-cube-face[data-axis="z"] path {
+  fill: #434951;
+}
+body[data-ds-dark-theme] .mc-cube-face[data-axis="z"] text {
+  fill: #9eb5d5;
+}
+body[data-ds-dark-theme] .mc-view-cube:not([data-dragging]) .mc-cube-face:hover path,
+body[data-ds-dark-theme] .mc-cube-face[aria-pressed="true"] path {
+  fill: #46576d;
+}
+.mc-cube-axes {
+  pointer-events: none;
+}
+.mc-cube-axis path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mc-cube-axis[data-axis="x"] {
+  color: #c94b4b;
+}
+.mc-cube-axis[data-axis="y"] {
+  color: #258552;
+}
+.mc-cube-axis[data-axis="z"] {
+  color: #356ac3;
+}
+body[data-ds-dark-theme] .mc-cube-axis[data-axis="x"] {
+  color: #f28b82;
+}
+body[data-ds-dark-theme] .mc-cube-axis[data-axis="y"] {
+  color: #79ce9a;
+}
+body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
+  color: #8fb8ff;
+}
+@media (max-width: 1100px) {
+  .mc-view-cube {
+    bottom: calc(var(--mc-composer-height, 160px) + 72px);
+  }
 }
 .mc-tools {
   position: absolute;
@@ -522,8 +639,8 @@ body[data-ds-dark-theme] .mc-workbench {
     left: 250px;
     transform: none;
   }
-  .mc-camera {
-    top: 130px;
+  .mc-view-cube {
+    right: 80px;
   }
   .mc-tools {
     top: 205px;

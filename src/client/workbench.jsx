@@ -8,11 +8,9 @@ import React, {
 import {
   Button,
   Tooltip,
-  Menu,
   SegmentedControl,
   IconPlusOutlineRegular,
   IconChevronLeftOutlineRegular,
-  IconChevronDownOutlineRegular,
   IconCloseOutlineRegular,
   IconFolderCloseRegular,
   IconFolderOpenRegular,
@@ -22,7 +20,7 @@ import {
   IconCheckOutlineRegular,
   IconDownloadOutlineRegular,
   IconClockOutlineRegular,
-  IconFullscreenOutlineRegular,
+  IconRefreshOutlineRegular,
   IconSlidersTwoOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { Viewport } from "./viewport.jsx";
@@ -79,8 +77,16 @@ export function Workbench({
   locale, t, enter, back, request, SessionProvider, renderSlot, retainSession,
 }) {
   const workbench = useRef(null);
+  const bottom = useRef(null);
   useLayoutEffect(() => {
     enter(workbench.current);
+  }, []);
+  useLayoutEffect(() => {
+    const observer = new ResizeObserver(() => {
+      workbench.current.style.setProperty("--mc-composer-height", `${bottom.current.offsetHeight}px`);
+    });
+    observer.observe(bottom.current);
+    return () => observer.disconnect();
   }, []);
   const language = useSyncExternalStore(
     locale.subscribe,
@@ -96,10 +102,8 @@ export function Workbench({
   const [busy, setBusy] = useState(false),
     [running, setRunning] = useState(false);
   const [tab, setTab] = useState("model"),
-    [view, setView] = useState("iso"),
     [wire, setWire] = useState(false),
-    [fit, setFit] = useState(0);
-  const [cameraMenuOpen, setCameraMenuOpen] = useState(false);
+    [resetView, setResetView] = useState(0);
   const [modal, setModal] = useState(null),
     [value, setValue] = useState(""),
     [editHead, setEditHead] = useState(0);
@@ -376,9 +380,9 @@ export function Workbench({
         id="mc-view-model-panel"
         active={tab === "model"}
         design={design}
-        view={view}
         wire={wire}
-        fitToken={fit}
+        resetToken={resetView}
+        t={t}
         onError={() => setError({ key: "webglError" })}
       />
       <header className="mc-header">
@@ -515,32 +519,8 @@ export function Workbench({
       />
       {tab === "model" && (
         <>
-          <Menu
-            className="mc-camera"
-            open={cameraMenuOpen}
-            onClose={() => setCameraMenuOpen(false)}
-            items={["iso", "top", "front", "right"].map((id) => ({ id, label: t(id) }))}
-            selectedId={view}
-            onSelect={(id) => {
-              setView(id);
-              setCameraMenuOpen(false);
-            }}
-            align="end"
-            portal
-            anchor={
-              <Btn
-                variant="outline"
-                aria-haspopup="menu"
-                aria-expanded={cameraMenuOpen}
-                onClick={() => setCameraMenuOpen((open) => !open)}
-              >
-                {t(view)}
-                <IconChevronDownOutlineRegular size={16} />
-              </Btn>
-            }
-          />
           <div className="mc-tools mc-panel">
-            <Btn icon={IconFullscreenOutlineRegular} label={t("fit")} onClick={() => setFit((f) => f + 1)} />
+            <Btn icon={IconRefreshOutlineRegular} label={t("resetView")} onClick={() => setResetView((value) => value + 1)} />
             <Btn
               icon={Cube}
               label={t(wire ? "solid" : "wire")}
@@ -577,7 +557,7 @@ export function Workbench({
           />
         </div>
       )}
-      <section className="mc-bottom">
+      <section ref={bottom} className="mc-bottom">
         {sessionReference && project && sessionReference.sessionId === project.session_id ? (
           <SessionProvider session={sessionReference}>
             {renderSlot("minicad.composer", {})}
