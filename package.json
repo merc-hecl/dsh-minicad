@@ -24,6 +24,7 @@
     "python/uv.lock",
     "cordis.patch.yml",
     "README.md",
+    "README.en.md",
     "LICENSE",
     "NOTICE.md",
     "AGENTS.md"

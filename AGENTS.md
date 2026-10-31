@@ -8,7 +8,7 @@
 - Python 环境与依赖统一使用 uv 管理，维护 `python/pyproject.toml` 和 `python/uv.lock`，通过 `uv sync --project python --frozen` 同步。不要使用 `python -m venv` 或 pip 手工管理环境。uv 创建的 `.venv` 目录属于 uv 管理的环境。
 - **不要为 UI 界面相关内容编写测试。只对建模内核相关部分编写测试。** UI 通过实际运行、操作与截图检查验证；不要新增 UI 单元测试、组件测试、快照测试或浏览器自动化测试用例。
 - 内核测试重点覆盖真实几何、尺寸校验、失败保留上一版、版本冲突、持久化和模型导出回读。避免只镜像实现的测试。
-- DSH 插件开发遵循用户指定的 `F:/Projects/dsh-plugin-stickers/.agents/skills/dsh-plugin-dev-notes/SKILL.md`；API 以当前安装的 DSH 源码为准。
+- DSH 插件开发遵循项目内的 [dsh-plugin-dev-notes](.agents/skills/dsh-plugin-dev-notes/SKILL.md)；API 以当前安装的 DSH 源码为准。
 - 完成后明确报告验证范围与未验证部分。不要将可打开的界面等同于建模和 agent 链路已完成。
 
 ## 提交规范

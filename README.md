@@ -1,8 +1,6 @@
 # MiniCAD for DeepSeek Harness
 
-本项目采用 [MIT 许可证](LICENSE)。第三方依赖保留各自许可证，见 [NOTICE.md](NOTICE.md)。
-
-[English](#english)
+[English](README.en.md)
 
 面向 DSH agent 的参数化 CAD 工作台。自然语言和 PDF 参考图纸进入同一个设计任务；用户与 agent 共用源码、参数、精确实体和版本历史。
 
@@ -15,7 +13,7 @@
 - 保存前检查实体有效性、体积、包围盒和指定尺寸。失败保留上一版；过期版本写入被拒绝。
 - 参数关联的尺寸表达式、版本恢复和重启后恢复。
 - STEP（导出后回读校验）、STL、SVG、PDF、可编辑项目 ZIP。
-- 中文 / English 与浅色 / 暗色跟随 DSH 设置。
+- 中文 / 英文与浅色 / 暗色跟随 DSH 设置。
 
 ## 本地安装
 
@@ -103,20 +101,8 @@ npm test
 npx @deepseek-ai/dsh@0.2.1-rc.3 plugin --profile web remove dsh-minicad -w
 ```
 
-桌面版通过应用的「插件」页面移除。宿主应用安装变更或重启后入口消失。卸载不删除设计数据。
+桌面版通过应用的「插件」页面移除。宿主完成卸载或重启后入口消失。卸载不删除设计数据。
 
-## English
+## 许可证
 
-Licensed under the [MIT License](LICENSE). Third-party dependencies retain their own licenses; see [NOTICE.md](NOTICE.md).
-
-MiniCAD is an agent-first parametric CAD workbench for DeepSeek Harness. It uses JavaScript / React / Three.js for the workbench and Python / build123d / OCCT for exact solids. The user and the DSH agent share a persistent project, editable source and parameters, references, and immutable revisions.
-
-Install Node.js 22.19+, uv and pnpm. Run `npm install` then `npm run setup`. Desktop installations must use DSH's Plugins page with `link:/absolute/path/to/dsh-minicad`; the Electron app exclusively manages its profile. For Web use `npx @deepseek-ai/dsh@0.2.1-rc.3 plugin --profile web add link:/absolute/path/to/dsh-minicad -w`. Restart if requested and open MiniCAD in the sidebar. Python 3.12 dependencies and runtime are managed by uv with the committed lockfile.
-
-Describe a part, attach a PDF if needed, and select a configured DSH model. The agent builds actual BREP geometry. Invalid builds and stale revisions cannot overwrite the last saved design. Edit parameters or source, restore revisions, and export STEP (round-trip validated), STL, SVG, PDF, or an editable ZIP. Language and theme follow DSH settings.
-
-PDF reading combines extracted text with rendered page images. Scanned drawings need a vision-capable model. Missing dimensions require clarification. SVG/PDF outputs are orthographic reference sheets with overall dimensions, not fully dimensioned manufacturing drawings. Assembly constraint solving and CAM toolpaths are outside the current implementation.
-
-Model code runs locally with the user's privileges in a separate worker process; it is not an OS security sandbox. Use trusted code. Data defaults to `$DSH_HOME/storages/minicad`. Do not run multiple DSH hosts against the same data directory.
-
-`npm run dev` starts a real DSH development profile with `.local/designs`. `npm run check` checks host syntax and builds the client. `npm test` tests only the modeling kernel. UI verification is performed through actual use and screenshots, without UI test suites. Remove the package through Desktop's Plugins page, or through the plugin CLI for Web; design data is retained.
+本项目采用 [MIT 许可证](LICENSE)。第三方依赖保留各自许可证，见 [NOTICE.md](NOTICE.md)。
