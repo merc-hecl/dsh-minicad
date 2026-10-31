@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { ArcballControls } from "three/addons/controls/ArcballControls.js";
+import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 
 // Keep grid intervals and scale labels in readable millimetre increments.
 function scaleStep(value) {
@@ -73,6 +76,7 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
       span: 180,
       center: new THREE.Vector3(),
       dark: false,
+      wire: false,
     };
     let gridStep = 0, gridDivisions = 0, scaleZoom = 0, scaleHeight = 0;
     const direction = new THREE.Vector3();
@@ -157,9 +161,16 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
     function theme() {
       state.dark = document.body.hasAttribute("data-ds-dark-theme");
       model.traverse((o) => {
-        if (o.isMesh) o.material.color.set(state.dark ? 0xabb3c0 : 0xd8dee8);
-        else if (o.isLine)
-          o.material.color.set(state.dark ? 0x515e73 : 0x9ca8b8);
+        // Wide lines are meshes too: handle them before solid surfaces.
+        if (o.isLineSegments2) {
+          o.material.color.set(state.wire
+            ? (state.dark ? 0x8fb8ff : 0x2456a6)
+            : (state.dark ? 0x515e73 : 0x9ca8b8));
+          o.material.linewidth = state.wire ? 1.8 : 1;
+          o.material.opacity = state.wire ? 1 : 0.65;
+        } else if (o.isMesh) {
+          o.material.color.set(state.dark ? 0xabb3c0 : 0xd8dee8);
+        }
       });
       gridTheme();
     }
@@ -229,18 +240,20 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
     for (const edge of design.edges)
       for (let i = 1; i < edge.length; i++)
         points.push(...edge[i - 1], ...edge[i]);
-    const edgeGeometry = new THREE.BufferGeometry();
-    edgeGeometry.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(points, 3),
-    );
+    // Screen-space width stays legible at every zoom level and pixel ratio.
+    const edgeGeometry = new LineSegmentsGeometry();
+    edgeGeometry.setPositions(points);
     s.model.add(
-      new THREE.LineSegments(
+      new LineSegments2(
         edgeGeometry,
-        new THREE.LineBasicMaterial({
+        new LineMaterial({
           color: 0x9ca8b8,
+          linewidth: 1,
+          worldUnits: false,
+          alphaToCoverage: true,
           transparent: true,
           opacity: 0.65,
+          depthWrite: false,
         }),
       ),
     );
@@ -278,11 +291,15 @@ export function Viewport({ id, active = true, design, view, wire, fitToken, onEr
     s.controls.setGizmosVisible(false);
   }, [view, fitToken, design]);
   useEffect(() => {
-    runtime.current?.model.traverse((o) => {
+    const s = runtime.current;
+    if (!s) return;
+    s.wire = wire;
+    s.model.traverse((o) => {
       // CAD wireframe uses the kernel's BREP edges, not tessellation diagonals.
-      if (o.isMesh) o.visible = !wire;
-      else if (o.isLine) o.material.opacity = wire ? 1 : 0.65;
+      if (o.isLineSegments2) o.visible = true;
+      else if (o.isMesh) o.visible = !wire;
     });
+    s.theme();
   }, [wire, design]);
   return (
     <div id={id} ref={mount} role="tabpanel" aria-hidden={!active} className="mc-viewport" aria-label="3D">
