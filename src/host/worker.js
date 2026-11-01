@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { Store, KernelRequired } from "../kernel/store.js";
 
 const localMethods = new Set([
+  "get_settings", "update_settings",
   "list",
   "libraries",
   "get",

@@ -4,6 +4,8 @@ import { ArcballControls } from "three/addons/controls/ArcballControls.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
+import { Button, DisclosureRow, SegmentedTabs, Tag } from "@deepseek-ai/dsh-client-ui-primitives";
+import { defaultIdFormats, geometryLabel, geometryReference } from "../shared/geometry-ids.js";
 import { ViewCube } from "./view-cube.jsx";
 
 // Keep grid intervals and scale labels in readable millimetre increments.
@@ -17,11 +19,15 @@ function millimetres(value) {
   return String(Number(value.toPrecision(6)));
 }
 
-export function Viewport({ id, active = true, design, wire, resetToken, onError, t }) {
+export function Viewport({ id, active = true, design, wire, resetToken, selectionMode, onSelectionModeChange, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
   const [scale, setScale] = useState(null);
+  const [picked, setPicked] = useState(null);
+  const [referenceExpanded, setReferenceExpanded] = useState(false);
+  const selectionProps = useRef({ design, selectionMode, onSelectionModeChange });
+  selectionProps.current = { design, selectionMode, onSelectionModeChange };
   useEffect(() => {
     const el = mount.current;
     let renderer;
@@ -53,6 +59,8 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
     const initialRotation = camera.quaternion.clone();
     const model = new THREE.Group();
     scene.add(model);
+    const selectionOverlay = new THREE.Group();
+    scene.add(selectionOverlay);
     scene.add(new THREE.AmbientLight(0xffffff, 2.1));
     for (const [position, power] of [
       [[100, -150, 250], 3],
@@ -99,6 +107,78 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       if (canRender() && !renderFrame) renderFrame = requestAnimationFrame(draw);
     }
     state.invalidate = invalidate;
+    state.clearPick = () => {
+      for (const item of [...selectionOverlay.children]) {
+        if (item.userData.sharedPosition) item.geometry.deleteAttribute("position");
+        item.geometry.dispose(); item.material.dispose(); selectionOverlay.remove(item);
+      }
+      setPicked(null);
+      invalidate();
+    };
+    const raycaster = new THREE.Raycaster();
+    let clickStart = null;
+    const startPick = (event) => {
+      if (event.button === 0 && selectionProps.current.selectionMode)
+        clickStart = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    };
+    const endPick = (event) => {
+      const start = clickStart;
+      clickStart = null;
+      const { design, selectionMode } = selectionProps.current;
+      if (!selectionMode || !start || start.id !== event.pointerId || Math.hypot(event.clientX-start.x,event.clientY-start.y) > 4) return;
+      const preview = design?.previewData;
+      if (!preview || !state.surface) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1, 1-(event.clientY-rect.top)/rect.height*2), camera);
+      const surfaceHit = raycaster.intersectObject(state.surface, false)[0];
+      let index, kind;
+      if (selectionMode !== "edges" && surfaceHit) { index = preview.faceIndices[surfaceHit.faceIndex]; kind = "faces"; }
+      if (selectionMode !== "faces" && state.edgePicker) {
+        const mmPerPixel = (camera.top-camera.bottom)/camera.zoom/rect.height;
+        raycaster.params.Line.threshold = mmPerPixel * 6;
+        const hit = raycaster.intersectObject(state.edgePicker, false).find(hit => state.wire || !surfaceHit || hit.distance <= surfaceHit.distance + mmPerPixel * 6);
+        if (hit) { index = preview.edgeIndices[Math.floor(hit.index / 2)]; kind = "edges"; }
+      }
+      state.clearPick();
+      if (index === undefined) return;
+      let highlight;
+      if (kind === "faces") {
+        let count = 0;
+        for (const owner of preview.faceIndices) if (owner === index) count++;
+        const triangles = new Uint32Array(count * 3);
+        let offset = 0;
+        for (let i=0; i<preview.faceIndices.length; i++) if (preview.faceIndices[i] === index) {
+          triangles.set(preview.indices.subarray(i*3, i*3+3), offset); offset += 3;
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", state.surface.geometry.getAttribute("position"));
+        geometry.setIndex(new THREE.BufferAttribute(triangles, 1));
+        highlight = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: state.dark ? 0x8fb8ff : 0x2456a6, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+        highlight.userData.sharedPosition = true;
+      } else {
+        const lines = [];
+        for (let i=0; i<preview.edgeIndices.length; i++) if (preview.edgeIndices[i] === index)
+          for (let j=0;j<6;j++) lines.push(preview.edges[i*6+j]);
+        const geometry = new LineSegmentsGeometry();
+        geometry.setPositions(lines);
+        highlight = new LineSegments2(geometry, new LineMaterial({ color: state.dark ? 0x8fb8ff : 0x2456a6, linewidth: 3, depthWrite: false }));
+      }
+      selectionOverlay.add(highlight);
+      setPicked({ kind, index, label: geometryLabel(kind, index, design.geometryIds || defaultIdFormats), reference: geometryReference(design.geometryScope, design.revision, kind, index) });
+      invalidate();
+    };
+    const cancelPick = () => { clickStart = null; };
+    const movePick = event => {
+      if (clickStart && Math.hypot(event.clientX-clickStart.x,event.clientY-clickStart.y) > 4) cancelPick();
+    };
+    const escapeSelection = event => {
+      if (event.key === "Escape" && selectionProps.current.selectionMode) selectionProps.current.onSelectionModeChange(null);
+    };
+    renderer.domElement.addEventListener("pointerdown", startPick);
+    renderer.domElement.addEventListener("pointerup", endPick);
+    renderer.domElement.addEventListener("pointermove", movePick);
+    renderer.domElement.addEventListener("pointercancel", cancelPick);
+    document.addEventListener("keydown", escapeSelection);
     state.setActive = (value) => {
       state.active = value;
       controls.enabled = canRender() && !turn && !cubeDrag;
@@ -389,6 +469,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
         }
       });
       gridTheme();
+      selectionOverlay.traverse(item => { if (item.material) item.material.color.set(state.dark ? 0x8fb8ff : 0x2456a6); });
       invalidate();
     }
     state.theme = theme;
@@ -437,8 +518,14 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       renderer.domElement.removeEventListener("pointerdown", beginNavigation, true);
       renderer.domElement.removeEventListener("wheel", beginNavigation, true);
       controls.dispose();
+      renderer.domElement.removeEventListener("pointerdown", startPick);
+      renderer.domElement.removeEventListener("pointerup", endPick);
+      renderer.domElement.removeEventListener("pointermove", movePick);
+      renderer.domElement.removeEventListener("pointercancel", cancelPick);
+      document.removeEventListener("keydown", escapeSelection);
       for (const root of [scene, gridScene]) {
         root.traverse((o) => {
+          if (o.userData.sharedPosition) o.geometry.deleteAttribute("position");
           o.geometry?.dispose();
           if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
           else o.material?.dispose();
@@ -453,6 +540,9 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
   useEffect(() => {
     const s = runtime.current;
     if (!s) return;
+    s.clearPick();
+    s.surface = null;
+    s.edgePicker = null;
     for (const o of [...s.model.children]) {
       o.geometry.dispose();
       o.material.dispose();
@@ -490,7 +580,12 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       }),
     );
     s.model.add(mesh);
+    s.surface = mesh;
     if (preview.edges.length) {
+      const picker = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(preview.edges, 3)), new THREE.LineBasicMaterial());
+      picker.visible = false;
+      s.model.add(picker);
+      s.edgePicker = picker;
       const edgeGeometry = new LineSegmentsGeometry();
       edgeGeometry.setPositions(preview.edges);
       s.model.add(new LineSegments2(edgeGeometry, new LineMaterial({
@@ -507,6 +602,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
     runtime.current?.scheduleFit();
   }, [design?.previewData]);
   useEffect(() => { runtime.current?.setActive(active); }, [active]);
+  useEffect(() => { runtime.current?.clearPick(); }, [selectionMode, design?.geometryScope, design?.revision]);
   useEffect(() => {
     if (resetToken > 0) runtime.current?.resetView();
   }, [resetToken]);
@@ -522,7 +618,13 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
     s.theme();
   }, [wire, design?.previewData]);
   return (
-    <div id={id} ref={mount} aria-hidden={!active} className="mc-viewport" aria-label="3D">
+    <div id={id} ref={mount} aria-hidden={!active} className={`mc-viewport ${selectionMode ? "mc-selecting" : ""}`} aria-label="3D">
+      {selectionMode && <div className="mc-selection mc-panel" aria-live="polite">
+        <SegmentedTabs label={t("selectGeometry")} items={["both", "faces", "edges"].map(value => ({ value, label: t(value) }))} value={selectionMode} onChange={onSelectionModeChange} />
+        {picked && <Tag tone="neutral">{t(picked.kind)}</Tag>}
+        {picked ? <><strong>{picked.label}</strong><DisclosureRow title={t("geometryReference")} open={referenceExpanded} expandable expandOnRowClick onToggle={() => setReferenceExpanded(value => !value)}><code>{picked.reference}</code></DisclosureRow></> : <span>{t("selectionHint")}</span>}
+        <Button variant="ghost" size="sm" onClick={() => onSelectionModeChange(null)}>{t("close")}</Button>
+      </div>}
       <ViewCube
         ref={cube}
         active={active}

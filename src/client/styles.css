@@ -44,6 +44,22 @@ html[data-platform="darwin"] .mc-workbench {
   height: 100%;
   touch-action: none;
 }
+.mc-selecting canvas { cursor: crosshair; }
+.mc-selection {
+  position: absolute;
+  top: calc(58px + var(--mc-top-inset));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 40px);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.mc-selection code { user-select: all; }
+.mc-tools button[aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
 .mc-scale {
   position: absolute;
   z-index: 1;

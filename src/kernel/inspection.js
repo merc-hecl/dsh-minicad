@@ -1,3 +1,8 @@
+import {
+  defaultIdFormats,
+  geometryLabel,
+  geometryReference,
+} from "../shared/geometry-ids.js";
 import * as cad from "@classcad/smlibwasm";
 import { createHash } from "node:crypto";
 import {
@@ -8,6 +13,12 @@ import {
 } from "../shared/cad-schema.js";
 
 export const vector = (v) => [v.x, v.y, v.z];
+// Keep existing edge indices stable; seam edges are appended to the query list.
+export function topologyItems(shape, kind) {
+  const items = shape[kind]();
+  if (kind !== "edges") return items;
+  return items.union(shape.edges({ seams: true }));
+}
 export function direction(input) {
   const length = Math.hypot(...input);
   if (!Number.isFinite(length) || length < 1e-12)
@@ -58,14 +69,14 @@ export function parseReference(id, kind, scope, revision) {
 }
 export function bindReference(id, kind, shape, scope, revision) {
   const parsed = parseReference(id, kind, scope, revision);
-  if (!shape?.[parsed.kind]()[parsed.index])
+  if (!shape || !topologyItems(shape, parsed.kind)[parsed.index])
     throw new Error(
       "几何引用不存在，请重新查询 / geometry reference does not exist",
     );
   return { $ref: { ...parsed, topology: topology(shape) } };
 }
 export function select(part, kind, selector = {}, base = part, items) {
-  let list = items || part[kind]();
+  let list = items || topologyItems(part, kind);
   if (Array.isArray(selector)) {
     let found = new cad.ShapeList();
     for (const item of selector)
@@ -84,7 +95,7 @@ export function select(part, kind, selector = {}, base = part, items) {
       );
     if (kind === "solids" && part === base)
       return new cad.ShapeList(list[ref.index]);
-    const original = base[kind]()[ref.index];
+    const original = topologyItems(base, kind)[ref.index];
     if (!original)
       throw new Error("几何引用不存在 / geometry reference does not exist");
     list =
@@ -136,16 +147,20 @@ export function queryShape(
   kind = "faces",
   selector = {},
   scope,
+  idFormats = defaultIdFormats,
 ) {
   if (!["faces", "edges", "solids"].includes(kind))
     throw new Error("不支持的几何查询类型 / unsupported query kind");
   validate(selector, selectorSchema, "selector");
-  const all = shape[kind]();
+  const all = topologyItems(shape, kind);
   return select(shape, kind, selector, shape, all).map((item) => {
     const index = all.findIndex((candidate) => candidate.equals(item));
     const box = item.bbox();
     const result = {
-      id: `m${scope}:v${revision}:${kind}:${index}`,
+      id: geometryReference(scope, revision, kind, index),
+      ...(kind !== "solids"
+        ? { displayId: geometryLabel(kind, index, idFormats) }
+        : {}),
       type: item.geomType || "solid",
       name: item.name || null,
       center: vector(item.center()),

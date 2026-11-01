@@ -129,7 +129,7 @@ test(
       const refreshed = await worker.call("get", { projectId: project.id });
       assert.equal(refreshed.head, 1);
       assert.equal(refreshed.revisions.length, 1);
-      assert.equal(refreshed.design.previewVersion, 2);
+      assert.equal(refreshed.design.previewVersion, 3);
       assert.ok(decoded.normals.length);
       assert.equal(refreshed.design.mesh, undefined);
       assert.equal(refreshed.source, externalSource);

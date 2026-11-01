@@ -24,6 +24,7 @@ const json = (value, status = 200) =>
     },
   });
 const clientMethods = new Set([
+  "get_settings", "update_settings",
   "list",
   "get",
   "rename",

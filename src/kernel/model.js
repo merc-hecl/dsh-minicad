@@ -5,7 +5,12 @@ import { createRequire } from "node:module";
 import { Script } from "node:vm";
 import { inside } from "./files.js";
 import { validate, operationSchema } from "../shared/cad-schema.js";
-import { select, bindReference, direction } from "./inspection.js";
+import {
+  select,
+  bindReference,
+  direction,
+  topologyItems,
+} from "./inspection.js";
 export {
   queryShape,
   modelScope,
@@ -365,65 +370,79 @@ export function describeShape(shape) {
   return {
     metrics,
     preview: previewShape(shape),
-    previewVersion: 2,
+    previewVersion: 3,
     kernel: kernelName,
   };
 }
 
 export function previewShape(shape) {
   const size = vector(shape.bbox().size);
-  const raw = shape.mesh(
+  // The public faceMeshes API returns meshes in shape.faces() order, keeping
+  // ownership exact without guessing from triangle positions or normals.
+  const meshes = cad.faceMeshes(
+    shape,
     Math.max(0.01, Math.max(...size) * 0.0003),
     (0.15 * 180) / Math.PI,
   );
-  if (raw.triangles.length / 3 > 500000)
+  const cornerCount = meshes.reduce(
+    (sum, mesh) => sum + mesh.triangles.length,
+    0,
+  );
+  if (cornerCount / 3 > 500000)
     throw new Error("预览网格超过 50 万三角形，请简化模型");
-  const positions = new Float32Array(raw.triangles.length * 3);
+  const positions = new Float32Array(cornerCount * 3);
   const normals = new Float32Array(positions.length);
-  const indices = new Uint32Array(raw.triangles.length);
-  const corners = new Map();
-  const cornerNormals = raw.normals?.length === raw.triangles.length * 3;
-  let vertices = 0;
-  for (let i = 0; i < raw.triangles.length; i += 3) {
-    let fallback;
-    if (!cornerNormals) {
-      const point = (corner, axis) =>
-        raw.vertices[raw.triangles[i + corner] * 3 + axis];
-      const a = [0, 1, 2].map((axis) => point(1, axis) - point(0, axis));
-      const b = [0, 1, 2].map((axis) => point(2, axis) - point(0, axis));
-      const cross = [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-      ];
-      const length = Math.hypot(...cross) || 1;
-      fallback = cross.map((n) => n / length);
-    }
-    for (let corner = 0; corner < 3; corner++) {
-      const sourceIndex = raw.triangles[i + corner];
-      const n = cornerNormals
-        ? [0, 1, 2].map((axis) => raw.normals[(i + corner) * 3 + axis])
-        : fallback;
-      const key = `${sourceIndex}:${n.join(",")}`;
-      if (!corners.has(key)) {
-        corners.set(key, vertices);
-        for (let axis = 0; axis < 3; axis++) {
-          positions[vertices * 3 + axis] = raw.vertices[sourceIndex * 3 + axis];
-          normals[vertices * 3 + axis] = n[axis];
-        }
-        vertices++;
+  const indices = new Uint32Array(cornerCount);
+  const faceIndices = new Uint32Array(cornerCount / 3);
+  let vertices = 0,
+    cursor = 0;
+  meshes.forEach((raw, faceIndex) => {
+    const corners = new Map();
+    for (let i = 0; i < raw.triangles.length; i += 3) {
+      let fallback;
+      if (!raw.normals) {
+        const point = (corner, axis) =>
+          raw.vertices[raw.triangles[i + corner] * 3 + axis];
+        const a = [0, 1, 2].map((axis) => point(1, axis) - point(0, axis));
+        const b = [0, 1, 2].map((axis) => point(2, axis) - point(0, axis));
+        const cross = [
+          a[1] * b[2] - a[2] * b[1],
+          a[2] * b[0] - a[0] * b[2],
+          a[0] * b[1] - a[1] * b[0],
+        ];
+        const length = Math.hypot(...cross) || 1;
+        fallback = cross.map((n) => n / length);
       }
-      indices[i + corner] = corners.get(key);
+      faceIndices[cursor / 3] = faceIndex;
+      for (let corner = 0; corner < 3; corner++) {
+        const sourceIndex = raw.triangles[i + corner];
+        const n = raw.normals
+          ? [0, 1, 2].map((axis) => raw.normals[(i + corner) * 3 + axis])
+          : fallback;
+        const key = `${sourceIndex}:${n.join(",")}`;
+        if (!corners.has(key)) {
+          corners.set(key, vertices);
+          for (let axis = 0; axis < 3; axis++) {
+            positions[vertices * 3 + axis] =
+              raw.vertices[sourceIndex * 3 + axis];
+            normals[vertices * 3 + axis] = n[axis];
+          }
+          vertices++;
+        }
+        indices[cursor++] = corners.get(key);
+      }
     }
-  }
-  const brepEdges = shape.edges({ seams: true });
+    raw.dispose();
+  });
+  const brepEdges = topologyItems(shape, "edges");
   const segments = brepEdges.reduce(
     (sum, edge) => sum + (edge.geomType === "line" ? 1 : 32),
     0,
   );
   const edges = new Float32Array(segments * 6);
+  const edgeIndices = new Uint32Array(segments);
   let offset = 0;
-  for (const edge of brepEdges) {
+  for (const [edgeIndex, edge] of brepEdges.entries()) {
     const count = edge.geomType === "line" ? 1 : 32;
     let previous = edge.pointAt(0);
     for (let i = 1; i <= count; i++) {
@@ -432,6 +451,7 @@ export function previewShape(shape) {
         [previous.x, previous.y, previous.z, point.x, point.y, point.z],
         offset,
       );
+      edgeIndices[offset / 6] = edgeIndex;
       offset += 6;
       previous = point;
     }
@@ -441,6 +461,8 @@ export function previewShape(shape) {
     normals: normals.subarray(0, vertices * 3),
     indices,
     edges,
+    faceIndices,
+    edgeIndices,
   };
 }
 export function exportShape(shape, format) {

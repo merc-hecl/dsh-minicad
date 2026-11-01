@@ -1,4 +1,17 @@
 export const zh = {
+  idSettings: "几何编号设置",
+  saveSettings: "保存设置",
+  faceFormat: "面编号格式",
+  edgeFormat: "边编号格式",
+  invalidIdFormat: "格式必须包含一个 {n}",
+  faces: "面",
+  edges: "边",
+  selectGeometry: "选择面和边",
+  both: "面和边",
+  selectionControls: "点击选择 · 点击空白清除 · Esc 退出选择 · 拖动旋转 · 右键平移",
+  selectionHint: "点击模型选择面或边",
+  geometryReference: "完整引用",
+
   workingFilesChanged: "建模文件已修改，请先重新构建再进行局部编辑",
   geometryReferenceInvalid: "几何引用已失效，请重新查询当前版本",
   geometrySelectionMissing: "没有找到匹配的面或边",
@@ -116,6 +129,19 @@ export const zh = {
   copied: "已复制",
 };
 export const en = {
+  idSettings: "Geometry ID settings",
+  saveSettings: "Save settings",
+  faceFormat: "Face ID format",
+  edgeFormat: "Edge ID format",
+  invalidIdFormat: "Include exactly one {n}",
+  faces: "Face",
+  edges: "Edge",
+  selectGeometry: "Select faces and edges",
+  both: "Faces and edges",
+  selectionControls: "Click to select · Click empty space to clear · Esc to exit selection · Drag to rotate · Right-drag to pan",
+  selectionHint: "Click the model to select a face or edge",
+  geometryReference: "Full reference",
+
   workingFilesChanged: "Model files changed. Rebuild them before making local edits.",
   geometryReferenceInvalid: "The geometry reference is stale. Query the current revision again.",
   geometrySelectionMissing: "No matching faces or edges were found.",

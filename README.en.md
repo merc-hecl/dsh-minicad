@@ -10,7 +10,7 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 - Geometry measurement and dimensional checks: measure distances, angles, local directional wall thickness and dimensions, and check targets, tolerances or limits.
 - Drawing references: provide PDFs through DSH attachments for the agent to read using host capabilities.
 - Parameter and source editing: adjust model parameters or modify modeling source code through the agent.
-- Model viewing: view 3D models and reference drawings.
+- Model viewing: view 3D models and reference drawings, select faces and edges, and inspect their geometry IDs.
 - Library and task management: organize part-design tasks in libraries, each with its own conversation, modeling resources, and revision history.
 - Export: STEP, STL, and editable project ZIP files.
 
@@ -69,6 +69,10 @@ The agent should ask for clarification when dimensions are incomplete or multipl
 PDF parsing and scanned drawing interpretation use DSH attachments, scripting, or multimodal input, depending on the host tools and selected model.
 
 The current implementation supports parametric single-part and multi-solid modeling, without assembly constraint solving or CAM toolpaths.
+
+Use the inspect icon in the right toolbar to enter selection mode. Faces and edges are both selectable by default, with edges taking priority near a line; filters restrict selection to faces or edges. Clicking highlights the geometry and shows its label. Expand “Full reference” for the model- and revision-scoped ID used by agent tools. Click empty space to clear, or press Esc or the toolbar button again to exit. Dragging still rotates the model.
+
+The settings icon in the header edits face and edge ID formats. Defaults are `F-{n}` and `E-{n}`, shown as `F-1`, `E-1`, etc.; `{n}` starts at 1 without zero padding. Formats are stored in `settings.json` in the plugin data directory and saved with future successful modeling revisions. Existing revisions retain their formats; older models use the defaults. Short IDs apply within one model revision; use full references across models or revisions. Restoring a historical revision preserves its formats.
 
 ## Storage and runtime boundaries
 

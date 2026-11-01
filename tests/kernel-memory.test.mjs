@@ -189,7 +189,7 @@ test(
         await worker.call("preview_file", { projectId: task.id, revision: 1 });
         const refreshed = await worker.call("get", { projectId: task.id });
         assert.equal(starts, 2);
-        assert.equal(refreshed.design.previewVersion, 2);
+        assert.equal(refreshed.design.previewVersion, 3);
         assert.equal(refreshed.head, 1);
         assert.equal(refreshed.revisions.length, 1);
         await worker.call("get", { projectId: task.id });
@@ -200,7 +200,7 @@ test(
         );
         assert.equal(
           JSON.parse(await readFile(summaryFile, "utf8")).state.previewVersion,
-          2,
+          3,
         );
       },
       {

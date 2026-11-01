@@ -1,3 +1,4 @@
+import { defaultIdFormats, validateIdFormats } from "../shared/geometry-ids.js";
 import fs from "node:fs";
 import {
   basename,
@@ -347,6 +348,11 @@ export class Store {
     if (state) {
       state.source = result.source;
       if (result.parameters !== null) state.parameters = result.parameters;
+      state.geometryIds ||= { ...defaultIdFormats };
+      state.geometryScope = createHash("sha256")
+        .update(`${key}\0${task.sourceFile}`)
+        .digest("hex")
+        .slice(0, 24);
     }
     result.design = state;
     result.revisions = [
@@ -540,6 +546,7 @@ export class Store {
       assets.set(name, bytes);
     const state = {
       ...api.describeShape(shape),
+      geometryIds: await this.dispatch("get_settings"),
       source,
       parameters,
       operations: operations || [],
@@ -587,6 +594,7 @@ export class Store {
             revision: Number(args.revision),
             unit: "mm",
             kernel: state.kernel,
+            geometryIds: state.geometryIds || defaultIdFormats,
           }),
         };
         for (const asset of state.assets || [])
@@ -613,6 +621,15 @@ export class Store {
     };
   }
   async dispatch(method, args = {}) {
+    if (method === "get_settings")
+      return fs.existsSync(join(this.root, "settings.json"))
+        ? readJson(join(this.root, "settings.json"))
+        : { ...defaultIdFormats };
+    if (method === "update_settings") {
+      const settings = validateIdFormats(args);
+      this.write(join(this.root, "settings.json"), jsonBytes(settings));
+      return settings;
+    }
     if (method === "api") {
       if (
         ![
@@ -777,7 +794,7 @@ export class Store {
       let valid = false;
       try {
         valid =
-          saved.state.previewVersion === 2 &&
+          saved.state.previewVersion === 3 &&
           fs.statSync(path).size === saved.state.preview?.byteLength &&
           hashFile(path) === saved.state.preview.digest;
       } catch {
@@ -788,7 +805,8 @@ export class Store {
         const bytes = encodePreview(api.previewShape(await this.shape(saved)));
         const state = {
           ...summaryOf(saved.state),
-          previewVersion: 2,
+          previewVersion: 3,
+          geometryIds: saved.state.geometryIds || { ...defaultIdFormats },
           preview: {
             ...previewInfo(bytes),
             digest: createHash("sha256").update(bytes).digest("hex"),
@@ -860,6 +878,7 @@ export class Store {
           args.kind,
           api.values(args.selector, saved.state.parameters),
           scope,
+          saved.state.geometryIds || defaultIdFormats,
         ),
       };
     }
@@ -878,6 +897,7 @@ export class Store {
         );
       const state = {
         ...api.describeShape(shape),
+        geometryIds: saved.state.geometryIds || { ...defaultIdFormats },
         source: saved.state.source,
         parameters: saved.state.parameters,
         assets: [...assets.keys()],

@@ -22,7 +22,11 @@ import {
   IconClockOutlineRegular,
   IconRefreshOutlineRegular,
   IconSlidersTwoOutlineRegular,
+  IconSettingsOutlineRegular,
+  IconInspectOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
+import { IdSettingsDialog } from "./id-settings-dialog.jsx";
+import { defaultIdFormats } from "../shared/geometry-ids.js";
 import { Viewport } from "./viewport.jsx";
 import { errorKey } from "./locale.js";
 import { ForgeIcon } from "./forge-icon.jsx";
@@ -95,6 +99,8 @@ export function Workbench({
     [error, setError] = useState(null);
   const [busy, setBusy] = useState(false),
     [running, setRunning] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(null);
+  const [idSettings, setIdSettings] = useState(defaultIdFormats);
   const [wire, setWire] = useState(false),
     [resetView, setResetView] = useState(0);
   const [modal, setModal] = useState(null),
@@ -399,6 +405,8 @@ export function Workbench({
         id="mc-view-model-panel"
         design={design}
         wire={wire}
+        selectionMode={modal ? null : selectionMode}
+        onSelectionModeChange={setSelectionMode}
         resetToken={resetView}
         t={t}
         onError={() => setError({ key: "webglError" })}
@@ -410,6 +418,7 @@ export function Workbench({
           onClick={() => back(workbench.current)}
         />
         <strong>MiniCAD</strong>
+        <Btn icon={IconSettingsOutlineRegular} label={t("idSettings")} onClick={() => action(async () => { setIdSettings(await api("get_settings")); setError(null); setModal("idSettings"); })} />
         <span className="mc-crumb">
           {libraries.find((library) => library.id === project?.library_id)?.title || t("defaultLibrary")}
           {project ? ` / ${project.title}` : ""}
@@ -501,6 +510,7 @@ export function Workbench({
               disabled={!design}
               onClick={() => open("parameters")}
             />
+            <Btn icon={IconInspectOutlineRegular} label={t("selectGeometry")} aria-pressed={!!selectionMode} disabled={!design} onClick={() => setSelectionMode(mode => mode ? null : "both")} />
           </div>
       {!design && !loading && (
         <div className="mc-empty">
@@ -530,7 +540,7 @@ export function Workbench({
             });
           }}>{t(libraries.length ? "newProject" : "newLibrary")}</Btn>
         )}
-        <div className="mc-help">{t("controls")}</div>
+        <div className="mc-help">{t(selectionMode ? "selectionControls" : "controls")}</div>
       </section>
       {renderSlot("minicad.task.renameDialog", {
         renameTarget,
@@ -553,7 +563,9 @@ export function Workbench({
           t={t}
         />
       )}
-      {modal && modal !== "parameters" && (
+      {modal === "idSettings" && <IdSettingsDialog settings={idSettings} busy={busy} error={error} onClose={() => setModal(null)} t={t}
+        onSave={formats => action(async () => { setIdSettings(await api("update_settings", formats)); setModal(null); })} />}
+      {modal && modal !== "parameters" && modal !== "idSettings" && (
         <WorkbenchDialog
           key={modal}
           title={t(modal === "reference" ? "pdfPreview" : modal === "create" ? "newProject" : modal)}
