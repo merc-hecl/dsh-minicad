@@ -69,6 +69,13 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
     const gridScene = new THREE.Scene();
     const gridCamera = camera.clone();
     gridScene.add(grid);
+    const groundLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-1, 0, 0), new THREE.Vector3(1, 0, 0),
+      ]),
+      new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }),
+    );
+    gridScene.add(groundLine);
     renderer.autoClear = false;
     const state = {
       renderer,
@@ -279,6 +286,8 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
           ? (index ? 0.5 : 0.35)
           : (index ? 0.75 : 0.6)) * fade;
       });
+      groundLine.material.color.set(state.dark ? 0x9caabe : 0x8e9bab);
+      groundLine.material.opacity = (state.dark ? 0.5 : 0.6) * (1 - fade);
     }
     function updateGrid() {
       const width = el.clientWidth, height = el.clientHeight;
@@ -313,8 +322,18 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       const majorStep = step * 5;
       grid.position.x = Math.round(gridCenter.x / majorStep) * majorStep;
       grid.position.y = Math.round(gridCenter.y / majorStep) * majorStep;
-      // Prevent a dense stripe at grazing angles to the XY plane.
-      gridTheme(THREE.MathUtils.smoothstep(Math.abs(direction.z), 0.04, 0.18));
+      // Cross-fade dense, grazing-angle grids into a single line in the XY
+      // plane, perpendicular to the viewing direction. Anchor it below the
+      // live orbit target so panning and camera roll preserve its alignment.
+      const fade = THREE.MathUtils.smoothstep(Math.abs(direction.z), 0.04, 0.18);
+      gridTheme(fade);
+      groundLine.visible = fade < 1;
+      if (groundLine.visible) {
+        groundLine.position.copy(camera.position).addScaledVector(direction, state.orbitDistance);
+        groundLine.position.z = grid.position.z;
+        groundLine.rotation.z = Math.atan2(direction.x, -direction.y);
+        groundLine.scale.x = Math.hypot(camera.right - camera.left, camera.top - camera.bottom) / camera.zoom / 2;
+      }
       // Moving an orthographic camera along its viewing axis preserves the
       // projected grid alignment while making room for its full depth range.
       const padding = step * divisions + camera.position.distanceTo(grid.position);
