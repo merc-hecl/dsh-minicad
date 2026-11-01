@@ -27,6 +27,11 @@ try {
       status: error.status || 400,
       operationIndex: error.operationIndex,
       operation: error.operation,
+      code: error.code,
+      phase: error.phase,
+      runId: error.runId,
+      validation: error.validation,
+      diagnostics: error.diagnostics,
     }) + "\n",
     () => process.exit(0),
   );

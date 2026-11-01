@@ -34,12 +34,14 @@ export function buildShape(
   onRead = () => {},
   root = dirname(filename),
   checkpoint,
+  log = (...args) => console.log(...args),
 ) {
   const require = createRequire(filename);
   for (const file of Object.keys(require.cache))
     if (file.startsWith(dirname(filename) + sep)) delete require.cache[file];
   const api = {
     ...cad,
+    log,
     edit: (part, operations, parameters) =>
       editShape(part, operations, parameters, { readModel: api.readModel, checkpoint }),
     checkpoint: (part, label = "") => checkpoint ? checkpoint(part, label) : part,
@@ -51,10 +53,11 @@ export function buildShape(
     },
   };
   const fn = new Script(
-    `(function(parameters,cad,require,__filename,__dirname){\n${source}\nif(typeof build !== 'function') throw new Error('建模源码必须定义 build(parameters, cad) 函数');\nreturn build(parameters,cad);\n})`,
-    { filename },
+    `(function(parameters,cad,require,__filename,__dirname,console){\n${source}\nif(typeof build !== 'function') throw new Error('建模源码必须定义 build(parameters, cad) 函数');\nreturn build(parameters,cad);\n})`,
+    { filename, lineOffset: -1 },
   ).runInThisContext();
-  return fn(parameters, api, require, filename, dirname(filename));
+  return fn(parameters, api, require, filename, dirname(filename),
+    Object.assign(Object.create(console), { log, info: log, warn: log, error: log, debug: log }));
 }
 export function values(input, parameters = {}) {
   if (Array.isArray(input)) return input.map((v) => values(v, parameters));

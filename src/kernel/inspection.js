@@ -75,7 +75,7 @@ export function bindReference(id, kind, shape, scope, revision) {
     );
   return { $ref: { ...parsed, topology: topology(shape) } };
 }
-export function select(part, kind, selector = {}, base = part, items) {
+export function select(part, kind, selector = {}, base = part, items, allowEmpty = false) {
   let list = items || topologyItems(part, kind);
   if (Array.isArray(selector)) {
     let found = new cad.ShapeList();
@@ -116,6 +116,21 @@ export function select(part, kind, selector = {}, base = part, items) {
   }
   if (selector.name) list = list.filter((item) => item.name === selector.name);
   if (selector.geomType) list = list.ofType(selector.geomType);
+  if (selector.radius !== undefined) list = list.filter(item =>
+    ["circle", "cylinder", "sphere", "torus", "cone"].includes(item.geomType) &&
+    Math.abs(item.radius - selector.radius) <= (selector.tolerance ?? 1e-6));
+  if (selector.axisDirection) {
+    const wanted = direction(selector.axisDirection);
+    list = list.filter(item => {
+      const axis = naturalAxis(item);
+      return axis && Math.abs(Math.abs(axis.direction.reduce((sum, v, i) => sum + v * wanted[i], 0)) - 1) < 1e-6;
+    });
+  }
+  if (selector.through !== undefined || selector.closedWall !== undefined) list = list.filter(item => {
+    const hole = cylindricalHole(part, item);
+    return hole && (selector.through === undefined || hole.through === selector.through) &&
+      (selector.closedWall === undefined || hole.closedWall === selector.closedWall);
+  });
   if (selector.parallelTo) {
     direction(selector.parallelTo);
     list = list.parallelTo(new cad.Axis([0, 0, 0], selector.parallelTo));
@@ -133,7 +148,7 @@ export function select(part, kind, selector = {}, base = part, items) {
         ),
       1e-7,
     );
-  if (!list.length)
+  if (!list.length && !allowEmpty)
     throw new Error("没有找到匹配的几何，请重新查询 / no matching geometry");
   if (selector.one && list.length !== 1)
     throw new Error(
@@ -149,13 +164,16 @@ export function queryShape(
   scope,
   idFormats = defaultIdFormats,
 ) {
-  if (!["faces", "edges", "solids"].includes(kind))
+  if (!["faces", "edges", "solids", "holes"].includes(kind))
     throw new Error("不支持的几何查询类型 / unsupported query kind");
   validate(selector, selectorSchema, "selector");
-  const all = topologyItems(shape, kind);
-  return select(shape, kind, selector, shape, all).map((item) => {
+  const topologyKind = kind === "holes" ? "faces" : kind;
+  const all = topologyItems(shape, topologyKind);
+  const items = kind === "holes" ? all.filter(item => cylindricalHole(shape, item)) : all;
+  return select(shape, topologyKind, selector, shape, items, kind === "holes").map((item) => {
     const index = all.findIndex((candidate) => candidate.equals(item));
-    return describeItem(item, index, kind, scope, revision, idFormats);
+    return { ...describeItem(item, index, topologyKind, scope, revision, idFormats),
+      ...(kind === "holes" ? { hole: cylindricalHole(shape, item) } : {}) };
   });
 }
 export function describeReference(
@@ -188,6 +206,7 @@ function describeItem(item, index, kind, scope, revision, idFormats) {
     type: item.geomType || "solid",
     name: item.name || null,
     center: vector(item.center()),
+    centerMeaning: kind === "faces" ? "area_centroid" : kind === "edges" ? "curve_centroid" : "volume_centroid",
     bounds: { min: vector(box.min), max: vector(box.max) },
   };
   if (kind === "faces") {
@@ -198,7 +217,70 @@ function describeItem(item, index, kind, scope, revision, idFormats) {
   if (kind === "solids") result.volume = item.volume;
   if (["circle", "cylinder", "sphere", "torus", "cone"].includes(item.geomType))
     result.radius = item.radius;
+  const axis = naturalAxis(item);
+  if (axis) result.axis = axis;
+  if (item.geomType === "circle" || item.geomType === "sphere") result.geometricCenter = naturalCenter(item);
   return result;
+}
+function naturalAxis(item) {
+  if (item instanceof cad.Face && ["cylinder", "cone", "torus", "revolution"].includes(item.geomType))
+    return { origin: vector(item.axis.origin), direction: direction(vector(item.axis.direction)) };
+  if (item instanceof cad.Edge && item.geomType === "circle")
+    return { origin: vector(item.arcCenter), direction: direction(vector(item.normal)) };
+  if (item instanceof cad.Edge && item.geomType === "line")
+    return { origin: vector(item.start), direction: direction(vector(item.direction)) };
+  return null;
+}
+function naturalCenter(item) {
+  if (item instanceof cad.Edge && item.geomType === "circle") return vector(item.arcCenter);
+  if (item instanceof cad.Face && item.geomType === "sphere") return vector(item.axis.origin);
+  if (item instanceof cad.Face && item.geomType === "cylinder") {
+    const { origin, direction: unit } = naturalAxis(item), projections = item.vertices().map(point =>
+      vector(point).reduce((sum, v, i) => sum + (v - origin[i]) * unit[i], 0));
+    const midpoint = (Math.min(...projections) + Math.max(...projections)) / 2;
+    return origin.map((v, i) => v + midpoint * unit[i]);
+  }
+  throw new Error("中心测量需使用圆边、球面、圆柱面或显式点 / center measurement requires a circle, sphere, cylinder or explicit point");
+}
+// Cylindrical bore segments, not semantic machining features. Open side cutouts
+// stay distinguishable from complete cylindrical walls and through bores.
+const boreCache = new WeakMap();
+function cylindricalHole(shape, face) {
+  if (!(face instanceof cad.Face) || face.geomType !== "cylinder") return null;
+  let entries = boreCache.get(shape);
+  if (!entries) { entries = []; boreCache.set(shape, entries); }
+  const cached = entries.find(entry => entry.face.equals(face));
+  if (cached) return cached.result;
+  const result = inspectCylindricalHole(shape, face);
+  entries.push({ face, result });
+  return result;
+}
+function inspectCylindricalHole(shape, face) {
+  const { origin, direction: unit } = naturalAxis(face), point = vector(face.interiorPoint());
+  const projection = point.reduce((sum, v, i) => sum + (v - origin[i]) * unit[i], 0);
+  const radial = point.map((v, i) => v - origin[i] - projection * unit[i]);
+  if (vector(face.normalAt(point)).reduce((sum, v, i) => sum + v * radial[i], 0) >= 0) return null;
+  const center = naturalCenter(face), span = face.vertices().map(vertex =>
+    vector(vertex).reduce((sum, v, i) => sum + v * unit[i], 0));
+  const axialSpan = Math.max(...span) - Math.min(...span);
+  const closedWall = Math.abs(face.area - 2 * Math.PI * face.radius * axialSpan) <= Math.max(1e-5, face.area * 1e-6);
+  const extent = Math.hypot(...vector(shape.bbox().size)) * 2 + 1;
+  const start = center.map((v, i) => v - extent * unit[i]);
+  let through = false;
+  const clearanceTolerance = Math.max(1e-5, face.radius * 1e-6);
+  if (closedWall && shape.raycast(start, unit).length === 0 && face.radius > clearanceTolerance) {
+    // An unobstructed centerline alone would incorrectly mark a counterbore's
+    // larger diameter as through. Intersect the entire bore cylinder instead.
+    let probe = cad.Cylinder(face.radius - clearanceTolerance, extent * 2);
+    const axis = [-unit[1], unit[0], 0];
+    if (Math.hypot(...axis) > 1e-10)
+      probe = probe.rotate(new cad.Axis([0, 0, 0], axis), Math.acos(Math.max(-1, Math.min(1, unit[2]))) * 180 / Math.PI);
+    const overlap = shape.intersect(probe.translate(center));
+    through = overlap.solids().length === 0;
+    overlap.dispose(); probe.dispose();
+  }
+  return { diameter: face.radius * 2, axis: { origin, direction: unit }, center, axialSpan,
+    closedWall, through, clearanceTolerance, meaning: "cylindrical_bore_segment" };
 }
 function entity(shape, input, scope, revision) {
   const spec =
@@ -323,6 +405,38 @@ export function measureShape(shape, requests, scope, revision) {
   return requests.map((request) => {
     let value, unit;
     switch (request.kind) {
+      case "count": {
+        const topologyKind = request.entityKind === "holes" ? "faces" : request.entityKind;
+        const all = topologyItems(shape, topologyKind);
+        const items = request.entityKind === "holes" ? all.filter(item => cylindricalHole(shape, item)) : all;
+        value = select(shape, topologyKind, request.selector || {}, shape, items, true).length;
+        unit = "count";
+        break;
+      }
+      case "center_distance": {
+        const center = input => input.point || naturalCenter(entity(shape, input, scope, revision));
+        value = Math.hypot(...center(request.from).map((v, i) => v - center(request.to)[i]));
+        unit = "mm";
+        break;
+      }
+      case "axis_distance": {
+        const a = naturalAxis(entity(shape, request.from, scope, revision)), b = naturalAxis(entity(shape, request.to, scope, revision));
+        if (!a || !b) throw new Error("轴距测量需使用圆柱面、圆边或直线 / axis distance requires cylinders, circles or lines");
+        const u = a.direction, v = b.direction, w = b.origin.map((n, i) => n - a.origin[i]);
+        const cross = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]], length = Math.hypot(...cross);
+        value = length > 1e-10 ? Math.abs(w.reduce((sum, n, i) => sum + n * cross[i], 0)) / length
+          : Math.sqrt(Math.max(0, w.reduce((sum, n) => sum + n*n, 0) - w.reduce((sum, n, i) => sum + n*u[i], 0) ** 2));
+        unit = "mm";
+        break;
+      }
+      case "coordinate":
+        value = naturalCenter(entity(shape, request.entity, scope, revision))[["x", "y", "z"].indexOf(request.axis)];
+        unit = "mm";
+        break;
+      case "span":
+        value = vector(entity(shape, request.entity, scope, revision).bbox().size)[["x", "y", "z"].indexOf(request.axis)];
+        unit = "mm";
+        break;
       case "distance": {
         const endpoint = (input) =>
           input.point ? input.point : entity(shape, input, scope, revision);
@@ -413,6 +527,10 @@ export function checkShape(shape, checks, scope, revision) {
       throw new Error("检查下限不能大于上限 / invalid check range");
     return {
       ...measured[i],
+      ...(check.name ? { name: check.name } : {}),
+      ...(check.basis ? { basis: check.basis } : {}),
+      measurement: check.measurement,
+      ...(check.expected !== undefined ? { expected: check.expected, tolerance: check.tolerance ?? 1e-6 } : {}),
       index: i,
       min: Number.isFinite(min) ? min : null,
       max: Number.isFinite(max) ? max : null,

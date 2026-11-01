@@ -37,6 +37,11 @@ export const selector = object(
     facing: vector,
     position: choices(["top", "bottom", "front", "back", "left", "right"]),
     nearest: vector,
+    radius: positive,
+    tolerance: number({ minimum: 0 }),
+    axisDirection: vector,
+    through: { type: "boolean" },
+    closedWall: { type: "boolean" },
     one: { type: "boolean" },
   },
   [],
@@ -192,6 +197,11 @@ const measure = (kind, fields = {}, optional = {}) =>
 export const measurementSchema = {
   anyOf: [
     measure("distance", { from: endpoint, to: endpoint }),
+    measure("center_distance", { from: endpoint, to: endpoint }),
+    measure("axis_distance", { from: { anyOf: [text, entity] }, to: { anyOf: [text, entity] } }),
+    measure("coordinate", { entity, axis: choices(["x", "y", "z"]) }),
+    measure("span", { entity, axis: choices(["x", "y", "z"]) }),
+    measure("count", { entityKind: choices(["faces", "edges", "solids", "holes"]) }, { selector }),
     measure("angle", { from: orientation, to: orientation }),
     measure(
       "thickness",
@@ -207,6 +217,7 @@ export const measurementSchema = {
   ],
 };
 export const measurementsSchema = array(measurementSchema);
+const checkNotes = { name: text, basis: text };
 export const checksSchema = array({
   anyOf: [
     object(
@@ -214,12 +225,13 @@ export const checksSchema = array({
         measurement: measurementSchema,
         expected: scalar,
         tolerance: number({ minimum: 0 }),
+        ...checkNotes,
       },
       ["measurement", "expected"],
     ),
-    object({ measurement: measurementSchema, min: scalar, max: scalar }),
-    object({ measurement: measurementSchema, min: scalar }),
-    object({ measurement: measurementSchema, max: scalar }),
+    object({ measurement: measurementSchema, min: scalar, max: scalar, ...checkNotes }, ["measurement", "min", "max"]),
+    object({ measurement: measurementSchema, min: scalar, ...checkNotes }, ["measurement", "min"]),
+    object({ measurement: measurementSchema, max: scalar, ...checkNotes }, ["measurement", "max"]),
   ],
 });
 
@@ -241,6 +253,13 @@ export function toDshSchema(rule) {
       ...object(properties, ["op"]),
       description: `Required fields by op (kernel enforced): ${rule.anyOf.map((option) => `${option.properties.op.const}(${option.required.filter((key) => key !== "op").join(",")})`).join("; ")}. Other operation-specific fields are rejected. Numeric values can use {parameter:'name'}.`,
     };
+  } else if (rule === measurementSchema) {
+    const properties = Object.assign({}, ...rule.anyOf.map(option => option.properties));
+    properties.kind = choices(rule.anyOf.map(option => option.properties.kind.const));
+    properties.from = properties.to = { anyOf: [text, entity, object({ point: vector }), object({ direction: vector })] };
+    rule = { ...object(properties, ["kind"]),
+      description: `Required fields by kind (kernel enforced): ${rule.anyOf.map(option => `${option.properties.kind.const}(${option.required.filter(key => key !== "kind").join(",")})`).join("; ")}. distance means minimum surface gap; center_distance uses geometric centers; axis_distance uses infinite axes. count counts matching items, including cylindrical bore segments for holes.`,
+    };
   } else if (rule === selector) {
     const coordinates = {
       type: "array",
@@ -254,6 +273,11 @@ export function toDshSchema(rule) {
         parallelTo: coordinates,
         facing: coordinates,
         nearest: coordinates,
+        radius: positive,
+        tolerance: number({ minimum: 0 }),
+        axisDirection: coordinates,
+        through: { type: "boolean" },
+        closedWall: { type: "boolean" },
         position: choices(["top", "bottom", "front", "back", "left", "right"]),
         one: { type: "boolean" },
       },
@@ -298,6 +322,7 @@ export function toDshSchema(rule) {
           tolerance: number({ minimum: 0 }),
           min: scalar,
           max: scalar,
+          ...checkNotes,
         },
         ["measurement"],
       ),
@@ -357,6 +382,10 @@ export function validate(value, rule, path = "input") {
       ),
     );
     if (matched) return validate(value, matched, path);
+    const structural = rule.anyOf.find(option => option.type === "object" && value && typeof value === "object" &&
+      (option.required || []).every(key => Object.hasOwn(value, key)) &&
+      Object.keys(value).every(key => Object.hasOwn(option.properties, key)));
+    if (structural) return validate(value, structural, path);
     throw new Error(`${path}: 参数格式不匹配 / invalid value (${errors[0]})`);
   }
   if (rule.const !== undefined && value !== rule.const)

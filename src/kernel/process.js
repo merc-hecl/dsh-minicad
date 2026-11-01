@@ -1,13 +1,14 @@
 import fs from "node:fs";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { atomicWrite, jsonBytes, readJson } from "./files.js";
-import { encodePreview } from "../shared/preview.js";
+import { atomicWrite, jsonBytes, readJson, inside } from "./files.js";
+import { encodePreview, decodePreview, previewInfo } from "../shared/preview.js";
 
 // Process previews are immutable checkpoints, separate from committed revisions.
 // Only one modeling writer runs at a time; readers never import the WASM kernel.
 export class ProcessJournal {
   constructor(directory, sourceFile) {
+    this.directory = directory;
     this.root = join(directory, ".cad-process", sourceFile.slice(0, -3));
     this.index = join(this.root, "latest.json");
   }
@@ -18,6 +19,35 @@ export class ProcessJournal {
   }
   latest() { return fs.existsSync(this.index) ? readJson(this.manifest(readJson(this.index).id)) : null; }
   manifest(runId) { return join(this.root, runId, "run.json"); }
+  run(runId) {
+    if (typeof runId !== "string" || !/^[\da-f-]{36}$/i.test(runId))
+      throw new Error("过程记录不存在 / process run does not exist");
+    return readJson(this.manifest(runId));
+  }
+  log(run, text) {
+    run.logs = [...(run.logs || []), String(text)].join("\n").slice(-16000).split("\n");
+    this.save(run);
+  }
+  saveCandidate(run, state, binary, inputs, assets) {
+    const folder = join(this.root, run.id, "candidate"), preview = encodePreview(state.preview);
+    atomicWrite(join(folder, "preview.bin"), preview);
+    atomicWrite(join(folder, "model.smb"), binary);
+    atomicWrite(join(folder, "state.json"), jsonBytes({
+      ...state, preview: previewInfo(preview),
+      inputs: [...inputs].map(([path, bytes]) => [relative(this.directory, path).split(sep).join("/"), bytes?.toString("base64") ?? null]),
+      resources: [...assets].map(([name, bytes]) => [name, bytes.toString("base64")]),
+    }));
+    this.finish(run, "preview");
+  }
+  candidate(runId) {
+    const run = this.run(runId), folder = join(this.root, run.id, "candidate");
+    const { inputs, resources, ...state } = readJson(join(folder, "state.json"));
+    return { run, state, folder,
+      inputs: new Map(inputs.map(([path, bytes]) => [inside(this.directory, path), bytes === null ? null : Buffer.from(bytes, "base64")])),
+      assets: new Map(resources.map(([name, bytes]) => [name, Buffer.from(bytes, "base64")])),
+      preview: () => decodePreview(fs.readFileSync(join(folder, "preview.bin"))),
+    };
+  }
   save(run) { atomicWrite(this.manifest(run.id), jsonBytes(run)); }
   begin(sourceFile, baseRevision, summary, geometryIds) {
     const run = { id: randomUUID(), sourceFile, baseRevision, summary: summary || "", geometryIds,

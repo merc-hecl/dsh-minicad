@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { Store, KernelRequired } from "../kernel/store.js";
 import { ProcessJournal } from "../kernel/process.js";
@@ -49,6 +49,7 @@ export function createWorker({
   timeout = 120000,
   spawnProcess = spawn,
 } = {}) {
+  dataDir = resolve(dataDir);
   let queue = Promise.resolve(),
     stopped = false,
     current,
@@ -92,7 +93,7 @@ export function createWorker({
       } else target.kill("SIGTERM");
     });
   }
-  function launch(method, params, signal) {
+  function launch(method, params, signal, directory) {
     return new Promise((resolve, reject) => {
       if (stopped) return reject(new Error("MiniCAD 已关闭"));
       if (signal?.aborted) return reject(new Error("操作已取消"));
@@ -102,6 +103,7 @@ export function createWorker({
         [script, "--data-dir", dataDir],
         {
           windowsHide: true,
+          ...(directory ? { cwd: directory } : {}),
           stdio: ["pipe", "pipe", "pipe"],
           env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
         },
@@ -156,6 +158,11 @@ export function createWorker({
                 status: response.status,
                 operationIndex: response.operationIndex,
                 operation: response.operation,
+                code: response.code,
+                phase: response.phase,
+                runId: response.runId,
+                validation: response.validation,
+                diagnostics: { ...response.diagnostics, stderr: stderr.trim() },
               }),
             );
           else resolve(response.result);
@@ -200,16 +207,16 @@ export function createWorker({
           if (!(error instanceof KernelRequired)) throw error;
         }
       }
-      const constructs = ["build", "edit", "update_parameters"].includes(method);
+      const constructs = ["build", "edit", "update_parameters", "commit"].includes(method);
+      const location = params.projectId ? await new Store(dataDir, { allowKernel: false }).dispatch("process_location", params) : null;
       if (constructs) {
-        const location = await new Store(dataDir, { allowKernel: false }).dispatch("process_location", params);
         modeling = { projectId: params.projectId, sourceFile: location.sourceFile,
           journal: new ProcessJournal(location.directory, location.sourceFile) };
       }
       try {
         for (let attempt = 0; ; attempt++) {
           try {
-            return await launch(method, params, signal);
+            return await launch(method, params, signal, location?.directory);
           } catch (error) {
             if (
               attempt ||

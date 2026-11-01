@@ -1,4 +1,5 @@
 export const zh = {
+  trialReady: "试算完成，尚未保存版本",
   makingRecord: "制作记录", openInput: "展开输入框", answer: "继续回答", stop: "停止",
   closeRecord: "关闭制作记录", savedVersion: "已保存版本",
   checkpoint: "步骤", processPreview: "过程预览 · 尚未提交", noProcessSteps: "还没有建模步骤",
@@ -155,6 +156,7 @@ export const zh = {
   copied: "已复制",
 };
 export const en = {
+  trialReady: "Trial ready; revision not saved",
   makingRecord: "Making record", openInput: "Open input", answer: "Respond", stop: "Stop",
   closeRecord: "Close record", savedVersion: "Saved version",
   checkpoint: "Step", processPreview: "Process preview · uncommitted", noProcessSteps: "No modeling steps yet",

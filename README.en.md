@@ -8,7 +8,7 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 
 - Natural-language modeling: create, query and edit parametric 3D models through ready-made operations or custom JavaScript with the DSH agent.
 - Geometry measurement and dimensional checks: measure distances, angles, local directional wall thickness and dimensions, and check targets, tolerances or limits.
-- Drawing references: provide PDFs through DSH attachments for the agent to read using host capabilities.
+- Drawing references: provide reference drawings as task files or DSH attachments.
 - Parameter and source editing: adjust model parameters or modify modeling source code through the agent.
 - Model interaction: view models and drawings, annotate selected faces and edges for the agent, or edit local geometry and save revisions.
 - Making record: review modeling steps, compare saved versions, and read the complete native conversation and tool records.
@@ -120,22 +120,47 @@ Configuration overrides replace the entire configuration row. Do not let multipl
 
 ## Modeling interfaces
 
-Agents can choose ready-made structured operations, write custom JavaScript with `cad_build`, or combine both. `cad_build` is a user-defined function (UDF) entry point. Both paths share exact solids, parameters, revisions, failure preservation and exports.
+Agents are encouraged to use `cad_edit` first when existing operations express the geometry directly, batching related changes. Use `cad_build` for algorithms, custom geometry or work the operations cannot express conveniently, and mix both when useful. This is guidance, not a restriction. Both paths share exact solids, parameters, trials, dimensional checks, revisions, failure preservation and exports.
 
 | Tool | Purpose |
 | --- | --- |
 | `cad_read_project` | Read source, parameters, models, revisions and geometry summaries; optional `sourceFile` does not change the UI selection |
 | `cad_build` | Execute custom source; omit `source` to rebuild working files from disk |
 | `cad_edit` | Execute 1–100 sequential operations and commit one revision only if all succeed |
-| `cad_query` | Inspect faces, edges or independent solids and their scoped references |
+| `cad_query` | Inspect faces, edges, solids or cylindrical bore segments (`kind: "holes"`), including axes and through clearance; supports trial candidates |
+| `cad_commit` | Atomically publish an evaluated candidate after checking its base revision, unchanged working files and supplied dimensions |
 | `cad_measure` | Measure geometry in batches without changing the model |
 | `cad_check` | Check measured values against targets and tolerances or limits without changing the model |
 | `cad_update_parameters` | Merge top-level parameters and rebuild by default; `mode: "replace"` replaces the entire parameter object |
-| `cad_api` | Read installed SMLib JavaScript API declarations |
+| `cad_api` | Locate installed declarations by symbol or `Class.member`, with `offset` / `limit` paging |
 | `cad_export` | Export a saved revision of a specified model file |
 | `cad_restore` | Restore a file's historical revision as a new increasing revision |
 
 Read model file names and revisions with `cad_read_project` first. All model tools except reading and API lookup require an explicit task-relative `sourceFile`; mutations, queries, measurements and checks also require that file's `expectedRevision`. Explicit agent targets do not change the UI selection. Revisions are independent per file; new files start at revision 0.
+
+### Trials, checks and publication
+
+`cad_build`, `cad_edit` and `cad_update_parameters` retain direct commits by default. Set `commit: false` to save a candidate and process checkpoints without replacing the saved source, parameters, solid or revision. The result supplies `runId` and current `head`. Pass the same `sourceFile`, `expectedRevision: head` and `runId` to query, measure and check that candidate. Candidate references belong to that candidate, not the saved model.
+
+Publish once with `cad_commit`, supplying `runId`, the original `expectedRevision`, `summary` and complete `checks`. Publication uses the exact candidate without rerunning model code. Candidates persist under `.cad-process/` across restarts; a changed saved revision or working model files requires another trial. Trial mode isolates CAD publication; it does not undo arbitrary filesystem writes made by custom JavaScript.
+
+All modeling commits accept `checks`; failed checks preserve the previous revision. `cad_commit` retains trial checks and adds new ones; an empty list cannot discard failed candidate checks. Correct a check definition by evaluating a new trial. Each check can include `name` and `basis` to record the dimension and its drawing view, annotation and units. Definitions and results persist with the revision and in ZIP `project.json`. `cad_check` is read-only, so supply the complete check list when publishing. A successful build without checks establishes valid geometry, not drawing compliance. Never change a drawing target to the measured value merely to pass a check.
+
+Use `cad.log(...)` or `console.log(...)` for diagnostics. Tool results include logs and checkpoint labels; failures include their phase, operation and source stack. Do not publish test boxes or deliberately throw exceptions to obtain diagnostics.
+
+### Bores and dimensional inspection
+
+`cad_query(kind: "holes")` reports inward cylindrical bore wall segments with axis, diameter, axial span, `closedWall` and `through`. Through clearance requires a complete cylindrical wall and no material intersecting a slightly smaller cylinder along the entire model; `clearanceTolerance` records that margin. Counterbores and stepped bores can contain multiple segments, so segment count is not necessarily independent hole count. Open side cutouts are not complete walls.
+
+Selectors support `radius`, optional `tolerance`, `axisDirection`, `through` and `closedWall`. A face's ordinary `center` is its area centroid; use `axis` or `hole.center` to locate a bore.
+
+- `distance` measures minimum surface separation; `center_distance` measures geometric circle/sphere/cylinder centers or explicit points; `axis_distance` measures the minimum separation of infinite axes. Hole spacing usually calls for axis distance, not wall gap.
+- `coordinate` reads a geometric center's X/Y/Z coordinate; a cylinder center is the midpoint of its wall's axial extent. `span` reads an entity's world-axis bounding size.
+- `count` counts matching `entityKind: "faces" | "edges" | "solids" | "holes"` with an optional selector. Combine diameter, through clearance, axis position and local thickness checks to detect missing bores, side openings and half-depth steps.
+
+`cad_api` accepts `Part.volume`, `Face.axis`, `Sketch.extrude`, etc. Pages default to 6000 characters with a maximum `limit` of 12000; follow `nextOffset` for the same topic/symbol. Primitives are centered by default, whereas an XY profile extrusion extends from its plane. `center` translates geometry; it is not a common alignment rule.
+
+The MiniCAD preset includes the standard DSH filesystem, search, shell, skill and dependency tools. A file @mention is a path reference, not an uploaded PDF page. Read the actual file, render its pages using an available PDF renderer, and read the images with an image-capable model. Do not assume a parser is installed. `cad_read_project.referenceFiles` lists task resources/references; `attachments` represents only MiniCAD's reference catalog, not DSH session attachments.
 
 ### Ready-made operations and custom code
 

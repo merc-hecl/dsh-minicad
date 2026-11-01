@@ -69,7 +69,8 @@ export const ImmersiveDock = forwardRef(function ImmersiveDock({ children, runni
   }, [open, hidden, phase, onHeight]);
   const last = progress?.steps.at(-1);
   const label = phase === "working" && last
-    ? last.label || t(last.operation || "modeling") : t(`island.${phase}`);
+    ? last.label || t(last.operation || "modeling")
+    : phase === "waiting" && progress?.phase === "preview" ? t("trialReady") : t(`island.${phase}`);
   return <>
     <section ref={input} className="mc-bottom mc-native-input" data-open={open && !hidden || undefined} data-instant={!pointerModality() || undefined}
       inert={!open || hidden ? "" : undefined} aria-hidden={!open || hidden}>

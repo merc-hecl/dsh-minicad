@@ -51,7 +51,16 @@ export function atomicWrite(file, value) {
     } finally {
       fs.closeSync(descriptor);
     }
-    fs.renameSync(temporary, file);
+    // Windows readers/scanners can briefly deny replacing a process manifest.
+    // Retry only replacement errors; never replay modeling work.
+    for (let attempt = 0; ; attempt++) {
+      try { fs.renameSync(temporary, file); break; }
+      catch (error) {
+        if (process.platform !== "win32" || attempt >= 3 || !fs.existsSync(file) ||
+          !["EPERM", "EACCES", "EBUSY"].includes(error.code)) throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 * 2 ** attempt);
+      }
+    }
   } finally {
     fs.rmSync(temporary, { force: true });
   }
