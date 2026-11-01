@@ -4,6 +4,7 @@ import { errorKey } from "../shared/errors.js";
 import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
+import { basename } from "node:path";
 export const inject = [
   "connection",
   "sessionController",
@@ -36,11 +37,8 @@ const clientMethods = new Set([
   "restore",
   "export",
   "health",
-  "libraries",
-  "create_library",
-  "rename_library",
-  "move_project",
-  "remove_library",
+  "open_design",
+  "close_design",
 ]);
 
 export async function apply(ctx, config = {}) {
@@ -74,14 +72,18 @@ export async function apply(ctx, config = {}) {
   const projectForSession = async (sessionId) => {
     const p = await call("by_session", { sessionId });
     bySession.set(sessionId, p.id);
-    await alignDirectory(p);
+    await alignDirectory(p, undefined, [sessionId]);
     return p;
   };
-  async function alignDirectory(project, signal) {
-    const agent = ctx.agents.get(project.session_id);
-    if (agent && ctx.workingDirectory.get(agent.session) !== project.workspaceDirectory)
-      await ctx.workingDirectory.set(agent, project.workspaceDirectory, signal);
+  async function alignDirectory(project, signal, sessionIds = [project.activeSessionId]) {
+    for (const sessionId of sessionIds.filter(Boolean)) {
+      const agent = ctx.agents.get(sessionId);
+      if (agent && ctx.workingDirectory.get(agent.session) !== project.workspaceDirectory)
+        await ctx.workingDirectory.set(agent, project.workspaceDirectory, signal);
+    }
   }
+  const sessionRunning = project => project.sessions.some(id => ctx.agents.get(id)?.status === "running");
+  const designBusy = project => active.has(project.id) || sessionRunning(project);
   ctx.provide("minicad", { call, projectForSession });
   ctx.effect(
     () => () => {
@@ -93,22 +95,18 @@ export async function apply(ctx, config = {}) {
   const startup = call("list")
     .then((projects) =>
       projects.forEach((p) => {
-        if (p.session_id) bySession.set(p.session_id, p.id);
+        for (const sessionId of p.sessions) bySession.set(sessionId, p.id);
       }),
     )
     .catch((error) => ctx.logger.warn(`MiniCAD: ${error.message}`));
-  // DSH 0.2.1-rc.5 owns initial-intent title generation and manual title pins.
+  // Conversation titles belong to DSH; they never rename the design document.
   ctx.on("session/event", (session, event) => {
-    const user = event.type === "user/message" && event.data.source.kind === "user";
-    if (event.type !== "session/title" && !user) return;
+    if (event.type !== "user/message" || event.data.source.kind !== "user") return;
     startup.then(async () => {
       const projectId = bySession.get(session.id);
       if (!projectId || disposed) return;
-      if (user) {
-        const text = event.data.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").split("\n\n<minicad-project-context>")[0];
-        await call("message", { projectId, id: `user:${event.seq}`, role: "user", text, created: event.time / 1000 });
-      } else await call("rename", { projectId, title: event.data.title });
-    }).catch((error) => ctx.logger.warn(`MiniCAD title: ${error.message}`));
+      await call("message", { projectId, role: "user" });
+    }).catch(error => ctx.logger.warn(`MiniCAD message: ${error.message}`));
   });
   // Use the supported, checkpointed projection; recover responses after restart.
   // Include native composer submissions from the real Session, never reasoning/tool payloads.
@@ -167,67 +165,82 @@ export async function apply(ctx, config = {}) {
     if (status === "running" && bySession.has(agent.id)) lastError.delete(agent.id);
   });
 
-  async function ensureSession(project) {
-    if (project.session_id) return project;
-    const created = await ctx.sessionController.create({
-      cwd: project.workspaceDirectory,
-      agentPreset: "minicad",
-    });
-    const bound = await call("bind", {
-      projectId: project.id,
-      sessionId: created.sessionId,
-    });
+  async function createSession(project) {
+    const created = await ctx.sessionController.create({ cwd: project.workspaceDirectory, agentPreset: "minicad" });
+    const bound = await call("bind", { projectId: project.id, sessionId: created.sessionId });
     bySession.set(created.sessionId, project.id);
     return bound;
+  }
+  async function ensureSession(project) {
+    for (const sessionId of project.sessions) bySession.set(sessionId, project.id);
+    return project.activeSessionId ? project : createSession(project);
+  }
+  async function relocateDesign(method, args, signal) {
+    const before = await call("get", { projectId: args.projectId, geometry: false });
+    if (designBusy(before)) throw new Error("当前设计正在构建，请稍后重试");
+    active.set(before.id, new AbortController());
+    try {
+      // Resolve cold Sessions while their old workspace still exists. DSH's
+      // durable workingDirectory then survives removal of the original folder.
+      for (const sessionId of before.sessions) {
+        const found = await ctx.sessionController.resolveAgent(sessionId);
+        if (found.error) throw found.error;
+      }
+      if (sessionRunning(before)) throw new Error("当前设计正在构建，请稍后重试");
+      signal?.throwIfAborted();
+      const result = await call(method, { ...args, directoryName: undefined });
+      try { await alignDirectory(result, undefined, before.sessions); }
+      catch (error) {
+        const restored = await call(method, { projectId: before.id, title: before.title,
+          directoryName: basename(before.directory) });
+        await alignDirectory(restored, undefined, before.sessions);
+        throw error;
+      }
+      return result;
+    } finally { active.delete(before.id); }
   }
   async function rpc(method, args, signal) {
     await startup;
     if (method === "edit") {
       const project = await call("get", { projectId: args.projectId, sourceFile: args.sourceFile, geometry: false }, signal);
-      if (active.has(project.id) || ctx.agents.get(project.session_id)?.status === "running")
+      if (designBusy(project))
         throw new Error("当前设计正在构建，请稍后重试");
       return call("edit", { ...args, preserveSelection: true }, signal);
     }
-    if (method === "create") return ensureSession(await call("create", args));
+    if (method === "create" || method === "open_design") return ensureSession(await call(method, args));
+    if (method === "new_session") {
+      const project = await call("get", { projectId: args.projectId, geometry: false });
+      if (active.has(project.id)) throw new Error("当前设计正在构建，请稍后重试");
+      return createSession(project);
+    }
+    if (method === "select_session") {
+      const project = await call("select_session", args);
+      await alignDirectory(project, signal);
+      return project;
+    }
+    if (method === "fork_session") {
+      const project = await call("get", { projectId: args.projectId, geometry: false });
+      if (!project.sessions.includes(args.sessionId)) throw new Error("会话不属于当前设计 / session does not belong to this design");
+      if (active.has(project.id)) throw new Error("当前设计正在构建，请稍后重试");
+      const created = await ctx.sessionController.fork({ sessionId: args.sessionId, increaseTitle: true, allowMigration: false });
+      const bound = await call("bind", { projectId: project.id, sessionId: created.sessionId });
+      bySession.set(created.sessionId, project.id);
+      await alignDirectory(bound, signal);
+      return bound;
+    }
+    if (method === "rename") return relocateDesign(method, args, signal);
     if (method === "fork_project") {
       const source = await call("get", { projectId: args.projectId, geometry: false });
-      if (active.has(source.id) || ctx.agents.get(source.session_id)?.status === "running")
-        throw new Error("当前设计正在构建，请稍后重试");
-      const projection = await ctx.sessionController.projections({ sessionId: args.sessionId }, signal);
-      if (!projection) throw new Error("设计任务不存在");
-      const branch = await call("fork_project", { ...args, title: projection.values?.title || source.title }, signal);
-      bySession.set(branch.session_id, branch.id);
-      await alignDirectory(branch, signal);
-      return branch;
+      if (designBusy(source)) throw new Error("当前设计正在构建，请稍后重试");
+      const branch = await call("fork_project", { projectId: source.id, path: args.path, title: args.title }, signal);
+      return ensureSession(branch);
     }
-    if (method === "remove_library") {
-      const tasks = (await call("list")).filter((project) => project.library_id === args.libraryId);
-      if (tasks.some((project) => active.has(project.id) || ctx.agents.get(project.session_id)?.status === "running"))
-        throw new Error("当前设计正在构建，请稍后重试");
-    }
-    if (method === "discard_empty") {
-      // Session projections are authoritative while the user/message callback is still queued.
-      const project = (await call("list")).find((item) => item.id === args.projectId);
-      if (!project || project.has_messages || project.head) return { discarded: false };
-      if (project.session_id) {
-        const projection = await ctx.sessionController.projections({ sessionId: project.session_id }, signal);
-        const metadata = projection?.values?.sessionListMetadata;
-        if ((projection && metadata?.blank !== true) || metadata?.lastPromptAt != null || projection?.values?.minicadTranscript?.messages.length)
-          return { discarded: false };
-      }
-      if (active.has(project.id) || ctx.agents.get(project.session_id)?.status === "running")
-        return { discarded: false };
-      const result = await call("discard_empty", args, signal);
-      if (result.discarded && project.session_id) {
-        bySession.delete(project.session_id);
-        lastError.delete(project.session_id);
-      }
-      return result;
-    }
-    if (method === "move_project") {
+    if (method === "close_design") {
       const project = await call("get", { projectId: args.projectId, geometry: false });
-      if (active.has(project.id) || ctx.agents.get(project.session_id)?.status === "running")
-        throw new Error("当前设计正在构建，请稍后重试");
+      if (designBusy(project)) throw new Error("当前设计正在构建，请稍后重试");
+      const result = await call("close_design", args);
+      for (const sessionId of project.sessions) { bySession.delete(sessionId); lastError.delete(sessionId); }
+      return result;
     }
     if (method === "models") return ctx.sessionController.modelCatalog();
     if (method === "status") {
@@ -237,30 +250,22 @@ export async function apply(ctx, config = {}) {
         geometry: false,
       });
       if (!inFlight) await alignDirectory(p, signal);
-      const projection = p.session_id
-        ? await ctx.sessionController.projections(
-            { sessionId: p.session_id },
-            signal,
-          )
-        : null;
-      const title = projection?.values?.title || p.title;
-      if (title !== p.title && !inFlight) await call("rename", { projectId: p.id, title });
       return {
         head: p.head,
         sourceVersion: p.sourceVersion,
         workspaceDirectory: p.workspaceDirectory,
         sourceFile: p.sourceFile,
-        title,
+        title: p.title,
+        activeSessionId: p.activeSessionId,
         progress: inFlight ? worker.processState({ projectId: p.id, sourceFile: p.sourceFile })
           : await call("process_state", { projectId: p.id, sourceFile: p.sourceFile }),
         projects: inFlight ? undefined : (await call("list")).map((project) => ({
           ...project,
-          running: ctx.agents.get(project.session_id)?.status === "running" || active.has(project.id),
+          running: designBusy(project),
         })),
         running:
-          ctx.agents.get(p.session_id)?.status === "running" ||
-          active.has(p.id),
-        error: lastError.get(p.session_id) || null,
+          designBusy(p),
+        error: lastError.get(p.activeSessionId) || null,
       };
     }
     if (method === "prompt" || method === "cancel" || method === "model") {
@@ -268,14 +273,14 @@ export async function apply(ctx, config = {}) {
       let p = await call("get", { projectId: args.projectId, geometry: false });
       if (method === "cancel") {
         active.get(p.id)?.abort();
-        if (p.session_id)
-          await ctx.sessionController.cancel({ sessionId: p.session_id });
+        for (const sessionId of p.sessions)
+          if (ctx.agents.get(sessionId)?.status === "running") await ctx.sessionController.cancel({ sessionId });
         return { cancelled: true };
       }
       p = await ensureSession(p);
       if (method === "model") {
         const result = await ctx.sessionController.selectModel({
-          sessionId: p.session_id,
+          sessionId: p.activeSessionId,
           provider: args.provider,
           model: args.model,
           ...(args.reasoningEffort
@@ -293,7 +298,7 @@ export async function apply(ctx, config = {}) {
         throw new Error("请输入不超过 30000 字的需求");
       if (typeof args.requestId !== "string" || args.requestId.length > 100)
         throw new Error("缺少消息标识");
-      lastError.delete(p.session_id);
+      lastError.delete(p.activeSessionId);
       const refs = p.attachments.map(({ id, name, pages }) => ({
         id,
         name,
@@ -308,7 +313,7 @@ export async function apply(ctx, config = {}) {
       const result = await ctx.sessionController.prompt(
         {
           requestId: args.requestId,
-          sessionId: p.session_id,
+          sessionId: p.activeSessionId,
           mode: "queue",
           content,
           clientTimeZone: args.timeZone || "Asia/Shanghai",
@@ -320,12 +325,7 @@ export async function apply(ctx, config = {}) {
     if (!clientMethods.has(method))
       throw Object.assign(new Error("不支持的操作"), { status: 404 });
     const result = await call(method, args, signal);
-    if (method === "get" || method === "move_project") await alignDirectory(result, signal);
-    if (method === "rename" && result.session_id)
-      await ctx.sessionController.rename({
-        sessionId: result.session_id,
-        title: result.title,
-      });
+    if (method === "get") { const project = await ensureSession(result); await alignDirectory(project, signal); return project; }
     return result;
   }
   function route(path, methods, fetch) {

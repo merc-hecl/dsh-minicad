@@ -147,7 +147,7 @@ test("bore inspection separates blind holes, open side cuts and external cylindr
   counterbore.dispose();
 });
 
-test("candidate resources remain portable across restart and workspace move, and changed inputs block publication", { timeout: 60000 }, () => setup(async (worker, root) => {
+test("candidate resources remain portable across restart and workspace rename, and changed inputs block publication", { timeout: 60000 }, () => setup(async (worker, root) => {
   const task = await worker.call("create");
   await mkdir(join(task.directory, "resources"));
   const resource = cad.toSmb(cad.Box(2, 3, 4));
@@ -160,10 +160,7 @@ test("candidate resources remain portable across restart and workspace move, and
   await worker.dispose();
   const resumed = createWorker({ dataDir: root });
   try {
-    const destination = join(root, "moved-library");
-    await mkdir(destination);
-    const library = await resumed.call("create_library", { path: destination });
-    const moved = await resumed.call("move_project", { projectId: task.id, libraryId: library.id });
+    const moved = await resumed.call("rename", { projectId: task.id, title: "renamed-workspace" });
     const candidate = { ...target, runId: trial.runId };
     near((await resumed.call("measure", { ...candidate, measurements: [{ kind: "volume" }] })).items[0].value, 24);
     await writeFile(join(moved.directory, "resources", "input.smb"), cad.toSmb(cad.Box(5, 6, 7)));

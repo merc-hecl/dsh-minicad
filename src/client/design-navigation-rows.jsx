@@ -1,6 +1,6 @@
 // Adapted from DeepSeek Harness 0.2.1-rc.5 ui-workspace/src/client/rows/Rows.js.
 // Copyright DeepSeek. MIT; see docs/licenses/dsh-workspace-MIT.txt.
-// Library/task row presentation, scoped styles and navigation labels.
+// Native row presentation, scoped styles and navigation labels.
 import * as react from "react";
 import * as react_jsx_runtime from "react/jsx-runtime";
 import * as _deepseek_ai_dsh_client_ui_primitives from "@deepseek-ai/dsh-client-ui-primitives";
@@ -508,7 +508,7 @@ function ProjectRowItem({ group, containsCurrentDescendant = false, onToggle, on
 		label: t("delete.workspace"),
 		icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutlineRegular, {}),
 		danger: true
-	}];
+	}, ...(actions?.items || [])];
 	const ownRow = (0, react_jsx_runtime.jsxs)("div", {
 		className: clsx(Rows_module_css_default.projectRow, menuOpen && Rows_module_css_default.menuOpen),
 		"data-row-key": `workspace:${group.key}`,
@@ -549,7 +549,8 @@ function ProjectRowItem({ group, containsCurrentDescendant = false, onToggle, on
 					onSelect: (id) => {
 						setMenuOpen(false);
 						if (id === "rename") actions.rename();
-						if (id === "delete") actions.delete();
+						else if (id === "delete") actions.delete();
+						else actions.select?.(id);
 					},
 					portal: true,
 					closeOnPointerLeave: true,
@@ -590,7 +591,7 @@ function ProjectRowItem({ group, containsCurrentDescendant = false, onToggle, on
 		anchor: ownRow,
 		content: (0, react_jsx_runtime.jsx)(WorkspaceHoverContent, {
 			label: row.label,
-			cwd: row.cwd,
+			cwd: row.cwd === void 0 ? void 0 : row.cwd,
 			createdAt: row.createdAt,
 			t
 		}),
@@ -845,4 +846,4 @@ function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest, render
 	});
 }
 
-export {ProjectRowItem as LibraryRow, SessionNodeItem as TaskRow};
+export { ProjectRowItem as DesignFolderRow, SessionNodeItem as TaskRow };

@@ -2,6 +2,7 @@ import { defaultIdFormats, validateIdFormats } from "../shared/geometry-ids.js";
 import fs from "node:fs";
 import {
   basename,
+  dirname,
   extname,
   isAbsolute,
   join,
@@ -68,13 +69,14 @@ function paths(root, name) {
     base = stem(source);
   return [source, `${base}.parameters.json`, `${base}.smb`];
 }
-function availableDirectory(root, title) {
+function availableDirectory(root, title, current) {
   let name = cleanName(title).slice(0, 80);
   if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(name))
     name = `_${name}`;
   let target = inside(root, name),
     number = 2;
-  while (fs.existsSync(target)) target = inside(root, `${name}-${number++}`);
+  const same = path => process.platform === "win32" ? path.toLowerCase() === current?.toLowerCase() : path === current;
+  while (fs.existsSync(target) && !same(target)) target = inside(root, `${name}-${number++}`);
   return target;
 }
 function entries(root) {
@@ -95,38 +97,65 @@ export class Store {
       return kernel();
     };
     fs.mkdirSync(this.root, { recursive: true });
-    this.registry = join(this.root, "libraries.json");
+    this.registry = join(this.root, "designs.json");
     this.journal = join(this.root, "pending-files.json");
     this.recover();
-    if (!fs.existsSync(this.registry)) {
-      this.write(this.registry, jsonBytes({ version: 1, paths: [] }));
-      const folder = join(this.root, "default");
-      fs.mkdirSync(folder, { recursive: true });
-      this.openLibrary(folder, "");
-    }
+    if (!fs.existsSync(this.registry)) this.migrateDesigns();
   }
+  designFile(root) { return join(root, ".cad-design.json"); }
+  workspaceBytes(data) { return jsonBytes(Object.values(data.projects)[0]); }
+  migrateDesigns() {
+    const legacy = join(this.root, "libraries.json"), paths = [], changes = new Map();
+    if (fs.existsSync(legacy)) for (const root of readJson(legacy).paths.filter(path => fs.existsSync(path))) {
+      const library = readJson(join(root, "minicad.json"));
+      if (![2, 3].includes(library.version) || !library.projects) throw new Error("已有设计数据需要迁移为项目文件");
+      for (const old of Object.values(library.projects)) {
+        const directory = inside(root, old.directory);
+        const task = { ...old, version: 1,
+          sessions: old.sessions || (old.session_id ? [old.session_id] : []),
+          activeSessionId: old.activeSessionId || old.session_id || null };
+        delete task.directory; delete task.session_id;
+        const file = this.designFile(directory);
+        if (fs.existsSync(file)) {
+          if (readJson(file).id !== task.id) throw new Error(`设计元数据冲突 / design metadata conflict: ${file}`);
+        } else changes.set(file, jsonBytes(task));
+        paths.push(directory);
+      }
+    }
+    changes.set(this.registry, jsonBytes({ version: 1, paths: [...new Set(paths)] }));
+    this.commit(changes);
+  }
+
   recover() {
     if (!fs.existsSync(this.journal)) return;
     const pending = readJson(this.journal);
-    if (pending.phase !== "committed")
+    if (pending.phase !== "committed") {
+      for (const move of (pending.moves || []).toReversed())
+        if (fs.existsSync(move.to) && (!fs.existsSync(move.from) ||
+          (process.platform === "win32" && move.from !== move.to && move.from.toLowerCase() === move.to.toLowerCase())))
+          fs.renameSync(move.to, move.from);
       for (const item of pending.files.reverse())
         atomicWrite(
-          item.path,
+          item.rollbackPath || item.path,
           item.before === null ? null : Buffer.from(item.before, "base64"),
         );
+    }
     fs.unlinkSync(this.journal);
   }
-  commit(changes) {
+  commit(changes, moves = []) {
     this.recover();
     const pending = {
       phase: "prepared",
-      files: [...changes].map(([path]) => ({
-        path,
-        before: fileBytes(path)?.toString("base64") ?? null,
-      })),
+      moves,
+      files: [...changes].map(([path]) => {
+        const move = moves.find(move => { const rel = relative(move.to, path); return rel && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel); });
+        const rollbackPath = move ? join(move.from, relative(move.to, path)) : path;
+        return { path, rollbackPath, before: fileBytes(rollbackPath)?.toString("base64") ?? null };
+      }),
     };
     this.write(this.journal, jsonBytes(pending));
     try {
+      for (const move of moves) fs.renameSync(move.from, move.to);
       for (const [path, bytes] of changes) this.write(path, bytes);
       pending.phase = "committed";
       this.write(this.journal, jsonBytes(pending));
@@ -141,101 +170,51 @@ export class Store {
     return readJson(this.registry).paths.map((p) => resolve(p));
   }
   readWorkspace(root) {
-    const data = readJson(join(root, "minicad.json"));
-    if (
-      data.version !== 2 ||
-      !data.projects ||
-      typeof data.projects !== "object"
-    )
-      throw new Error("设计库元数据无效");
-    return data;
+    const task = readJson(this.designFile(root));
+    if (task.version !== 1 || !task.id || !task.models || !Array.isArray(task.sessions))
+      throw new Error("设计元数据无效 / invalid design metadata");
+    return { id: task.id, updated: task.updated, projects: { [task.id]: task } };
   }
   workspaces() {
-    return this.registered()
-      .filter((p) => fs.existsSync(p))
-      .map((p) => [p, this.readWorkspace(p)]);
-  }
-  findLibrary(key) {
-    const found = this.workspaces().find(([, data]) => data.id === key);
-    if (!found) throw new Error("设计库不存在");
-    return found;
-  }
-  libraryInfo(root, data) {
-    return {
-      id: data.id,
-      title: data.title,
-      path: root,
-      created: data.created,
-      updated: data.updated,
-    };
+    return this.registered().filter(path => fs.existsSync(path)).map(root => [root, this.readWorkspace(root)]);
   }
   locate(key) {
     for (const [root, data] of this.workspaces())
-      if (Object.hasOwn(data.projects, key))
-        return [root, data, data.projects[key]];
+      if (Object.hasOwn(data.projects, key)) return [root, data, data.projects[key]];
     throw new Error("设计任务不存在");
   }
-  taskRoot(root, task) {
-    return inside(root, task.directory);
-  }
+  taskRoot(root) { return root; }
   row(root, data, task) {
     const model = task.models[task.sourceFile] || {};
-    return {
-      id: task.id,
-      title: task.title,
-      library_id: data.id,
-      session_id: task.session_id,
-      head: model.head || 0,
-      created: task.created,
-      updated: Math.max(task.updated, model.updated || 0),
-      directory: this.taskRoot(root, task),
-      sourceFile: task.sourceFile,
-      has_messages: Boolean(task.started),
-    };
+    return { id: task.id, title: task.title, activeSessionId: task.activeSessionId, sessions: task.sessions,
+      head: model.head || 0, created: task.created, updated: Math.max(task.updated, model.updated || 0),
+      directory: root, sourceFile: task.sourceFile, has_messages: Boolean(task.started) };
   }
-  saveWorkspace(root, data) {
-    data.updated = now();
-    this.write(join(root, "minicad.json"), jsonBytes(data));
+  saveWorkspace(root, data) { this.write(this.designFile(root), this.workspaceBytes(data)); }
+  managedDirectory(title) {
+    const parent = join(this.root, "designs");
+    fs.mkdirSync(parent, { recursive: true });
+    const target = availableDirectory(parent, title || "未命名设计");
+    fs.mkdirSync(target);
+    return target;
   }
-  openLibrary(path, title) {
-    if (!isAbsolute(path)) throw new Error("请选择设计库文件夹");
-    let root;
-    try {
-      root = fs.realpathSync(path);
-      if (!fs.statSync(root).isDirectory()) throw new Error();
-    } catch {
-      throw new Error("设计库文件夹不存在或无法访问");
-    }
+  openDesign(path, title) {
+    if (typeof path !== "string" || !isAbsolute(path)) throw new Error("请选择设计工作文件夹 / choose a design workspace folder");
+    const root = fs.realpathSync(path);
+    if (!fs.statSync(root).isDirectory()) throw new Error("设计工作文件夹不存在 / design workspace folder does not exist");
     const known = this.registered();
-    if (known.includes(root))
-      return this.libraryInfo(root, this.readWorkspace(root));
-    const time = now(),
-      data = fs.existsSync(join(root, "minicad.json"))
-        ? this.readWorkspace(root)
-        : {
-            version: 2,
-            id: id(),
-            title: title ?? basename(root),
-            created: time,
-            updated: time,
-            projects: {},
-          };
-    if (this.workspaces().some(([, other]) => other.id === data.id)) {
-      data.id = id();
-      data.projects = Object.fromEntries(
-        Object.values(data.projects).map((task) => {
-          const key = id();
-          return [key, { ...task, id: key, session_id: null }];
-        }),
-      );
+    if (known.includes(root)) return this.project(Object.values(this.readWorkspace(root).projects)[0].id, false);
+    const file = this.designFile(root), time = now();
+    const task = fs.existsSync(file) ? Object.values(this.readWorkspace(root).projects)[0] : {
+      version: 1, id: id(), title: title || basename(root), created: time, updated: time,
+      models: {}, sourceFile: "model.js", sessions: [], activeSessionId: null, started: false, attachments: [],
+    };
+    if (this.workspaces().some(([, other]) => other.id === task.id)) {
+      task.id = id(); task.sessions = []; task.activeSessionId = null;
     }
-    this.commit(
-      new Map([
-        [join(root, "minicad.json"), jsonBytes(data)],
-        [this.registry, jsonBytes({ version: 1, paths: [...known, root] })],
-      ]),
-    );
-    return this.libraryInfo(root, data);
+    this.commit(new Map([[file, jsonBytes(task)],
+      [this.registry, jsonBytes({ version: 1, paths: [...known, root] })]]));
+    return this.project(task.id, false);
   }
   cacheSummary(folder, state, stamp) {
     try {
@@ -454,7 +433,7 @@ export class Store {
       changes.set(target, bytes);
       changes.set(inside(folder, name), bytes);
     }
-    changes.set(join(root, "minicad.json"), jsonBytes(data));
+    changes.set(this.designFile(root), this.workspaceBytes(data));
     for (const [path, bytes] of extraFiles) changes.set(path, bytes);
     this.commit(changes);
     this.cacheSummary(folder, state);
@@ -726,105 +705,19 @@ export class Store {
           ),
         )
         .sort((a, b) => b.updated - a.updated);
-    if (method === "libraries")
-      return this.workspaces().map(([root, data]) =>
-        this.libraryInfo(root, data),
-      );
-    if (method === "create_library") {
-      if (typeof args.path !== "string" || !args.path.trim())
-        throw new Error("请选择设计库文件夹");
-      return this.openLibrary(args.path);
-    }
-    if (method === "rename_library") {
-      const [root, data] = this.findLibrary(args.libraryId),
-        title = String(args.title || "")
-          .trim()
-          .slice(0, 100);
-      if (!title) throw new Error("请输入设计库名称");
-      data.title = title;
-      this.saveWorkspace(root, data);
-      return this.libraryInfo(root, data);
-    }
-    if (method === "remove_library") {
-      const [root] = this.findLibrary(args.libraryId);
-      this.commit(
-        new Map([
-          [
-            this.registry,
-            jsonBytes({
-              version: 1,
-              paths: this.registered().filter((p) => p !== root),
-            }),
-          ],
-        ]),
-      );
-      return { removed: true };
-    }
-    if (method === "create") {
-      const libraries = await this.dispatch("libraries"),
-        [root, data] = this.findLibrary(args.libraryId || libraries[0]?.id),
-        key = id(),
-        time = now();
-      const title = String(args.title || "未命名设计")
-          .trim()
-          .slice(0, 100),
-        directory = availableDirectory(root, title),
-        sourceFile = portable(
-          relative(
-            directory,
-            modelPath(directory, args.sourceFile || "model.js"),
-          ),
-        );
-      fs.mkdirSync(directory);
-      data.projects[key] = {
-        id: key,
-        title,
-        directory: basename(directory),
-        models: {},
-        session_id: null,
-        sourceFile,
-        created: time,
-        updated: time,
-        started: false,
-        attachments: [],
-      };
-      this.saveWorkspace(root, data);
-      return this.project(key);
+    if (method === "open_design") return this.openDesign(args.path);
+    if (method === "create") return this.openDesign(args.path || this.managedDirectory(args.title), args.title);
+    if (method === "close_design") {
+      const [root] = this.locate(args.projectId);
+      this.commit(new Map([[this.registry, jsonBytes({ version: 1, paths: this.registered().filter(path => path !== root) })]]));
+      return { closed: true };
     }
     if (method === "by_session") {
       for (const [, data] of this.workspaces())
         for (const task of Object.values(data.projects))
-          if (task.session_id === args.sessionId)
+          if (task.sessions.includes(args.sessionId))
             return this.project(task.id, false);
       throw new Error("当前会话未绑定 MiniCAD 设计任务");
-    }
-    if (method === "discard_empty") {
-      const found = (await this.dispatch("list")).find(
-        (p) => p.id === args.projectId,
-      );
-      if (!found) return { discarded: false };
-      const [root, data, task] = this.locate(found.id);
-      if (
-        task.started ||
-        Object.keys(task.models).length ||
-        task.attachments?.length ||
-        task.messages?.length
-      )
-        return { discarded: false };
-      const directory = this.taskRoot(root, task);
-      try {
-        fs.rmdirSync(directory);
-      } catch (error) {
-        if (error.code !== "ENOENT") return { discarded: false };
-      }
-      delete data.projects[task.id];
-      try {
-        this.saveWorkspace(root, data);
-      } catch (error) {
-        fs.mkdirSync(directory, { recursive: true });
-        throw error;
-      }
-      return { discarded: true };
     }
     const key = String(args.projectId),
       [root, data, task] = this.locate(key),
@@ -1001,74 +894,28 @@ export class Store {
       return this.project(key, args.geometry !== false, sourceFile);
     }
     if (method === "export") return this.export(key, { ...args, sourceFile });
-    if (method === "fork_project" || method === "move_project") {
-      if (
-        method === "fork_project" &&
-        (await this.dispatch("list")).some(
-          (p) => p.session_id === args.sessionId,
-        )
-      )
-        throw new Conflict("任务已绑定另一个会话");
-      const [destination, other] =
-        method === "fork_project"
-          ? [root, data]
-          : this.findLibrary(args.libraryId);
-      if (method === "move_project" && destination === root)
-        return this.project(key, false);
-      if (method === "move_project" && other.projects[key])
-        throw new Error("目标任务已存在");
-      const target = availableDirectory(
-        destination,
-        method === "fork_project"
-          ? args.title || task.title
-          : basename(directory),
-      );
-      if (
-        !relative(directory, target).startsWith("..") ||
-        !relative(target, directory).startsWith("..")
-      )
+    if (method === "fork_project") {
+      if (args.sessionId && (await this.dispatch("list")).some(project => project.sessions.includes(args.sessionId)))
+        throw new Conflict("会话已绑定另一个设计");
+      const target = args.path ? fs.realpathSync(args.path) : this.managedDirectory(args.title || task.title);
+      if (!fs.statSync(target).isDirectory() || fs.readdirSync(target).length)
+        throw new Error("另存为需要一个空文件夹 / save as requires an empty folder");
+      if (!relative(directory, target).startsWith("..") || !relative(target, directory).startsWith(".."))
         throw new Error("任务目录无法安全迁移");
-      const all = entries(directory),
-        changes = new Map();
-      fs.mkdirSync(target);
+      const all = entries(directory).filter(entry => !relative(directory, entry.path).split(sep).includes(".cad-process"));
+      const changes = new Map();
       for (const entry of all) {
         const path = join(target, relative(directory, entry.path));
         if (entry.directory) fs.mkdirSync(path, { recursive: true });
         else changes.set(path, fs.readFileSync(entry.path));
       }
-      const branch = structuredClone(task),
-        branchKey = method === "fork_project" ? id() : key;
-      branch.id = branchKey;
-      branch.directory = basename(target);
-      branch.updated = now();
-      if (method === "fork_project") {
-        branch.session_id = String(args.sessionId);
-        branch.created = now();
-        branch.title = String(args.title || task.title).slice(0, 100);
-      } else {
-        delete data.projects[key];
-        for (const entry of all.filter((e) => !e.directory))
-          changes.set(entry.path, null);
-      }
-      other.projects[branchKey] = branch;
-      data.updated = other.updated = now();
-      changes.set(join(root, "minicad.json"), jsonBytes(data));
-      changes.set(join(destination, "minicad.json"), jsonBytes(other));
+      const branch = { ...structuredClone(task), id: id(), title: args.title || basename(target),
+        sessions: args.sessionId ? [args.sessionId] : [], activeSessionId: args.sessionId || null,
+        created: now(), updated: now() };
+      changes.set(this.designFile(target), jsonBytes(branch));
+      changes.set(this.registry, jsonBytes({ version: 1, paths: [...this.registered(), target] }));
       this.commit(changes);
-      if (method === "move_project")
-        for (const path of [
-          ...all
-            .filter((e) => e.directory)
-            .map((e) => e.path)
-            .sort((a, b) => b.length - a.length),
-          directory,
-        ])
-          try {
-            fs.rmdirSync(path);
-          } catch {
-            /* Keep files added by external editors. */
-          }
-      return this.project(branchKey);
+      return this.project(branch.id, false);
     }
     if (method === "attach") {
       const content = Buffer.from(args.data, "base64");
@@ -1094,7 +941,7 @@ export class Store {
       this.commit(
         new Map([
           [target, content],
-          [join(root, "minicad.json"), jsonBytes(data)],
+          [this.designFile(root), this.workspaceBytes(data)],
         ]),
       );
       return this.project(key, false);
@@ -1115,16 +962,30 @@ export class Store {
         .trim()
         .slice(0, 100);
       if (!title) throw new Error("请输入设计名称");
-      task.title = title;
+      const parent = dirname(root), target = availableDirectory(parent, args.directoryName || title, root);
+      // Check the absolute source and destination before moving the workspace.
+      const settingsRelative = relative(root, this.root);
+      if (parent === root || dirname(target) !== parent || !settingsRelative ||
+          (!settingsRelative.startsWith(`..${sep}`) && settingsRelative !== ".." && !isAbsolute(settingsRelative)))
+        throw new Error("任务目录无法安全迁移");
+      task.title = title; task.updated = now();
+      const known = this.registered();
+      this.commit(new Map([[this.designFile(target), this.workspaceBytes(data)],
+        [this.registry, jsonBytes({ version: 1, paths: known.map(path => path === root ? target : path) })]]),
+        target === root ? [] : [{ from: root, to: target }]);
+      return this.project(key, false);
     } else if (method === "bind") {
       if (
-        (task.session_id && task.session_id !== args.sessionId) ||
         (await this.dispatch("list")).some(
-          (p) => p.id !== key && p.session_id === args.sessionId,
+          (p) => p.id !== key && p.sessions.includes(args.sessionId),
         )
       )
-        throw new Conflict("任务已绑定另一个会话");
-      task.session_id = args.sessionId;
+        throw new Conflict("会话已绑定另一个设计");
+      if (!task.sessions.includes(args.sessionId)) task.sessions.push(args.sessionId);
+      task.activeSessionId = args.sessionId;
+    } else if (method === "select_session") {
+      if (!task.sessions.includes(args.sessionId)) throw new Error("会话不属于当前设计 / session does not belong to this design");
+      task.activeSessionId = args.sessionId;
     } else if (method === "model_selection")
       task.model_selection = args.selection;
     else if (method === "message") task.started ||= args.role === "user";

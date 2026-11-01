@@ -12,7 +12,7 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 - Parameter and source editing: adjust model parameters or modify modeling source code through the agent.
 - Model interaction: view models and drawings, annotate selected faces and edges for the agent, or edit local geometry and save revisions.
 - Making record: review modeling steps, compare saved versions, and read the complete native conversation and tool records.
-- Library and task management: organize part-design tasks in libraries, each with its own conversation, modeling resources, and revision history.
+- Designs and conversations: each design has its own workspace, with multiple conversations sharing modeling resources and revision history.
 - Export: STEP, STL, and editable project ZIP files.
 
 ## Local installation
@@ -57,9 +57,9 @@ npm pack --pack-destination dist
 
 ## Usage
 
-1. Click the folder button in the library header and choose a design directory through DSH's folder picker. The library takes the directory's name. Create part-design tasks in it and describe dimensions, units, features, and constraints. Add files through DSH's native composer. Each task has its own DSH session; the host generates its title from the initial intent, and you can rename it manually. When no designs exist, the workbench prepares a blank task in the default library and its DSH session on first open.
+1. Click **Open or create design** in the design header and select or create a workspace through DSH's folder picker. That folder is the design root. Opening it for the first time uses its name for the design and creates the first DSH conversation. Describe dimensions, units, features and constraints, and add files through DSH's native composer.
 2. Select a model already configured in DSH. MiniCAD does not store separate model credentials.
-3. Each task uses its own subfolder in the library as its working directory and starts empty. The agent reads the task's modeling file and current revision, then calls modeling tools. The canvas updates from valid geometry checkpoints during construction and displays the saved model after a successful build.
+3. The sidebar follows Folder → Conversation, with each folder representing one design workspace. Use the new-conversation button beside a folder to start another modification, and click its conversation rows to switch. Conversations in the same design share its workspace, models, parameters and revision history; each has its own chat context. The agent reads design files and the current revision, then calls modeling tools. The canvas updates from valid geometry checkpoints during construction and displays the saved model after a successful build.
 4. Edit values in the parameter panel or modify modeling source code through the agent. Saving rebuilds the model and validates solid geometry.
 5. Export the current revision or restore a previous one. Restoring creates a new revision with an increasing number, preventing stale requests from overwriting newer state.
 
@@ -69,7 +69,7 @@ Open **Making record** in the header to review the model in an independently fra
 
 `cad_edit` automatically records checkpoints after valid solid operations. Custom `cad_build` code can call `cad.checkpoint(part, "step label")` at meaningful stages; it returns the same part. Without explicit calls, only the final result is checkpointed. Checkpoints require valid closed solids with positive volume and do not commit revisions. Final validation and saving create a new revision. Fast consecutive operations may appear together at the next canvas refresh; recorded checkpoints remain selectable for review.
 
-The sidebar follows Library → Part-design task. Create or rename libraries, use a task's menu to rename it, move it to another library, or view the current task's reference drawings, and find tasks through search and sorting.
+Like DSH's main interface, the sidebar groups conversations under collapsible workspace folders. Design names are independent of DSH conversation titles; generated or edited conversation titles never rename a design. The folder menu offers design rename, save as, references and removal. Conversation rows reuse DSH rename, pin, archive and fork actions; a forked conversation continues to share the same design files. Removing a design closes its list entry and keeps files and conversations; reopen its workspace to restore it.
 
 The agent should ask for clarification when dimensions are incomplete or multiple views do not uniquely determine the geometry. Geometric validity checks do not establish structural strength, manufacturability, or complete dimensional correctness.
 
@@ -87,13 +87,13 @@ The settings icon in the header edits face and edge ID formats. Defaults are `F-
 
 ## Storage and runtime boundaries
 
-Files follow Library / Design task / Modeling resources. Each task uses an ordinary subfolder named after its initial title, adding a number when the name already exists. Later title changes leave the folder name unchanged. Source, parameters, and solids live inside the task, for example `plate/model.js`, `plate/model.parameters.json`, and `plate/model.smb`. Task-relative paths such as `parts/plate.js` are also supported. Edit source and parameters in an external editor; the next read or build uses the files on disk. Models and revisions are independent between tasks.
+Each design directly owns an ordinary workspace folder, for example `plate/model.js`, `plate/model.parameters.json` and `plate/model.smb`; no parent library is required. Design-relative paths such as `parts/plate.js` are also supported. Edit source and parameters in an external editor; the next read or build uses the files on disk. Models and revisions are independent between designs, while conversations in one design share those files with revision checks protecting newer state.
 
-The library's `minicad.json` stores task folders, session bindings, selected modeling files, and revision records. Each task's `.cad-history/<source path without extension>/v0001/` folders preserve successful builds with source, parameters, SMLib solids, and preview snapshots. Reference PDFs live in that task's `references/` folder. Copy the entire library to take models and history with you, then reopen it through the folder picker. DSH's native sessions store conversations. The frontend list shows Library → Part-design task.
+The workspace's `.cad-design.json` stores its name, conversation bindings, selected model file and revision records. Its `.cad-history/<source path without extension>/v0001/` folders preserve successful builds with source, parameters, SMLib solids and preview snapshots. Reference PDFs live in `references/`. Copy the complete design folder to take models and history with you; DSH still stores native chats. **Save as design** copies working files and revision history into a selected empty folder and starts an independent conversation. Uncommitted trials are not copied.
 
-Moving a task to another library moves its entire folder, including source files, references, and history. If the destination already has a folder with that name, a number is appended to avoid overwriting it. Renaming a library changes its display name and leaves the disk folder name unchanged.
+Renaming a design renames its workspace folder and updates the working directory of every associated conversation. Existing destination names receive a numeric suffix instead of being overwritten. Renaming is unavailable while a conversation or build is running; existing processes are not forcibly moved. Failed moves or directory updates roll back to the original location.
 
-Paths of opened directories are stored in `$DSH_HOME/storages/minicad/libraries.json`, or `~/.dsh/storages/minicad/libraries.json` when DSH_HOME is unset. The default library uses the adjacent `default/` directory. Set `dataDir` to override this settings directory.
+Opened design paths are stored in `$DSH_HOME/storages/minicad/designs.json`, or `~/.dsh/storages/minicad/designs.json` when DSH_HOME is unset. Set `dataDir` to override this settings directory. On first startup, legacy `libraries.json` and library `minicad.json` records migrate to independent designs without moving existing folders or changing models, history or conversation bindings. Legacy indexes remain untouched; each migrated design appears as a workspace folder with its associated conversations underneath.
 
 Directory, status and saved-preview reads run in the host without starting a modeling process or loading SMLib. An isolated process is started only for real geometry calculations or legacy-preview refresh. Modeling writes share one serial queue; published process status and previews can be read during construction. Each revision's `summary.json` is a rebuildable read cache without meshes or views; deleting or corrupting it does not delete models or change revisions. Imported-resource fingerprints are computed in chunks instead of loading entire files into memory.
 

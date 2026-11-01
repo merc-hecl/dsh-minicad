@@ -70,12 +70,14 @@ export function apply(ctx) {
         children: {
           "minicad.composer": { kind: "single", scope: "session" },
           "minicad.directoryFlow": { kind: "single", scope: "root" },
-          "minicad.task.menu": { kind: "list", scope: "root", inject: { hooks: {
+          "minicad.session.menu": { kind: "list", scope: "root", inject: { hooks: {
             menuOpenState: (_standard, state) => () => state,
             shortcuts: ctx.shortcuts.catalog,
           } } },
-          "minicad.task.rowActions": { kind: "list", scope: "root" },
-          "minicad.task.renameDialog": { kind: "single", scope: "root" },
+          "minicad.session.rowActions": { kind: "list", scope: "root" },
+          "minicad.session.leading": { kind: "list", scope: "root" },
+          "minicad.session.hover": { kind: "list", scope: "root" },
+          "minicad.session.renameDialog": { kind: "single", scope: "root" },
         },
       },
       ({ SessionProvider, renderSlot }) => (
@@ -93,13 +95,12 @@ export function apply(ctx) {
           SessionProvider={SessionProvider}
           renderSlot={renderSlot}
           retainSession={(id) => ctx.sessions.retain(id, { source: "minicad" })}
-          workspaceCatalog={{ subscribe: (listener) => ctx.workspaces.list.subscribe(listener), getSnapshot: () => ctx.workspaces.list.getSnapshot() }}
-          forkTask={(project) => new Promise((resolve, reject) => {
-            if (project.running) { reject(new Error(t("buildBusy"))); return; }
-            ctx.uiWorkspace.forkSession(project.session_id, (childId) => {
-              request("fork_project", { projectId: project.id, sessionId: childId }).then(resolve, reject);
-            }, { allowMigration: false }).catch(reject);
-          })}
+          sessionCatalog={{ subscribe: listener => ctx.sessions.list.subscribe(listener), getSnapshot: () => ctx.sessions.list.getSnapshot() }}
+          workspaceCatalog={{ subscribe: listener => ctx.workspaces.list.subscribe(listener), getSnapshot: () => ctx.workspaces.list.getSnapshot() }}
+          renameConversation={async (sessionId, title) => {
+            const result = await ctx.sessions.using(sessionId, { source: "workspaceOperation" }, reference => reference.binding.session.rename(title));
+            if (!result.ok) throw new Error(result.error.message);
+          }}
         />
         </React.Suspense>
       ),
@@ -108,34 +109,36 @@ export function apply(ctx) {
   ctx.slots.inject("minicad.composer", () =>
     ctx.slots.register({ name: "minicad.composer" }, Composer),
   );
-  // Reuse the installed action components, their injected behavior, shortcuts and dialogs.
-  // Only fork and rename bridge back to MiniCAD's task selection and independent files.
-  const mirror = (target, source, select, adapt) => ctx.slots.inject(target, () => {
-    let entries = [], disposers = [];
-    const sync = () => {
-      const next = ctx.slots.entriesOfSlot(source).filter(select);
-      if (next.length === entries.length && next.every((entry, index) => entry === entries[index])) return;
-      disposers.forEach((dispose) => dispose());
-      entries = next;
-      disposers = next.map((entry, index) => {
-        const Component = entry.component;
-        return ctx.slots.register({ name: target, id: `action-${index}`, order: index, inject: entry.inject, locale: entry.locale },
-          (props) => <Component {...props} {...adapt(props)} />);
-      });
-    };
-    const unsubscribe = ctx.slots.subscribe(source, sync);
-    sync();
-    return () => { unsubscribe(); disposers.forEach((dispose) => dispose()); };
-  });
-  mirror("minicad.task.menu", "sidebar.workspaces.session.menu.item", () => true, (props) => ({
-    forkSession: props.onForkTask,
-    requestSessionRename: props.onRenameTask,
+  // Native session actions keep their own pin/archive behavior and dialogs.
+  // MiniCAD redirects only rename requests and fork placement into this workspace.
+  const mirror = (target, source, select = () => true, adapt = () => ({})) => {
+    return ctx.slots.inject(target, () => {
+      let entries = [], disposers = [];
+      const sync = () => {
+        const next = ctx.slots.entriesOfSlot(source).filter(select);
+        if (next.length === entries.length && next.every((entry, index) => entry === entries[index])) return;
+        disposers.forEach(dispose => dispose());
+        entries = next;
+        disposers = next.map((entry, index) => {
+          const Component = entry.component;
+          return ctx.slots.register({ name: target, id: `action-${index}`, order: index,
+            inject: entry.inject, locale: entry.locale, store: entry.store }, props => <Component {...props} {...adapt(props)} />);
+        });
+      };
+      const unsubscribe = ctx.slots.subscribe(source, sync);
+      sync();
+      return () => { unsubscribe(); disposers.forEach(dispose => dispose()); };
+    });
+  };
+  mirror("minicad.session.menu", "sidebar.workspaces.session.menu.item", undefined, props => ({
+    requestSessionRename: props.onRenameSession, forkSession: props.onForkSession,
   }));
-  mirror("minicad.task.rowActions", "sidebar.workspaces.session.row.action", () => true, () => ({}));
-  mirror("minicad.task.renameDialog", "shell.overlay", (entry) => entry.component.name === "SessionRenameDialog", (props) => ({
-    useRenameRequest: (select) => select(props.renameTarget),
-    settleSessionRename: props.onSettleRename,
-    renameSession: props.onRenameTask,
+  mirror("minicad.session.rowActions", "sidebar.workspaces.session.row.action");
+  mirror("minicad.session.leading", "sidebar.session.row.leading");
+  mirror("minicad.session.hover", "sidebar.session.row.hover");
+  mirror("minicad.session.renameDialog", "shell.overlay", entry => entry.component.name === "SessionRenameDialog", props => ({
+    useRenameRequest: select => select(props.renameTarget), settleSessionRename: props.onSettleRename,
+    renameSession: props.onRenameSession,
   }));
   // Reuse the active native/browse occupant without redeclaring the host's hole.
   // DSH 0.2.1-rc.5 exposes component/inject on its public slot-entry records.

@@ -1,517 +1,80 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  cp,
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join, resolve, sep } from "node:path";
+import * as cad from "@classcad/smlibwasm";
 import { createWorker } from "../src/host/worker.js";
-
 import { Store } from "../src/kernel/store.js";
 import { atomicWrite, jsonBytes } from "../src/kernel/files.js";
-const referencePdf = (
-  await readFile(new URL("./fixtures/reference.pdf", import.meta.url))
-).toString("base64");
+const referencePdf = (await readFile(new URL("./fixtures/reference.pdf", import.meta.url))).toString("base64");
 const box = "function build(p, cad) { return cad.Box(p.width,10,5); }";
+const near = (a,b) => assert.ok(Math.abs(a-b)<1e-5, `${a} != ${b}`);
+async function setup(fn) {
+  const root = await mkdtemp(join(tmpdir(), "minicad-documents-")), settings = join(root, "settings");
+  const worker = createWorker({ dataDir: settings });
+  try { await fn(worker, root, settings); }
+  finally { await worker.dispose(); assert.ok(resolve(root).startsWith(resolve(tmpdir())+sep));
+    await rm(root, { recursive:true, force:true, maxRetries:3, retryDelay:200 }); }
+}
 
-test(
-  "library removal preserves project files; task forks copy independent models, history and resources",
-  { timeout: 90000 },
-  async () => {
-    const temporary = await mkdtemp(join(tmpdir(), "minicad-library-"));
-    const directory = join(temporary, "library");
-    let worker = createWorker({ dataDir: join(temporary, "settings") });
-    try {
-      await mkdir(directory);
-      const defaults = await worker.call("libraries");
-      const library = await worker.call("create_library", { path: directory });
-      const task = await worker.call("create", {
-        libraryId: library.id,
-        title: "plate",
-      });
-      await worker.call("bind", {
-        projectId: task.id,
-        sessionId: "source-session",
-      });
-      await worker.call("build", {
-        projectId: task.id,
-        expectedRevision: 0,
-        source: box,
-        parameters: { width: 20 },
-      });
-      const referenced = await worker.call("attach", {
-        projectId: task.id,
-        name: "reference.pdf",
-        data: referencePdf,
-      });
-      const referenceId = referenced.attachments[0].id;
-      await writeFile(
-        join(task.directory, "notes.txt"),
-        "editable project note",
-      );
-      const branch = await worker.call("fork_project", {
-        projectId: task.id,
-        sessionId: "fork-session",
-        title: "plate (2)",
-      });
-      assert.notEqual(branch.id, task.id);
-      assert.notEqual(branch.directory, task.directory);
-      assert.equal(branch.head, 1);
-      assert.equal(branch.revisions.length, 1);
-      assert.equal(
-        await readFile(join(branch.directory, "notes.txt"), "utf8"),
-        "editable project note",
-      );
-      assert.equal(
-        (
-          await worker.call("reference_file", {
-            projectId: branch.id,
-            attachmentId: referenceId,
-          })
-        ).data,
-        referencePdf,
-      );
-      const edited = await worker.call("build", {
-        projectId: branch.id,
-        expectedRevision: 1,
-        parameters: { width: 30 },
-      });
-      assert.equal(edited.head, 2);
-      assert.ok(Math.abs(edited.design.metrics.volume - 1500) < 1e-6);
-      const original = await worker.call("get", { projectId: task.id });
-      assert.equal(original.head, 1);
-      assert.equal(original.parameters.width, 20);
-      assert.ok(Math.abs(original.design.metrics.volume - 1000) < 1e-6);
-      await assert.rejects(
-        worker.call("fork_project", {
-          projectId: task.id,
-          sessionId: "source-session",
-        }),
-        /已绑定/,
-      );
-      await worker.call("remove_library", { libraryId: library.id });
-      assert.ok(
-        !(await worker.call("list")).some(
-          (row) => row.id === task.id || row.id === branch.id,
-        ),
-      );
-      assert.equal(
-        await readFile(join(task.directory, "model.js"), "utf8"),
-        box,
-      );
-      assert.equal(
-        await readFile(join(branch.directory, "notes.txt"), "utf8"),
-        "editable project note",
-      );
-      for (const other of defaults)
-        await worker.call("remove_library", { libraryId: other.id });
-      assert.deepEqual(await worker.call("libraries"), []);
-      await worker.dispose();
-      worker = createWorker({ dataDir: join(temporary, "settings") });
-      assert.deepEqual(await worker.call("libraries"), []);
-      await worker.call("create_library", { path: directory });
-      assert.equal(
-        (await worker.call("by_session", { sessionId: "source-session" })).head,
-        1,
-      );
-      assert.equal(
-        (await worker.call("by_session", { sessionId: "fork-session" })).head,
-        2,
-      );
-      assert.ok(
-        (
-          await worker.call("export", {
-            projectId: branch.id,
-            revision: 1,
-            format: "step",
-          })
-        ).data.length > 100,
-      );
-    } finally {
-      await worker.dispose();
-      await rm(temporary, {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 200,
-      });
-    }
-  },
-);
+test("design folders own shared model history across conversations; save as is independent and reopening preserves bindings", {timeout:90000}, () => setup(async(worker, root) => {
+  const directory=join(root,"plate"); await mkdir(directory);
+  const task=await worker.call("open_design",{path:directory});
+  assert.equal(task.directory,directory);
+  await worker.call("bind",{projectId:task.id,sessionId:"discussion-a"});
+  await worker.call("bind",{projectId:task.id,sessionId:"discussion-b"});
+  const fromA=await worker.call("by_session",{sessionId:"discussion-a"});
+  assert.deepEqual(fromA.sessions,["discussion-a","discussion-b"]);
+  const built=await worker.call("build",{projectId:fromA.id,expectedRevision:0,source:box,parameters:{width:20}});
+  const fromB=await worker.call("by_session",{sessionId:"discussion-b"});
+  assert.equal(fromB.head,1); near(fromB.design.metrics.volume,1000);
+  await assert.rejects(worker.call("build",{projectId:fromB.id,expectedRevision:0,parameters:{width:30}}),/更新/);
+  await worker.call("select_session",{projectId:task.id,sessionId:"discussion-a"});
+  const attached=await worker.call("attach",{projectId:task.id,name:"reference.pdf",data:referencePdf});
+  await writeFile(join(directory,"notes.txt"),"shared design note");
+  const copy=join(root,"variant"); await mkdir(copy);
+  const branch=await worker.call("fork_project",{projectId:task.id,path:copy});
+  assert.notEqual(branch.id,task.id); assert.deepEqual(branch.sessions,[]);
+  assert.equal(branch.head,1); assert.equal(await readFile(join(copy,"notes.txt"),"utf8"),"shared design note");
+  const changed=await worker.call("build",{projectId:branch.id,expectedRevision:1,parameters:{width:30}});
+  near(changed.design.metrics.volume,1500);
+  near((await worker.call("get",{projectId:task.id})).design.metrics.volume,1000);
+  await worker.call("close_design",{projectId:task.id});
+  assert.equal(await readFile(join(directory,"model.js"),"utf8"),box);
+  const reopened=await worker.call("open_design",{path:directory});
+  assert.equal(reopened.id,task.id); assert.equal(reopened.activeSessionId,"discussion-a");
+  assert.equal((await worker.call("reference_file",{projectId:task.id,attachmentId:attached.attachments[0].id})).data,referencePdf);
+  const exported=await worker.call("export",{projectId:task.id,revision:built.head,format:"step"});
+  near(cad.fromStep(await readFile(exported.path,"utf8")).volume,1000);
+}));
 
-test(
-  "discarding abandoned tasks removes only empty, unused designs and survives restart",
-  { timeout: 60000 },
-  async () => {
-    const temporary = await mkdtemp(join(tmpdir(), "minicad-empty-"));
-    let worker = createWorker({ dataDir: temporary });
-    try {
-      const blank = await worker.call("create", { title: "abandoned draft" });
-      await worker.call("bind", {
-        projectId: blank.id,
-        sessionId: "empty-session",
-      });
-      await worker.call("model_selection", {
-        projectId: blank.id,
-        selection: "provider\nmodel",
-      });
-      assert.equal(
-        (await worker.call("discard_empty", { projectId: blank.id })).discarded,
-        true,
-      );
-      await assert.rejects(readdir(blank.directory), { code: "ENOENT" });
-      await assert.rejects(
-        worker.call("by_session", { sessionId: "empty-session" }),
-        /未绑定/,
-      );
-      assert.equal(
-        (await worker.call("discard_empty", { projectId: blank.id })).discarded,
-        false,
-      );
-
-      const spoken = await worker.call("create", {});
-      // A submitted user message counts even without plain text or a successful build.
-      await worker.call("message", {
-        projectId: spoken.id,
-        role: "user",
-        text: "",
-      });
-      assert.equal(
-        (await worker.call("discard_empty", { projectId: spoken.id }))
-          .discarded,
-        false,
-      );
-      const external = await worker.call("create", {});
-      await writeFile(
-        join(external.directory, "notes.txt"),
-        "keep this resource",
-      );
-      assert.equal(
-        (await worker.call("discard_empty", { projectId: external.id }))
-          .discarded,
-        false,
-      );
-      assert.equal(
-        await readFile(join(external.directory, "notes.txt"), "utf8"),
-        "keep this resource",
-      );
-
-      const modeled = await worker.call("create", {});
-      await worker.call("build", {
-        projectId: modeled.id,
-        expectedRevision: 0,
-        source: box,
-        parameters: { width: 20 },
-      });
-      assert.equal(
-        (await worker.call("discard_empty", { projectId: modeled.id }))
-          .discarded,
-        false,
-      );
-      const referenced = await worker.call("create", {});
-      const attachment = await worker.call("attach", {
-        projectId: referenced.id,
-        name: "reference.pdf",
-        data: referencePdf,
-      });
-      assert.equal(
-        (await worker.call("discard_empty", { projectId: referenced.id }))
-          .discarded,
-        false,
-      );
-      assert.equal(
-        (
-          await worker.call("reference_file", {
-            projectId: referenced.id,
-            attachmentId: attachment.attachments[0].id,
-          })
-        ).data,
-        referencePdf,
-      );
-
-      await worker.dispose();
-      worker = createWorker({ dataDir: temporary });
-      assert.deepEqual(
-        new Set((await worker.call("list")).map((task) => task.id)),
-        new Set([spoken.id, external.id, modeled.id, referenced.id]),
-      );
-      assert.ok(
-        Math.abs(
-          (await worker.call("get", { projectId: modeled.id })).design.metrics
-            .volume - 1000,
-        ) < 1e-6,
-      );
-      await assert.rejects(readdir(blank.directory), { code: "ENOENT" });
-    } finally {
-      await worker.dispose();
-      await rm(temporary, {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 200,
-      });
-    }
-  },
-);
-
-test(
-  "task folders: empty new designs, isolated files, editor changes, portable history and moves",
-  { timeout: 90000 },
-  async () => {
-    const temporary = await mkdtemp(join(tmpdir(), "minicad-files-"));
-    const catalog = join(temporary, "settings"),
-      workspace = join(temporary, "parts"),
-      copied = join(temporary, "copied");
-    let worker = createWorker({ dataDir: catalog });
-    try {
-      await mkdir(workspace);
-      const library = await worker.call("create_library", { path: workspace });
-      assert.equal(
-        (await worker.call("create_library", { path: workspace + "/." })).id,
-        library.id,
-      );
-      const task = await worker.call("create", {
-        libraryId: library.id,
-        title: "底板",
-      });
-      await worker.call("bind", {
-        projectId: task.id,
-        sessionId: "plate-session",
-      });
-      const directory = task.directory;
-      assert.equal(directory, join(workspace, "底板"));
-      assert.deepEqual(await readdir(directory), []);
-      const built = await worker.call("build", {
-        projectId: task.id,
-        expectedRevision: 0,
-        source: box,
-        parameters: { width: 20 },
-      });
-      assert.equal(await readFile(join(directory, "model.js"), "utf8"), box);
-      assert.equal(
-        JSON.parse(
-          await readFile(join(directory, "model.parameters.json"), "utf8"),
-        ).width,
-        20,
-      );
-      const brep = await readFile(join(directory, "model.smb"));
-      assert.ok(brep.length > 100);
-      const second = await worker.call("create", {
-        libraryId: library.id,
-        title: "底板",
-      });
-      assert.equal(second.directory, join(workspace, "底板-2"));
-      assert.equal(second.head, 0);
-      assert.equal(second.design, null);
-      assert.equal(second.source, "");
-      assert.deepEqual(second.parameters, {});
-      assert.deepEqual(second.revisions, []);
-      assert.equal(
-        (await worker.call("list")).find((item) => item.id === second.id)
-          .has_messages,
-        false,
-      );
-      const independent = await worker.call("build", {
-        projectId: second.id,
-        expectedRevision: 0,
-        source: box,
-        parameters: { width: 7 },
-      });
-      assert.ok(Math.abs(independent.design.metrics.volume - 350) < 1e-6);
-      assert.equal(
-        (await worker.call("get", { projectId: task.id })).head,
-        built.head,
-      );
-      assert.deepEqual(await readFile(join(directory, "model.smb")), brep);
-      await assert.rejects(
-        worker.call("build", {
-          projectId: task.id,
-          expectedRevision: 0,
-          parameters: { width: 30 },
-        }),
-        /已更新/,
-      );
-      const edited =
-        "function build(p, cad) { return cad.Box(p.width,12,5); }\r\n";
-      await writeFile(join(directory, "model.js"), edited);
-      await writeFile(
-        join(directory, "model.parameters.json"),
-        JSON.stringify({ width: 30 }),
-      );
-      const read = await worker.call("get", { projectId: task.id });
-      assert.equal(read.source, edited);
-      assert.equal(read.parameters.width, 30);
-      assert.equal(read.workingTreeChanged, true);
-      const rebuilt = await worker.call("build", {
-        projectId: task.id,
-        expectedRevision: 1,
-      });
-      assert.ok(Math.abs(rebuilt.design.metrics.volume - 1800) < 1e-6);
-      assert.equal(
-        await readFile(
-          join(directory, ".cad-history", "model", "v0002", "model.js"),
-          "utf8",
-        ),
-        edited,
-      );
-      assert.equal(
-        JSON.parse(
-          await readFile(
-            join(directory, ".cad-history", "model", "v0002", "state.json"),
-            "utf8",
-          ),
-        ).source,
-        edited,
-      );
-      assert.equal((await worker.call("get", { projectId: task.id })).head, 2);
-      await worker.call("select_model", {
-        projectId: second.id,
-        sourceFile: "parts/bracket.js",
-      });
-      const bracket = await worker.call("build", {
-        projectId: second.id,
-        expectedRevision: 0,
-        source: box,
-        parameters: { width: 8 },
-      });
-      assert.equal(bracket.head, 1);
-      assert.equal((await worker.call("get", { projectId: task.id })).head, 2);
-      assert.equal(
-        await readFile(join(second.directory, "parts", "bracket.js"), "utf8"),
-        box,
-      );
-      await worker.call("select_model", {
-        projectId: second.id,
-        sourceFile: "model.js",
-      });
-      assert.ok(
-        Math.abs(
-          (await worker.call("get", { projectId: second.id })).design.metrics
-            .volume - 350,
-        ) < 1e-6,
-      );
-      const attached = await worker.call("attach", {
-        projectId: task.id,
-        name: "drawing.pdf",
-        data: referencePdf,
-      });
-      const referenceId = attached.attachments[0].id;
-      await assert.rejects(
-        worker.call("reference_file", {
-          projectId: second.id,
-          attachmentId: referenceId,
-        }),
-        /参考文件不存在/,
-      );
-      await assert.rejects(
-        worker.call("select_model", {
-          projectId: task.id,
-          sourceFile: "../outside.js",
-        }),
-        /工作目录|JavaScript 文件/,
-      );
-      await worker.dispose();
-      await cp(workspace, copied, { recursive: true });
-      await rm(catalog, { recursive: true, force: true });
-      worker = createWorker({ dataDir: join(temporary, "fresh-settings") });
-      await worker.call("create_library", { path: copied });
-      const portable = await worker.call("by_session", {
-        sessionId: "plate-session",
-      });
-      const copiedTask = join(copied, basename(directory));
-      assert.equal(portable.directory, copiedTask);
-      assert.equal(portable.head, 2);
-      assert.ok(Math.abs(portable.design.metrics.volume - 1800) < 1e-6);
-      const restored = await worker.call("restore", {
-        projectId: task.id,
-        expectedRevision: 2,
-        revision: 1,
-      });
-      assert.equal(restored.head, 3);
-      assert.equal(
-        JSON.parse(
-          await readFile(join(copiedTask, "model.parameters.json"), "utf8"),
-        ).width,
-        20,
-      );
-      assert.ok(
-        (
-          await worker.call("export", {
-            projectId: task.id,
-            revision: 3,
-            format: "step",
-          })
-        ).data.length > 100,
-      );
-      assert.ok(!(await readdir(workspace)).includes(".minicad"));
-      assert.ok(!(await readdir(copied)).includes(task.id));
-      // A library move carries ordinary files, references and all model revisions together.
-      const destinationPath = join(temporary, "another-workspace");
-      await mkdir(destinationPath);
-      const destination = await worker.call("create_library", {
-        path: destinationPath,
-      });
-      await writeFile(join(copiedTask, "notes.txt"), "part notes");
-      await mkdir(join(destinationPath, basename(directory)));
-      await worker.call("move_project", {
-        projectId: task.id,
-        libraryId: destination.id,
-      });
-      const moved = await worker.call("by_session", {
-        sessionId: "plate-session",
-      });
-      assert.equal(
-        moved.directory,
-        join(destinationPath, basename(directory) + "-2"),
-      );
-      assert.equal(moved.head, 3);
-      assert.equal(moved.revisions.length, 3);
-      assert.equal(
-        await readFile(join(moved.directory, "model.js"), "utf8"),
-        box,
-      );
-      assert.equal(
-        await readFile(join(moved.directory, "notes.txt"), "utf8"),
-        "part notes",
-      );
-      await assert.rejects(readFile(join(copiedTask, "model.js")), {
-        code: "ENOENT",
-      });
-      assert.equal(
-        (
-          await worker.call("reference_file", {
-            projectId: task.id,
-            attachmentId: referenceId,
-          })
-        ).data,
-        referencePdf,
-      );
-      assert.ok(
-        (
-          await worker.call("export", {
-            projectId: task.id,
-            revision: 2,
-            format: "step",
-          })
-        ).data.length > 100,
-      );
-    } finally {
-      await worker.dispose();
-      await rm(temporary, {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 200,
-      });
-    }
-  },
-);
+test("workspace rename preserves all sessions and geometry; metadata failures and interrupted moves roll back",{timeout:90000},()=>setup(async(worker,root,settings)=>{
+  const task=await worker.call("create",{title:"original"});
+  await worker.call("bind",{projectId:task.id,sessionId:"chat-a"}); await worker.call("bind",{projectId:task.id,sessionId:"chat-b"});
+  await worker.call("build",{projectId:task.id,expectedRevision:0,source:box,parameters:{width:12}});
+  const before=await readFile(join(task.directory,"model.smb"));
+  const renamed=await worker.call("rename",{projectId:task.id,title:"plate-renamed"});
+  assert.equal(renamed.title,"plate-renamed"); assert.ok(renamed.directory.endsWith("plate-renamed"));
+  for(const sessionId of ["chat-a","chat-b"]) assert.equal((await worker.call("by_session",{sessionId})).directory,renamed.directory);
+  assert.deepEqual(await readFile(join(renamed.directory,"model.smb")),before);
+  await worker.dispose();
+  let fail=true;
+  const store=new Store(settings,{write:(file,bytes)=>{
+    if(fail&&file.endsWith(".cad-design.json")){fail=false;throw new Error("injected rename metadata failure");}
+    atomicWrite(file,bytes);
+  }});
+  await assert.rejects(store.dispatch("rename",{projectId:task.id,title:"failed-name"}),/injected/);
+  assert.equal((await store.dispatch("get",{projectId:task.id})).directory,renamed.directory);
+  const metaPath=join(renamed.directory,".cad-design.json"), original=await readFile(metaPath), target=join(root,"designs-moved");
+  assert.ok(resolve(renamed.directory).startsWith(resolve(root)+sep)&&resolve(target).startsWith(resolve(root)+sep));
+  atomicWrite(store.journal,jsonBytes({phase:"prepared",moves:[{from:renamed.directory,to:target}],files:[{path:join(target,".cad-design.json"),rollbackPath:metaPath,before:original.toString("base64")}]}));
+  await rename(renamed.directory,target); await writeFile(join(target,".cad-design.json"),'{"broken":true}');
+  const recovered=new Store(settings);
+  const state=await recovered.dispatch("get",{projectId:task.id});
+  assert.equal(state.title,"plate-renamed"); near(state.design.metrics.volume,600);
+  assert.deepEqual(await readFile(join(state.directory,"model.smb")),before);
+}));
 
 test(
   "file publication rolls back partial writes and recovers an interrupted transaction",

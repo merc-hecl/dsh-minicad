@@ -15,10 +15,7 @@ import {
   IconPlusOutlineRegular,
   IconChevronLeftOutlineRegular,
   IconCloseOutlineRegular,
-  IconFolderCloseRegular,
-  IconFolderOpenRegular,
   IconPanelLeftOutlineRegular,
-  IconEllipsisOutlineRegular,
   IconDownloadOutlineRegular,
   IconClockOutlineRegular,
   IconRefreshOutlineRegular,
@@ -72,7 +69,7 @@ const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
 };
 
 export function Workbench({
-  locale, t, enter, back, request, addGeometryReference, SessionProvider, renderSlot, retainSession, workspaceCatalog, forkTask,
+  locale, t, enter, back, request, addGeometryReference, SessionProvider, renderSlot, retainSession, sessionCatalog, workspaceCatalog, renameConversation,
 }) {
   const workbench = useRef(null);
   const dock = useRef(null);
@@ -87,10 +84,10 @@ export function Workbench({
   const [projects, setProjects] = useState([]),
     [project, setProject] = useState(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
-  const [libraries, setLibraries] = useState([]);
+  const [picker, setPicker] = useState(null);
+  const sessionState = useSyncExternalStore(sessionCatalog.subscribe, sessionCatalog.getSnapshot);
   const workspaceState = useSyncExternalStore(workspaceCatalog.subscribe, workspaceCatalog.getSnapshot);
   const [renameTarget, setRenameTarget] = useState(null);
-  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [editTarget, setEditTarget] = useState("");
   const [selected, setSelected] = useState(""),
     [loading, setLoading] = useState(true),
@@ -165,35 +162,41 @@ export function Workbench({
     }
   };
   async function refreshList() {
-    const [p, groups] = await Promise.all([api("list"), api("libraries")]);
-    if (alive.current) { setProjects(p); setLibraries(groups); }
-    return p;
+    const items = await api("list");
+    if (alive.current) setProjects(items);
+    return items;
   }
-  const abandonedTasks = useRef(new Set()), discardingTasks = useRef(new Set());
-  async function discardAbandonedTasks(currentId) {
-    let changed = false;
-    for (const id of [...abandonedTasks.current]) {
-      if (selection.current !== currentId || !alive.current) break;
-      abandonedTasks.current.delete(id);
-      if (id === currentId || discardingTasks.current.has(id)) continue;
-      discardingTasks.current.add(id);
-      try {
-        const result = await api("discard_empty", { projectId: id });
-        changed ||= result.discarded;
-      } finally {
-        discardingTasks.current.delete(id);
-      }
-    }
-    if (changed) await refreshList();
+  async function createConversation(task = project) {
+    await action(async () => {
+      await api("new_session", { projectId: task.id });
+      setHistoryOpen(false);
+      if (selection.current === task.id) setProject(await api("get", { projectId: task.id }));
+      else await load(task.id);
+      await refreshList();
+    });
+  }
+  async function openConversation(projectId, sessionId) {
+    await action(async () => {
+      await api("select_session", { projectId, sessionId });
+      if (selection.current === projectId) {
+        setHistoryOpen(false); setGeometryAction(null);
+        setProject(await api("get", { projectId }));
+      } else await load(projectId);
+      await refreshList();
+    });
+  }
+  async function forkConversation(sessionId) {
+    const task = projects.find(item => item.sessions.includes(sessionId));
+    await action(async () => {
+      await api("fork_session", { projectId: task.id, sessionId });
+      if (selection.current === task.id) { setHistoryOpen(false); setGeometryAction(null); setProject(await api("get", { projectId: task.id })); }
+      else await load(task.id);
+      await refreshList();
+    });
   }
   async function load(id) {
     setHistoryOpen(false); setProgress(null); setProcessDesign(null); processKey.current = "";
     setGeometryAction(null);
-    if (discardingTasks.current.has(id)) return;
-    const previous = projects.find((task) => task.id === selection.current);
-    if (selection.current && selection.current !== id && !previous?.has_messages && !previous?.head)
-      abandonedTasks.current.add(selection.current);
-    abandonedTasks.current.delete(id);
     loadController.current.abort();
     loadController.current = new AbortController();
     const controller = loadController.current;
@@ -211,7 +214,6 @@ export function Workbench({
       const p = await api("get", { projectId: id });
       if (selection.current === id && alive.current && controller === loadController.current) {
         setProject(p);
-        await discardAbandonedTasks(id);
       }
     } catch (e) {
       showError(e);
@@ -238,13 +240,8 @@ export function Workbench({
     refreshList()
       .then(async (p) => {
         if (!alive.current) return;
-        // A native composer needs a real Session even before its first message.
-        const available = p.filter((task) => !workspaceCatalog.getSnapshot().archivedSessionIds?.includes(task.session_id));
-        const groups = available.length ? [] : await api("libraries");
-        const first = available[0] || (groups.length ? await api("create", { libraryId: groups[0].id, title: t("untitled") }) : null);
-        if (!alive.current) return;
+        const first = p[0];
         if (!first) { clearSelection(); return; }
-        if (!available.length) await refreshList();
         await load(first.id);
       })
       .catch((e) => {
@@ -258,13 +255,13 @@ export function Workbench({
     };
   }, []);
   useEffect(() => {
-    if (!project?.session_id || !workspaceState.archivedSessionIds?.includes(project.session_id)) return;
-    const next = projects.find((task) => task.id !== selected && !workspaceState.archivedSessionIds.includes(task.session_id));
-    if (next) load(next.id);
+    if (!project || !workspaceState.archivedSessionIds.includes(project.activeSessionId)) return;
+    const next = project.sessions.find(id => !workspaceState.archivedSessionIds.includes(id));
+    if (next) openConversation(project.id, next);
     else clearSelection();
-  }, [workspaceState.archivedSessionIds, project?.session_id]);
+  }, [workspaceState.archivedSessionIds, project?.id, project?.activeSessionId]);
   useEffect(() => {
-    const id = project?.session_id;
+    const id = project?.activeSessionId;
     if (!id) return;
     const reference = retainSession(id);
     let disposed = false;
@@ -280,7 +277,7 @@ export function Workbench({
       setSessionReference(null);
       reference.release();
     };
-  }, [project?.session_id]);
+  }, [project?.activeSessionId]);
   useEffect(() => {
     if (!selected) return;
     let disposed = false,
@@ -298,7 +295,7 @@ export function Workbench({
         if (state.title && state.title !== projectRef.current?.title) {
           setProject((current) => current ? { ...current, title: state.title } : current);
         }
-        if (projectRef.current && (state.head !== projectRef.current.head || state.sourceVersion !== projectRef.current.sourceVersion || state.workspaceDirectory !== projectRef.current.workspaceDirectory || state.sourceFile !== projectRef.current.sourceFile)) {
+        if (projectRef.current && (state.activeSessionId !== projectRef.current.activeSessionId || state.head !== projectRef.current.head || state.sourceVersion !== projectRef.current.sourceVersion || state.workspaceDirectory !== projectRef.current.workspaceDirectory || state.sourceFile !== projectRef.current.sourceFile)) {
           const p = await api("get", { projectId: selected });
           if (!disposed && selection.current === selected) {
             setProject(p);
@@ -356,7 +353,7 @@ export function Workbench({
   }
   function openGeometryAction(mode, target) {
     setError(null);
-    setGeometryAction({ mode, target, projectId: selected, sourceFile: project.sourceFile, expectedRevision: project.head, sessionId: project.session_id });
+    setGeometryAction({ mode, target, projectId: selected, sourceFile: project.sourceFile, expectedRevision: project.head, sessionId: project.activeSessionId });
   }
   async function saveGeometryAction({ operation, note }) {
     const captured = geometryAction;
@@ -382,13 +379,7 @@ export function Workbench({
     setModal(kind);
     setEditHead(project?.head || 0);
     setValue(
-      kind === "create"
-        ? ""
-        : kind === "rename"
-          ? project.title
-          : kind === "source"
-            ? project.design.source
-            : "",
+      kind === "rename" ? project.title : kind === "source" ? project.design.source : "",
     );
   }
   function openReference(id, projectId = selected) {
@@ -399,22 +390,10 @@ export function Workbench({
   async function saveEditor(parameterValues) {
     await action(async () => {
       const id = editTarget || selected;
-      if (modal === "renameLibrary") {
-        await api("rename_library", { title: value, libraryId: editTarget });
-        await refreshList();
-        setModal(null);
-        return;
-      }
-      if (modal === "create") {
-        const p = await api("create", { title: value.trim() || t("untitled") });
-        await refreshList();
-        await load(p.id);
-        return;
-      }
       if (modal === "rename") {
         await api("rename", { projectId: id, title: value });
         await refreshList();
-        if (selection.current === id) setProject((p) => ({ ...p, title: value }));
+        if (selection.current === id) setProject(await api("get", { projectId: id }));
         setModal(null);
         return;
       }
@@ -438,8 +417,7 @@ export function Workbench({
       dateStyle: "medium",
       timeStyle: "short",
     }).format(timestamp * 1000);
-  const editable = ["create", "rename", "source", "renameLibrary"].includes(modal);
-  const libraryEditor = modal === "renameLibrary";
+  const editable = ["rename", "source"].includes(modal);
   return (
     <div
       ref={workbench}
@@ -465,8 +443,8 @@ export function Workbench({
         design={processDesign || design}
         wire={wire}
         selectionMode={modal || processDesign || historyOpen ? null : selectionMode}
-        referenceDisabled={busy || !sessionReference || sessionReference.sessionId !== project?.session_id}
-        editingDisabled={busy || running || nativeRunning || !sessionReference || sessionReference.sessionId !== project?.session_id}
+        referenceDisabled={busy || !sessionReference || sessionReference.sessionId !== project?.activeSessionId}
+        editingDisabled={busy || running || nativeRunning || !sessionReference || sessionReference.sessionId !== project?.activeSessionId}
         onReference={target => openGeometryAction("annotation", target)}
         onEdit={target => openGeometryAction("edit", target)}
         onSelectionModeChange={setSelectionMode}
@@ -483,8 +461,7 @@ export function Workbench({
         <strong>MiniCAD</strong>
         <Btn icon={IconSettingsOutlineRegular} label={t("idSettings")} onClick={() => action(async () => { setIdSettings(await api("get_settings")); setError(null); setModal("idSettings"); })} />
         <span className="mc-crumb">
-          {libraries.find((library) => library.id === project?.library_id)?.title || t("defaultLibrary")}
-          {project ? ` / ${project.title}` : ""}
+          {project?.title || t("app")}
         </span>
         <div className="mc-header-actions">
         <Btn icon={IconClockOutlineRegular} disabled={!project} aria-pressed={historyOpen} onClick={() => setHistoryOpen(value => !value)}>{t("makingRecord")}</Btn>
@@ -503,64 +480,40 @@ export function Workbench({
         </Btn>
         </div>
       </header>
-      <aside className={`mc-sidebar ${panelCollapsed ? "" : "mc-panel"}`} aria-label={t("libraries")}>
+      <aside className={`mc-sidebar ${panelCollapsed ? "" : "mc-panel"}`} aria-label={t("projects")}>
         {panelCollapsed ? (
           <Btn icon={IconPanelLeftOutlineRegular} variant="outline" label={t("expandProjects")} onClick={() => setPanelCollapsed(false)} />
         ) : (
-          <DesignNavigator libraries={libraries} projects={projects} selected={selected} running={running} language={language} t={t}
-            workspaceState={workspaceState} renderTaskSlot={renderSlot}
-            onCollapse={() => setPanelCollapsed(true)}
-            libraryPickerBusy={libraryPickerOpen || busy}
-            onCreateLibrary={() => { if (!busy) { setError(null); setLibraryPickerOpen(true); } }}
-            onRenameLibrary={(library) => { setError(null); setEditTarget(library.id); setValue(library.title || t("defaultLibrary")); setModal("renameLibrary"); }}
-            onRename={(task) => setRenameTarget({ sessionId: task.session_id, currentTitle: task.title })}
-            onFork={(task) => action(async () => {
-              const branch = await forkTask({ ...task, running: task.running || (task.id === selected && running) });
-              await refreshList();
-              await load(branch.id);
-            })}
-            onDeleteLibrary={async (library) => {
-              await api("remove_library", { libraryId: library.id });
-              const tasks = await refreshList();
-              if (projectRef.current?.library_id === library.id) {
-                const next = tasks.find((task) => !workspaceState.archivedSessionIds?.includes(task.session_id));
-                if (next) await load(next.id);
-                else clearSelection();
-              }
+          <DesignNavigator projects={projects} selected={selected} currentSessionId={project?.activeSessionId} language={language} t={t}
+            sessionState={sessionState} workspaceState={workspaceState} renderTaskSlot={renderSlot}
+            onRenameSession={(sessionId, currentTitle) => setRenameTarget({ sessionId, currentTitle })} onForkSession={forkConversation}
+            onCollapse={() => setPanelCollapsed(true)} pickerBusy={!!picker || busy}
+            onCreate={() => { if (!busy) { setError(null); setPicker({ type: "open" }); } }}
+            onRename={task => { setError(null); setEditTarget(task.id); setValue(task.title); setModal("rename"); }}
+            onFork={task => { setError(null); setPicker({ type: "saveAs", project: task }); }}
+            onNewSession={createConversation}
+            onRemove={async task => {
+              await api("close_design", { projectId: task.id });
+              const items = await refreshList();
+              if (selection.current === task.id) { if (items[0]) await load(items[0].id); else clearSelection(); }
             }}
-            onMove={(task, libraryId) => action(async () => {
-              await api("move_project", { projectId: task.id, libraryId });
-              if (selection.current === task.id) setProject((current) => ({ ...current, library_id: libraryId }));
-              await refreshList();
-            })}
-            onCreate={(libraryId) => action(async () => {
-              const task = await api("create", { libraryId, title: t("untitled") });
-              await refreshList();
-              await load(task.id);
-            })}
-            onOpen={load}
-            attachments={project?.attachments || []}
-            onReference={openReference} />
+            onOpen={openConversation} attachments={project?.attachments || []} onReference={openReference} />
         )}
       </aside>
       {renderSlot("minicad.directoryFlow", {
-        open: libraryPickerOpen,
-        busy,
-        onPicked: async (path) => {
+        open: !!picker, busy,
+        onPicked: async path => {
+          const captured = picker;
           await action(async () => {
-            const library = await api("create_library", { path });
-            const tasks = await refreshList();
-            let task = tasks.find((item) => item.library_id === library.id && !item.has_messages);
-            if (!task) {
-              task = await api("create", { libraryId: library.id, title: t("untitled") });
-              await refreshList();
-            }
-            await load(task.id);
+            const design = captured.type === "saveAs"
+              ? await api("fork_project", { projectId: captured.project.id, path })
+              : await api("open_design", { path });
+            await refreshList(); await load(design.id);
           });
-          setLibraryPickerOpen(false);
+          setPicker(null);
         },
-        onCancel: () => setLibraryPickerOpen(false),
-        onError: (message) => { setLibraryPickerOpen(false); showError(new Error(message)); },
+        onCancel: () => setPicker(null),
+        onError: message => { setPicker(null); showError(new Error(message)); },
       })}
           <div className="mc-tools mc-panel">
             <Btn icon={IconRefreshOutlineRegular} label={t("resetView")} onClick={() => setResetView((value) => value + 1)} />
@@ -594,38 +547,23 @@ export function Workbench({
       {processDesign && !historyOpen && <span className="mc-process-caption">{t("processPreview")} · {t("checkpoint")} {processDesign.checkpoint.sequence}</span>}
       {historyOpen && project && <MakingRecord key={`${project.id}:${project.sourceFile}`} project={project} progress={progress}
         request={request} t={t} language={language} onClose={() => setHistoryOpen(false)} onTranscriptTarget={setTranscriptTarget} />}
-      <ImmersiveDock ref={dock} sourceKey={project?.session_id} t={t} hidden={historyOpen}
+      <ImmersiveDock ref={dock} sourceKey={project?.activeSessionId} t={t} hidden={historyOpen}
         running={running} progress={progress} error={error} onHistory={() => setHistoryOpen(true)}
         onStart={() => setError(null)}
         onCancel={() => action(() => api("cancel", { projectId: selected }))} onRunning={setNativeRunning} onHeight={dockHeight}>
         {callbacks => <>
-        {sessionReference && project && sessionReference.sessionId === project.session_id ? (
+        {sessionReference && project && sessionReference.sessionId === project.activeSessionId ? (
           <SessionProvider session={sessionReference}>
             {renderSlot("minicad.composer", { ...callbacks, transcriptTarget })}
           </SessionProvider>
         ) : selected || loading ? <span role="status" className="mc-loading mc-muted"><StateDot state="ongoing" />{t("loading")}</span> : (
-          <Btn icon={IconPlusOutlineRegular} onClick={() => {
-            if (!libraries.length) { setLibraryPickerOpen(true); return; }
-            action(async () => {
-              const task = await api("create", { libraryId: libraries[0].id, title: t("untitled") });
-              await refreshList(); await load(task.id);
-            });
-          }}>{t(libraries.length ? "newProject" : "newLibrary")}</Btn>
+          <Btn icon={IconPlusOutlineRegular} onClick={() => setPicker({ type: "open" })}>{t("openDesignFolder")}</Btn>
         )}
         <div className="mc-help">{t(selectionMode ? "selectionControls" : "controls")}</div>
         </>}
       </ImmersiveDock>
-      {renderSlot("minicad.task.renameDialog", {
-        renameTarget,
-        onSettleRename: () => setRenameTarget(null),
-        onRenameTask: async (sessionId, title) => {
-          const task = projects.find((item) => item.session_id === sessionId);
-          if (!task) throw new Error(t("projectMissing"));
-          await api("rename", { projectId: task.id, title });
-          if (selection.current === task.id) setProject((current) => current ? { ...current, title } : current);
-          await refreshList();
-        },
-      })}
+      {renderSlot("minicad.session.renameDialog", { renameTarget, onSettleRename: () => setRenameTarget(null),
+        onRenameSession: renameConversation })}
       {geometryAction && <GeometryActionDialog key={`${geometryAction.mode}-${geometryAction.target.reference}`} action={geometryAction} busy={busy} error={error} onClose={() => setGeometryAction(null)} onSave={saveGeometryAction} t={t} />}
       {modal === "parameters" && design && (
         <ParameterDialog
@@ -642,7 +580,7 @@ export function Workbench({
       {modal && modal !== "parameters" && modal !== "idSettings" && (
         <WorkbenchDialog
           key={modal}
-          title={t(modal === "reference" ? "pdfPreview" : modal === "create" ? "newProject" : modal)}
+          title={t(modal === "reference" ? "pdfPreview" : modal === "rename" ? "renameDesign" : modal)}
           className={["reference", "source"].includes(modal) ? "mc-wide" : modal === "history" ? "mc-history-dialog" : ""}
           busy={busy}
           error={error}
@@ -655,18 +593,18 @@ export function Workbench({
               </Button>
               <Button
                 variant="primary"
-                disabled={busy || ((modal === "rename" || libraryEditor) && !value.trim())}
+                disabled={busy || (modal === "rename" && !value.trim())}
                 icon={busy ? <StateDot state="ongoing" /> : undefined}
                 onClick={() => saveEditor()}
               >
-                {t(busy ? "working" : modal === "create" ? "create" : ["rename", "renameLibrary"].includes(modal) ? "rename" : "save")}
+                {t(busy ? "working" : modal === "rename" ? "rename" : "save")}
               </Button>
             </>
           ) : undefined}
         >
-          {(["create", "rename"].includes(modal) || libraryEditor) && (
+          {modal === "rename" && (
             <label className="mc-name-field" htmlFor="mc-design-name">
-              <span>{t(libraryEditor ? "libraryName" : "name")}</span>
+              <span>{t("name")}</span>
               <Input
                 id="mc-design-name"
                 data-modal-autofocus
@@ -676,7 +614,7 @@ export function Workbench({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {
                     e.preventDefault();
-                    if ((modal !== "rename" && !libraryEditor) || value.trim()) saveEditor();
+                    if (value.trim()) saveEditor();
                   }
                 }}
               />
