@@ -7,6 +7,7 @@ const Workbench = React.lazy(() => import(__MINICAD_WORKBENCH_URL__).then((asset
 import { ForgeIcon } from "./forge-icon.jsx";
 import { zh, en } from "./locale.js";
 import css from "./styles.css";
+import immersiveCss from "./immersive.css";
 import workspaceCss from "./design-navigator.css";
 export const inject = [
   "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts", "inputTriggers", "uiConversation",
@@ -19,7 +20,7 @@ export function apply(ctx) {
   ctx.effect(() => {
     const style = document.createElement("style");
     style.dataset.plugin = "dsh-minicad";
-    style.textContent = `${workspaceCss}\n${css}`;
+    style.textContent = `${workspaceCss}\n${css}\n${immersiveCss}`;
     document.head.append(style);
     return () => style.remove();
   }, "minicad: styles");
@@ -32,8 +33,8 @@ export function apply(ctx) {
   ctx.effect(() => () => controller.abort(), "minicad: requests");
   const request = async (method, params, signal) => {
     const combined = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
-    if (method === "preview") {
-      const response = await fetch("/api/minicad/preview?" + new URLSearchParams(params), { signal: combined });
+    if (method === "preview" || method === "checkpoint") {
+      const response = await fetch(`/api/minicad/${method}?` + new URLSearchParams(params), { signal: combined });
       if (!response.ok) {
         const data = await response.json();
         throw Object.assign(new Error(data.error || response.statusText), { uiKey: data.code });

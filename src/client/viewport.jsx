@@ -19,7 +19,7 @@ function millimetres(value) {
   return String(Number(value.toPrecision(6)));
 }
 
-export function Viewport({ id, active = true, design, wire, resetToken, selectionMode, onSelectionModeChange, onReference, onEdit, referenceDisabled, editingDisabled, onError, t }) {
+export function Viewport({ id, active = true, presentation = "workbench", design, comparison, wire, resetToken, selectionMode, onSelectionModeChange, onReference, onEdit, referenceDisabled, editingDisabled, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
@@ -30,6 +30,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
   selectionProps.current = { design, selectionMode, onSelectionModeChange };
   useEffect(() => {
     const el = mount.current;
+    const contained = presentation === "record";
     let renderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -292,8 +293,11 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
       stopMotion();
       cubeDrag = null;
       camera.zoom = 1;
-      const target = state.center.clone();
-      if (!state.bounds.isEmpty()) {
+      const bounds = state.bounds.clone();
+      if (state.comparisonBounds) bounds.union(state.comparisonBounds);
+      const center = bounds.isEmpty() ? state.center : bounds.getCenter(new THREE.Vector3());
+      const target = center.clone();
+      if (!bounds.isEmpty()) {
         const w = el.clientWidth, h = el.clientHeight;
         if (!w || !h) {
           rebaseControls(currentTarget());
@@ -301,7 +305,9 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
         }
         const viewport = el.getBoundingClientRect();
         const area = { left: 24, right: w - 24, top: 24, bottom: h - 24 };
-        const owner = el.closest(".mc-workbench");
+        // A contained record stage has no workbench chrome inside its viewport.
+        // External sidebar/composer rectangles otherwise move the model offscreen.
+        const owner = contained ? null : el.closest(".mc-workbench");
         const rect = (selector) => owner?.querySelector(selector)?.getBoundingClientRect();
         const sidebar = rect(".mc-sidebar"), composer = rect(".mc-bottom");
         if (sidebar?.width) area.left = sidebar.right - viewport.left + 24;
@@ -310,7 +316,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
           const box = rect(selector);
           if (box?.height) area.top = Math.max(area.top, box.bottom - viewport.top + 16);
         }
-        for (const selector of [".mc-tools", ".mc-view-cube:not([hidden])"]) {
+        for (const selector of [".mc-tools", ".mc-navigation"]) {
           const box = rect(selector);
           if (box?.width && box.top - viewport.top < area.bottom && box.bottom - viewport.top > area.top)
             area.right = Math.min(area.right, box.left - viewport.left - 16);
@@ -321,14 +327,14 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
         area.bottom = Math.max(area.bottom, area.top + 64);
         const inverse = rotation.clone().invert();
         const projection = new THREE.Box3();
-        for (const x of [state.bounds.min.x, state.bounds.max.x])
-          for (const y of [state.bounds.min.y, state.bounds.max.y])
-            for (const z of [state.bounds.min.z, state.bounds.max.z])
-              projection.expandByPoint(new THREE.Vector3(x, y, z).sub(state.center).applyQuaternion(inverse));
+        for (const x of [bounds.min.x, bounds.max.x])
+          for (const y of [bounds.min.y, bounds.max.y])
+            for (const z of [bounds.min.z, bounds.max.z])
+              projection.expandByPoint(new THREE.Vector3(x, y, z).sub(center).applyQuaternion(inverse));
         const size = projection.getSize(new THREE.Vector3());
         const mmPerPixel = Math.max(size.x / (area.right - area.left), size.y / (area.bottom - area.top), 1e-6) * 1.15;
         state.span = mmPerPixel * h;
-        state.orbitDistance = Math.max(state.bounds.getSize(new THREE.Vector3()).length() * 3, 1);
+        state.orbitDistance = Math.max(bounds.getSize(new THREE.Vector3()).length() * 3, 1);
         target.addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(rotation),
           (w / 2 - (area.left + area.right) / 2) * mmPerPixel);
         target.addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(rotation),
@@ -441,7 +447,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
       if (controls.enabled) controls.setTbRadius(controls.radiusFactor);
       // The projection span can change when a different model is fitted.
       scaleHeight = 0;
-      updateGrid();
+      if (!contained) updateGrid();
       invalidate();
     }
     state.resize = resize;
@@ -452,7 +458,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
       if (state.defaultView) state.scheduleFit();
     });
     observer.observe(el);
-    const composer = el.closest(".mc-workbench")?.querySelector(".mc-bottom");
+    const composer = !contained && el.closest(".mc-workbench")?.querySelector(".mc-bottom");
     if (composer) observer.observe(composer);
     function theme() {
       state.dark = document.body.hasAttribute("data-ds-dark-theme");
@@ -491,10 +497,12 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
         if (amount === 1) finishTurn();
       }
       cube.current?.sync(camera, controls);
-      updateGrid();
       renderer.clear();
-      renderer.render(gridScene, gridCamera);
-      renderer.clearDepth();
+      if (!contained) {
+        updateGrid();
+        renderer.render(gridScene, gridCamera);
+        renderer.clearDepth();
+      }
       renderer.render(scene, camera);
       if (turn) invalidate();
     }
@@ -602,6 +610,21 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
     runtime.current?.scheduleFit();
   }, [design?.previewData]);
   useEffect(() => { runtime.current?.setActive(active); }, [active]);
+  useEffect(() => {
+    const s = runtime.current, preview = comparison?.previewData;
+    if (!s || !preview) return;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(preview.edges, 3));
+    const lines = new THREE.LineSegments(geometry, new THREE.LineDashedMaterial({
+      color: 0x919baa, transparent: true, opacity: .65, depthWrite: false,
+      dashSize: Math.max(s.span / 140, .05), gapSize: Math.max(s.span / 220, .03),
+    }));
+    lines.computeLineDistances();
+    s.scene.add(lines);
+    s.comparisonBounds = new THREE.Box3().setFromObject(lines);
+    s.scheduleFit();
+    return () => { s.scene.remove(lines); s.comparisonBounds = null; geometry.dispose(); lines.material.dispose(); s.invalidate(); };
+  }, [comparison?.previewData]);
   useEffect(() => { runtime.current?.clearPick(); }, [selectionMode, design?.geometryScope, design?.revision]);
   useEffect(() => {
     if (resetToken > 0) runtime.current?.resetView();
@@ -626,6 +649,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
         {picked && <><Button variant="outline" size="sm" icon={<IconContextInjectionOutlineRegular size={16} />} disabled={referenceDisabled} onClick={() => onReference(picked)}>{t("referenceGeometry")}</Button><Button variant="outline" size="sm" icon={<IconEditOutlineRegular size={16} />} disabled={editingDisabled} onClick={() => onEdit(picked)}>{t("editGeometry")}</Button></>}
         <Button variant="ghost" size="sm" onClick={() => onSelectionModeChange(null)}>{t("close")}</Button>
       </div>}
+      {presentation === "workbench" && <div className="mc-navigation">
       <ViewCube
         ref={cube}
         active={active}
@@ -641,6 +665,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
           <span className="mc-scale-bar" style={{ width: scale.width }} aria-hidden="true" />
         </div>
       )}
+      </div>}
     </div>
   );
 }

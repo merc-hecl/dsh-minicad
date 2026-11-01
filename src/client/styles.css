@@ -10,6 +10,17 @@
 }
 .mc-workbench {
   --mc-top-inset: 0px;
+  --mc-gutter: 20px;
+  --mc-panel-gap: 24px;
+  --mc-sidebar-width: 256px;
+  --mc-sidebar-rail: var(--mc-sidebar-width);
+  --mc-content-top: calc(80px + var(--mc-top-inset));
+  --mc-panel-left: calc(var(--mc-gutter) + var(--mc-sidebar-rail) + var(--mc-panel-gap));
+  --mc-canvas-left: var(--mc-panel-left);
+  --mc-canvas-center: calc((100% + var(--mc-canvas-left) - var(--mc-gutter)) / 2);
+  --mc-ease-out: cubic-bezier(.23, 1, .32, 1);
+  --mc-motion-fast: 160ms;
+  --mc-motion-panel: 220ms;
   position: relative;
   isolation: isolate;
   width: 100%;
@@ -61,10 +72,6 @@ html[data-platform="darwin"] .mc-workbench {
 .mc-selection code { user-select: all; }
 .mc-tools button[aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
 .mc-scale {
-  position: absolute;
-  z-index: 1;
-  left: 20px;
-  bottom: 4px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -81,8 +88,8 @@ html[data-platform="darwin"] .mc-workbench {
 .mc-header {
   position: absolute;
   z-index: 2;
-  left: 20px;
-  right: 20px;
+  left: var(--mc-gutter);
+  right: var(--mc-gutter);
   top: calc(10px + var(--mc-top-inset));
   height: 36px;
   display: flex;
@@ -90,15 +97,25 @@ html[data-platform="darwin"] .mc-workbench {
   gap: 12px;
 }
 .mc-header strong {
+  flex: none;
   font-weight: 600;
   letter-spacing: -0.3px;
 }
 .mc-header .mc-crumb {
-  margin-left: 150px;
+  flex: 1;
+  min-width: 0;
+  margin-left: var(--mc-panel-gap);
   color: var(--mc-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.mc-header-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
 }
 .mc-spacer {
   flex: 1;
@@ -119,10 +136,10 @@ html[data-platform="darwin"] .mc-workbench {
 .mc-sidebar {
   position: absolute;
   z-index: 3;
-  top: calc(80px + var(--mc-top-inset));
-  left: 20px;
+  top: var(--mc-content-top);
+  left: var(--mc-gutter);
   bottom: 172px;
-  width: 256px;
+  width: var(--mc-sidebar-width);
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -138,13 +155,30 @@ html[data-platform="darwin"] .mc-workbench {
   width: auto;
   padding: 0;
 }
-.mc-view-cube {
+.mc-workbench[data-project-panel-collapsed] {
+  --mc-sidebar-rail: 44px;
+  --mc-canvas-left: var(--mc-gutter);
+}
+.mc-workbench[data-record-open]:not([data-project-panel-collapsed]) .mc-sidebar {
+  bottom: var(--mc-gutter);
+}
+.mc-navigation {
   position: absolute;
   z-index: 1;
-  right: 20px;
-  bottom: 60px;
+  right: var(--mc-gutter);
+  bottom: var(--mc-gutter);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 176px;
+  pointer-events: none;
+}
+.mc-view-cube {
+  position: relative;
   width: 176px;
   height: 176px;
+  pointer-events: auto;
   touch-action: none;
   user-select: none;
 }
@@ -256,13 +290,13 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
   color: #8fb8ff;
 }
 @media (max-width: 1100px) {
-  .mc-view-cube {
-    bottom: calc(var(--mc-composer-height, 160px) + 72px);
+  .mc-navigation {
+    bottom: calc(var(--mc-composer-height, 0px) + 34px);
   }
 }
 .mc-tools {
   position: absolute;
-  right: 20px;
+  right: var(--mc-gutter);
   top: 36%;
   padding: 4px;
   display: flex;
@@ -271,8 +305,8 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
 }
 .mc-empty {
   position: absolute;
-  left: 300px;
-  right: 80px;
+  left: var(--mc-canvas-left);
+  right: var(--mc-gutter);
   top: 40%;
   text-align: center;
   pointer-events: none;
@@ -299,9 +333,9 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
   position: absolute;
   z-index: 4;
   bottom: 48px;
-  left: calc(50% + 90px);
+  left: var(--mc-canvas-center);
   transform: translateX(-50%);
-  width: min(780px, calc(100% - 370px));
+  width: min(780px, calc(100% - var(--mc-canvas-left) - var(--mc-gutter)));
 }
 /* The native embedded Conversation normally clips its transcript scrollport.
    Here it contains only the composer: allow menus to open above the input card.
@@ -436,61 +470,28 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
   line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
 }
 @media (max-width: 1000px) {
-  .mc-sidebar {
-    width: 220px;
-  }
-  .mc-bottom {
-    width: calc(100% - 290px);
-    left: calc(50% + 110px);
-  }
-  .mc-header .mc-crumb {
-    margin-left: 110px;
-  }
-  .mc-empty {
-    left: 260px;
-  }
-
+  .mc-workbench { --mc-sidebar-width: 220px; }
 }
 @media (max-width: 760px) {
-  .mc-scale {
-    bottom: 205px;
+  .mc-workbench {
+    --mc-gutter: 12px;
+    --mc-sidebar-width: 200px;
+    --mc-canvas-left: var(--mc-gutter);
+    --mc-panel-left: var(--mc-gutter);
   }
   .mc-sidebar {
-    width: 200px;
     bottom: 240px;
   }
   .mc-header .mc-crumb {
     display: none;
   }
   .mc-bottom {
-    left: 20px;
-    right: 20px;
-    width: auto;
-    transform: none;
     bottom: 35px;
   }
   .mc-help {
     bottom: -25px;
   }
-  .mc-empty {
-    left: 230px;
-    right: 20px;
-  }
-  .mc-view-cube {
-    right: 80px;
-  }
   .mc-tools {
     top: 205px;
   }
-}
-/* Reclaim the panel's space when it is stowed, including narrow windows. */
-.mc-workbench[data-project-panel-collapsed] .mc-bottom {
-  left: 50%;
-  right: auto;
-  width: min(780px, calc(100% - 40px));
-  transform: translateX(-50%);
-}
-.mc-workbench[data-project-panel-collapsed] .mc-empty {
-  left: 80px;
-  right: 80px;
 }

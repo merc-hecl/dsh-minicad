@@ -33,6 +33,7 @@ export function buildShape(
   assets = {},
   onRead = () => {},
   root = dirname(filename),
+  checkpoint,
 ) {
   const require = createRequire(filename);
   for (const file of Object.keys(require.cache))
@@ -40,7 +41,8 @@ export function buildShape(
   const api = {
     ...cad,
     edit: (part, operations, parameters) =>
-      editShape(part, operations, parameters, { readModel: api.readModel }),
+      editShape(part, operations, parameters, { readModel: api.readModel, checkpoint }),
+    checkpoint: (part, label = "") => checkpoint ? checkpoint(part, label) : part,
     readModel: (name) => {
       const bytes = assets[name] || readFileSync(inside(root, name));
       onRead(name, bytes);
@@ -295,6 +297,10 @@ export function editShape(part, operations, parameters = {}, context = {}) {
         const next = applyOperation(selected, op, base, context);
         part = rest.length ? next.fuse(rest) : next;
       } else part = applyOperation(part, op, base, context);
+      // Structured solid operations publish valid solids; UDFs can choose their
+      // own meaningful checkpoints instead of publishing open construction.
+      if (context.checkpoint && part?.solids().length && part.isValid() && part.volume > 0)
+        context.checkpoint(part, "", raw.op);
     } catch (cause) {
       throw Object.assign(
         new Error(
@@ -346,7 +352,7 @@ export function normalizeOperations(operations, shape, revision, scope) {
 }
 export function editSource(source, operations, revision) {
   const name = `build_before_v${revision + 1}`;
-  return `${source || "function build(parameters, cad) { return null; }"}\n\nconst ${name} = build;\nbuild = function(parameters, cad) {\n  return cad.edit(${name}(parameters, cad), ${JSON.stringify(operations, null, 2)}, parameters);\n};\n`;
+  return `${source || "function build(parameters, cad) { return null; }"}\n\nconst ${name} = build;\nbuild = async function(parameters, cad) {\n  return cad.edit(await ${name}(parameters, cad), ${JSON.stringify(operations, null, 2)}, parameters);\n};\n`;
 }
 export function describeShape(shape) {
   if (

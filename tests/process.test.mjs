@@ -1,0 +1,72 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
+import { createWorker } from "../src/host/worker.js";
+import { decodePreview } from "../src/shared/preview.js";
+
+test("real checkpoints stream before commit, persist on failure/cancel, and retain the saved head", { timeout: 90000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "minicad-process-"));
+  let worker = createWorker({ dataDir: root });
+  try {
+    const project = await worker.call("create", { title: "process" });
+    const args = { projectId: project.id, sourceFile: "model.js", geometry: false };
+    const slowSource = `async function build(p,cad) {
+      let part=cad.Box(10,20,30); cad.checkpoint(part,'blank');
+      await new Promise(resolve=>setTimeout(resolve,1800));
+      part=part.cut(cad.Cylinder(2,40)); cad.checkpoint(part,'hole');
+      return part;
+    }`;
+    const pending = worker.call("build", { ...args, source: slowSource, expectedRevision: 0 });
+    let live;
+    const until = Date.now() + 15000;
+    while (!(live = worker.processState(args))?.steps.length && Date.now() < until) await delay(30);
+    assert.equal(live.phase, "working");
+    assert.equal(live.baseRevision, 0);
+    assert.ok(Math.abs(live.steps[0].metrics.volume - 6000) < 1e-6);
+    assert.equal(live.committedRevision, undefined);
+    const checkpoint = await worker.call("checkpoint_file", { ...args, runId: live.id, sequence: 1 });
+    const mesh = decodePreview(await readFile(checkpoint.path));
+    assert.ok(mesh.positions.length);
+    const saved = await pending;
+    assert.equal(saved.head, 1);
+    const completed = await worker.call("process_state", args);
+    assert.equal(completed.phase, "done");
+    assert.equal(completed.steps.length, 2);
+    assert.ok(completed.steps[1].metrics.volume < 6000);
+    assert.equal(completed.committedRevision, 1);
+    const edited = await worker.call("edit", { ...args, expectedRevision: 1, operations: [{ op: "translate", by: [2,0,0] }, { op: "rotate", axis: [0,0,1], angle: 45 }] });
+    assert.equal(edited.head, 2);
+    const structured = await worker.call("process_state", args);
+    assert.equal(structured.steps.at(-1).operation, "rotate");
+    assert.ok(Math.abs(structured.steps.at(-1).metrics.volume - saved.design.metrics.volume) < 1e-5);
+    await assert.rejects(worker.call("build", { ...args, expectedRevision: 2, source: `function build(p,cad){cad.checkpoint(cad.Box(3,4,5),'valid'); throw new Error('after-preview');}` }), /after-preview/);
+    const failed = await worker.call("process_state", args);
+    assert.equal(failed.phase, "error");
+    assert.ok(Math.abs(failed.steps[0].metrics.volume - 60) < 1e-6);
+    assert.equal((await worker.call("get", args)).head, 2);
+    const controller = new AbortController();
+    const canceled = worker.call("build", { ...args, expectedRevision: 2, source: slowSource.replace("1800", "60000") }, controller.signal);
+    let cancellation;
+    while (!(cancellation = worker.processState(args))?.steps.length || cancellation.id === failed.id) await delay(30);
+    controller.abort();
+    await assert.rejects(canceled, /取消/);
+    assert.equal((await worker.call("process_state", args)).phase, "stopped");
+    assert.equal((await worker.call("get", args)).head, 2);
+    await worker.dispose();
+    worker = createWorker({ dataDir: root });
+    const history = await worker.call("process_history", args);
+    assert.equal(history.length, 4);
+    assert.equal(history[0].phase, "stopped");
+    const old = await worker.call("checkpoint_file", { ...args, runId: completed.id, sequence: 2 });
+    assert.ok((await readFile(old.path)).length);
+    await assert.rejects(worker.call("build", { ...args, expectedRevision: 1, source: slowSource }), /版本/);
+    assert.equal((await worker.call("process_history", args)).length, 4);
+    await assert.rejects(worker.call("checkpoint_file", { ...args, runId: "../elsewhere", sequence: 1 }), /不存在/);
+  } finally {
+    await worker.dispose();
+    await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+  }
+});

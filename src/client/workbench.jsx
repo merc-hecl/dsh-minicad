@@ -2,6 +2,7 @@ import React, {
   useState,
   useEffect,
   useLayoutEffect,
+  useCallback,
   useRef,
   useSyncExternalStore,
 } from "react";
@@ -34,6 +35,8 @@ import { ForgeIcon } from "./forge-icon.jsx";
 import { ParameterDialog } from "./parameter-dialog.jsx";
 import { ErrorDetails, WorkbenchDialog } from "./workbench-dialog.jsx";
 import { DesignNavigator } from "./design-navigator.jsx";
+import { ImmersiveDock } from "./immersive-dock.jsx";
+import { MakingRecord } from "./making-record.jsx";
 
 export function Cube({ size = 22, ...props }) {
   return (
@@ -72,17 +75,11 @@ export function Workbench({
   locale, t, enter, back, request, addGeometryReference, SessionProvider, renderSlot, retainSession, workspaceCatalog, forkTask,
 }) {
   const workbench = useRef(null);
-  const bottom = useRef(null);
+  const dock = useRef(null);
   useLayoutEffect(() => {
     enter(workbench.current);
   }, []);
-  useLayoutEffect(() => {
-    const observer = new ResizeObserver(() => {
-      workbench.current.style.setProperty("--mc-composer-height", `${bottom.current.offsetHeight}px`);
-    });
-    observer.observe(bottom.current);
-    return () => observer.disconnect();
-  }, []);
+  const dockHeight = useCallback(height => workbench.current?.style.setProperty("--mc-composer-height", `${height}px`), []);
   const language = useSyncExternalStore(
     locale.subscribe,
     locale.getSnapshot,
@@ -110,6 +107,11 @@ export function Workbench({
     [editHead, setEditHead] = useState(0);
   const [sessionReference, setSessionReference] = useState(null);
   const [reference, setReference] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false), [transcriptTarget, setTranscriptTarget] = useState(null);
+  const [progress, setProgress] = useState(null), [processDesign, setProcessDesign] = useState(null);
+  const [nativeRunning, setNativeRunning] = useState(false);
+  const processKey = useRef("");
+  useEffect(() => { setProcessDesign(null); processKey.current = ""; }, [project?.id, project?.sourceFile]);
   const selection = useRef(""),
     projectRef = useRef(null),
     alive = useRef(true);
@@ -185,6 +187,7 @@ export function Workbench({
     if (changed) await refreshList();
   }
   async function load(id) {
+    setHistoryOpen(false); setProgress(null); setProcessDesign(null); processKey.current = "";
     setGeometryAction(null);
     if (discardingTasks.current.has(id)) return;
     const previous = projects.find((task) => task.id === selection.current);
@@ -217,6 +220,7 @@ export function Workbench({
     }
   }
   function clearSelection() {
+    setHistoryOpen(false); setProgress(null); setProcessDesign(null); processKey.current = "";
     setGeometryAction(null);
     loadController.current.abort();
     loadController.current = new AbortController();
@@ -286,6 +290,7 @@ export function Workbench({
         const state = await api("status", { projectId: selected });
         if (disposed || selection.current !== selected) return;
         setRunning(state.running);
+        setProgress(state.progress || null);
         if (state.projects) setProjects(state.projects);
         if (state.error && state.error !== lastStatusError.current)
           setError({ key: errorKey(state.error), detail: state.error });
@@ -300,7 +305,21 @@ export function Workbench({
             refreshList().catch(showError);
           }
         }
-        timer = setTimeout(poll, state.running ? 1000 : 3500);
+        const step = state.progress?.steps.at(-1), current = projectRef.current;
+        if (state.running && step && current && state.progress.sourceFile === current.sourceFile && ["working", "validating"].includes(state.progress.phase)) {
+          const key = `${state.progress.id}:${step.sequence}`;
+          if (processKey.current !== key) {
+            const previewData = await request("checkpoint", { projectId: selected, sourceFile: current.sourceFile, runId: state.progress.id, sequence: step.sequence }, loadController.current.signal);
+            if (!disposed && selection.current === selected && projectRef.current?.sourceFile === current.sourceFile) {
+              processKey.current = key;
+              setProcessDesign({ previewData, metrics: step.metrics, geometryIds: state.progress.geometryIds,
+                sourceFile: current.sourceFile, checkpoint: { runId: state.progress.id, sequence: step.sequence } });
+            }
+          }
+        } else if (!state.running || state.progress?.phase === "done") {
+          processKey.current = ""; setProcessDesign(null);
+        }
+        timer = setTimeout(poll, state.running ? 500 : 3500);
       } catch (e) {
         if (!disposed) {
           showError(e);
@@ -347,6 +366,7 @@ export function Workbench({
         const reference = await api("geometry_annotation", { ...args, reference: captured.target.reference, note });
         if (!alive.current || selection.current !== captured.projectId) return;
         if (!addGeometryReference(captured.sessionId, reference)) throw Object.assign(new Error(t("referenceInputBusy")), { uiKey: "referenceInputBusy" });
+        dock.current?.reveal();
       } else {
         const updated = await api("edit", { ...args, operations: [operation], summary: `${t("manualEdit")} ${captured.target.label}: ${t(operation.op)}` });
         if (!alive.current || selection.current !== captured.projectId) return;
@@ -425,14 +445,28 @@ export function Workbench({
       ref={workbench}
       className="mc-workbench"
       data-project-panel-collapsed={panelCollapsed || undefined}
+      data-record-open={historyOpen || undefined}
+      lang={language === "zh" ? "zh" : "en"}
+      tabIndex={-1}
+      onPointerDown={event => {
+        if (event.target.matches("#mc-view-model-panel > canvas")) {
+          dock.current?.dismissEmpty();
+          workbench.current?.focus({ preventScroll: true });
+        }
+      }}
+      onKeyDown={event => {
+        if (historyOpen && event.key === "Escape" && !event.defaultPrevented && !event.target.closest('[role="dialog"],[role="menu"]')) { event.preventDefault(); setHistoryOpen(false); }
+        else dock.current?.keyDown(event);
+      }}
     >
       <Viewport
         id="mc-view-model-panel"
-        design={design}
+        active={!historyOpen}
+        design={processDesign || design}
         wire={wire}
-        selectionMode={modal ? null : selectionMode}
+        selectionMode={modal || processDesign || historyOpen ? null : selectionMode}
         referenceDisabled={busy || !sessionReference || sessionReference.sessionId !== project?.session_id}
-        editingDisabled={busy || running || !sessionReference || sessionReference.sessionId !== project?.session_id}
+        editingDisabled={busy || running || nativeRunning || !sessionReference || sessionReference.sessionId !== project?.session_id}
         onReference={target => openGeometryAction("annotation", target)}
         onEdit={target => openGeometryAction("edit", target)}
         onSelectionModeChange={setSelectionMode}
@@ -452,7 +486,8 @@ export function Workbench({
           {libraries.find((library) => library.id === project?.library_id)?.title || t("defaultLibrary")}
           {project ? ` / ${project.title}` : ""}
         </span>
-        <span className="mc-spacer" />
+        <div className="mc-header-actions">
+        <Btn icon={IconClockOutlineRegular} disabled={!project} aria-pressed={historyOpen} onClick={() => setHistoryOpen(value => !value)}>{t("makingRecord")}</Btn>
         {project?.head > 0 && (
           <Btn icon={IconClockOutlineRegular} onClick={() => open("history")}>
             {`v${project.head}`}
@@ -466,6 +501,7 @@ export function Workbench({
         >
           {t("export")}
         </Btn>
+        </div>
       </header>
       <aside className={`mc-sidebar ${panelCollapsed ? "" : "mc-panel"}`} aria-label={t("libraries")}>
         {panelCollapsed ? (
@@ -539,7 +575,7 @@ export function Workbench({
               disabled={!design}
               onClick={() => open("parameters")}
             />
-            <Btn icon={IconInspectOutlineRegular} label={t("selectGeometry")} aria-pressed={!!selectionMode} disabled={!design} onClick={() => setSelectionMode(mode => mode ? null : "both")} />
+            <Btn icon={IconInspectOutlineRegular} label={t("selectGeometry")} aria-pressed={!!selectionMode} disabled={!design || !!processDesign} onClick={() => setSelectionMode(mode => mode ? null : "both")} />
           </div>
       {!design && !loading && (
         <div className="mc-empty">
@@ -555,10 +591,17 @@ export function Workbench({
           <span role="status" className="mc-loading"><StateDot state="ongoing" />{t("loading")}</span>
         </div>
       )}
-      <section ref={bottom} className="mc-bottom">
+      {processDesign && !historyOpen && <span className="mc-process-caption">{t("processPreview")} · {t("checkpoint")} {processDesign.checkpoint.sequence}</span>}
+      {historyOpen && project && <MakingRecord key={`${project.id}:${project.sourceFile}`} project={project} progress={progress}
+        request={request} t={t} language={language} onClose={() => setHistoryOpen(false)} onTranscriptTarget={setTranscriptTarget} />}
+      <ImmersiveDock ref={dock} sourceKey={project?.session_id} t={t} hidden={historyOpen}
+        running={running} progress={progress} error={error} onHistory={() => setHistoryOpen(true)}
+        onStart={() => setError(null)}
+        onCancel={() => action(() => api("cancel", { projectId: selected }))} onRunning={setNativeRunning} onHeight={dockHeight}>
+        {callbacks => <>
         {sessionReference && project && sessionReference.sessionId === project.session_id ? (
           <SessionProvider session={sessionReference}>
-            {renderSlot("minicad.composer", {})}
+            {renderSlot("minicad.composer", { ...callbacks, transcriptTarget })}
           </SessionProvider>
         ) : selected || loading ? <span role="status" className="mc-loading mc-muted"><StateDot state="ongoing" />{t("loading")}</span> : (
           <Btn icon={IconPlusOutlineRegular} onClick={() => {
@@ -570,7 +613,8 @@ export function Workbench({
           }}>{t(libraries.length ? "newProject" : "newLibrary")}</Btn>
         )}
         <div className="mc-help">{t(selectionMode ? "selectionControls" : "controls")}</div>
-      </section>
+        </>}
+      </ImmersiveDock>
       {renderSlot("minicad.task.renameDialog", {
         renameTarget,
         onSettleRename: () => setRenameTarget(null),

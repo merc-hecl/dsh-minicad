@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 const external = [
   "react",
+  "react-dom",
   "react/jsx-runtime",
   "@deepseek-ai/dsh-client-ui-primitives",
 ];

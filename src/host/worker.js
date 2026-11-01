@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { Store, KernelRequired } from "../kernel/store.js";
+import { ProcessJournal } from "../kernel/process.js";
 
 const localMethods = new Set([
   "get_settings", "update_settings",
@@ -24,6 +25,7 @@ const localMethods = new Set([
   "select_model",
   "message",
   "api",
+  "process_state", "process_history", "checkpoint_file",
 ]);
 const retryableReads = new Set([
   "geometry_annotation",
@@ -50,7 +52,10 @@ export function createWorker({
   let queue = Promise.resolve(),
     stopped = false,
     current,
+    modeling,
     sequence = 0;
+  const activeJournal = (params) => modeling && modeling.projectId === params.projectId
+    && (!params.sourceFile || params.sourceFile === modeling.sourceFile) ? modeling.journal : null;
   const script = fileURLToPath(
     new URL("../kernel/service.js", import.meta.url),
   );
@@ -176,6 +181,10 @@ export function createWorker({
     });
   }
   function call(method, params = {}, signal) {
+    const journal = activeJournal(params);
+    if (journal && method === "process_state") return Promise.resolve(journal.latest());
+    if (journal && method === "process_history") return Promise.resolve(journal.runs().toReversed());
+    if (journal && method === "checkpoint_file") return Promise.resolve(journal.preview(params.runId, params.sequence));
     const run = async () => {
       if (stopped) throw new Error("MiniCAD 已关闭");
       if (signal?.aborted) throw new Error("操作已取消");
@@ -191,24 +200,39 @@ export function createWorker({
           if (!(error instanceof KernelRequired)) throw error;
         }
       }
-      for (let attempt = 0; ; attempt++) {
-        try {
-          return await launch(method, params, signal);
-        } catch (error) {
-          if (
-            attempt ||
-            !retryableReads.has(method) ||
-            !(error.retryable || ["ENOMEM", "EAGAIN"].includes(error.code)) ||
-            stopped ||
-            signal?.aborted
-          )
-            throw error;
+      const constructs = ["build", "edit", "update_parameters"].includes(method);
+      if (constructs) {
+        const location = await new Store(dataDir, { allowKernel: false }).dispatch("process_location", params);
+        modeling = { projectId: params.projectId, sourceFile: location.sourceFile,
+          journal: new ProcessJournal(location.directory, location.sourceFile) };
+      }
+      try {
+        for (let attempt = 0; ; attempt++) {
           try {
-            await delay(250, undefined, { signal });
-          } catch {
-            throw new Error("操作已取消");
+            return await launch(method, params, signal);
+          } catch (error) {
+            if (
+              attempt ||
+              !retryableReads.has(method) ||
+              !(error.retryable || ["ENOMEM", "EAGAIN"].includes(error.code)) ||
+              stopped ||
+              signal?.aborted
+            )
+              throw error;
+            try {
+              await delay(250, undefined, { signal });
+            } catch {
+              throw new Error("操作已取消");
+            }
           }
         }
+      } catch (error) {
+        const run = modeling?.journal.latest();
+        if (constructs && run && ["working", "validating"].includes(run.phase))
+          modeling.journal.finish(run, signal?.aborted ? "stopped" : "error", { error: error.message });
+        throw error;
+      } finally {
+        if (constructs) modeling = undefined;
       }
     };
     const result = queue.then(run);
@@ -217,6 +241,7 @@ export function createWorker({
   }
   return {
     call,
+    processState: (params) => activeJournal(params)?.latest() || null,
     dispose: () => {
       stopped = true;
       return stop(current);

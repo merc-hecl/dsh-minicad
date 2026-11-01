@@ -11,6 +11,7 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 - Drawing references: provide PDFs through DSH attachments for the agent to read using host capabilities.
 - Parameter and source editing: adjust model parameters or modify modeling source code through the agent.
 - Model interaction: view models and drawings, annotate selected faces and edges for the agent, or edit local geometry and save revisions.
+- Making record: review modeling steps, compare saved versions, and read the complete native conversation and tool records.
 - Library and task management: organize part-design tasks in libraries, each with its own conversation, modeling resources, and revision history.
 - Export: STEP, STL, and editable project ZIP files.
 
@@ -58,9 +59,15 @@ npm pack --pack-destination dist
 
 1. Click the folder button in the library header and choose a design directory through DSH's folder picker. The library takes the directory's name. Create part-design tasks in it and describe dimensions, units, features, and constraints. Add files through DSH's native composer. Each task has its own DSH session; the host generates its title from the initial intent, and you can rename it manually. When no designs exist, the workbench prepares a blank task in the default library and its DSH session on first open.
 2. Select a model already configured in DSH. MiniCAD does not store separate model credentials.
-3. Each task uses its own subfolder in the library as its working directory and starts empty. The agent reads the task's modeling file and current revision, then calls modeling tools. The canvas displays the actual model after a successful build.
+3. Each task uses its own subfolder in the library as its working directory and starts empty. The agent reads the task's modeling file and current revision, then calls modeling tools. The canvas updates from valid geometry checkpoints during construction and displays the saved model after a successful build.
 4. Edit values in the parameter panel or modify modeling source code through the agent. Saving rebuilds the model and validates solid geometry.
 5. Export the current revision or restore a previous one. Restoring creates a new revision with an increasing number, preventing stale requests from overwriting newer state.
+
+When idle, the input folds below the canvas with half the official plugin icon visible. Click it or press Enter on the canvas to expand; Escape folds it while preserving the draft. Sending folds it automatically. Clicking the canvas also folds the input when it contains no text, attachments or geometry references. The state island uses purple for understanding/planning, blue for modeling and teal for checking/saving. Green briefly settles after saving, amber indicates input needed or failure, and slate stays still after stopping. Hover or click it to inspect the step, add input or stop work. Theme, language and reduced motion follow the host or system.
+
+Open **Making record** in the header to review the model in an independently framed viewport. The bottom filmstrip selects saved versions and process checkpoints; an older version can be overlaid as a dashed outline. DSH's complete native conversation and tool records have an independent reading area on the right. In a narrow workspace, switch between Model review and Conversation. Close the record to return to the workbench. Process geometry is read-only; face/edge references and manual edits target saved revisions. Failure and cancellation retain valid checkpoints for review.
+
+`cad_edit` automatically records checkpoints after valid solid operations. Custom `cad_build` code can call `cad.checkpoint(part, "step label")` at meaningful stages; it returns the same part. Without explicit calls, only the final result is checkpointed. Checkpoints require valid closed solids with positive volume and do not commit revisions. Final validation and saving create a new revision. Fast consecutive operations may appear together at the next canvas refresh; recorded checkpoints remain selectable for review.
 
 The sidebar follows Library → Part-design task. Create or rename libraries, use a task's menu to rename it, move it to another library, or view the current task's reference drawings, and find tasks through search and sorting.
 
@@ -88,7 +95,9 @@ Moving a task to another library moves its entire folder, including source files
 
 Paths of opened directories are stored in `$DSH_HOME/storages/minicad/libraries.json`, or `~/.dsh/storages/minicad/libraries.json` when DSH_HOME is unset. The default library uses the adjacent `default/` directory. Set `dataDir` to override this settings directory.
 
-Directory, status and saved-preview reads run in the host without starting a modeling process or loading SMLib. An isolated process is started only for real geometry calculations or legacy-preview refresh. All file operations share one serial queue. Each revision's `summary.json` is a rebuildable read cache without meshes or views; deleting or corrupting it does not delete models or change revisions. Imported-resource fingerprints are computed in chunks instead of loading entire files into memory.
+Directory, status and saved-preview reads run in the host without starting a modeling process or loading SMLib. An isolated process is started only for real geometry calculations or legacy-preview refresh. Modeling writes share one serial queue; published process status and previews can be read during construction. Each revision's `summary.json` is a rebuildable read cache without meshes or views; deleting or corrupting it does not delete models or change revisions. Imported-resource fingerprints are computed in chunks instead of loading entire files into memory.
+
+Process checkpoints are stored per model in `.cad-process/`, separately from committed revisions in `.cad-history/`. Polling reads current process metadata; binary previews load on demand, with at most six cached by the record page. The completion marker and final model commit in the same transaction.
 
 Read-only geometry requests retry once after a short delay for transient allocation failures. Cancellation, timeouts, invalid arguments and modeling writes are never automatically retried.
 

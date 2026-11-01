@@ -21,6 +21,7 @@ import {
   readJson,
 } from "./files.js";
 import { encodePreview, previewInfo } from "../shared/preview.js";
+import { ProcessJournal } from "./process.js";
 const kernel = () => import("./model.js");
 const now = () => Date.now() / 1000;
 const id = () => randomUUID().replaceAll("-", "");
@@ -388,6 +389,7 @@ export class Store {
     inputs,
     assets = new Map(),
     selectModel = true,
+    extraFiles = new Map(),
   ) {
     const [root, data, task] = this.locate(key),
       directory = this.taskRoot(root, task);
@@ -445,10 +447,27 @@ export class Store {
       changes.set(inside(folder, name), bytes);
     }
     changes.set(join(root, "minicad.json"), jsonBytes(data));
+    for (const [path, bytes] of extraFiles) changes.set(path, bytes);
     this.commit(changes);
     this.cacheSummary(folder, state);
   }
   async build(key, args, edit = false) {
+    const [root, , task] = this.locate(key);
+    const directory = this.taskRoot(root, task);
+    const sourceFile = portable(relative(directory, modelPath(directory, args.sourceFile || task.sourceFile)));
+    const head = task.models[sourceFile]?.head || 0;
+    this.expect(head, args);
+    const journal = new ProcessJournal(directory, sourceFile);
+    const run = journal.begin(sourceFile, head, args.summary, await this.dispatch("get_settings"));
+    try {
+      const result = await this.executeBuild(key, args, edit, journal, run);
+      return result;
+    } catch (error) {
+      journal.finish(run, "error", { error: String(error.message || error) });
+      throw error;
+    }
+  }
+  async executeBuild(key, args, edit, journal, run) {
     const [root, , task] = this.locate(key),
       directory = this.taskRoot(root, task),
       sourceFile = portable(
@@ -529,18 +548,26 @@ export class Store {
     const resources = Object.fromEntries(assets);
     for (const [name, bytes] of assets)
       inputs.set(inside(directory, name), bytes);
+    const checkpoint = (part, label, operation) => {
+      // Invalid/open intermediate construction is never shown as a valid solid.
+      const description = api.describeShape(part);
+      journal.capture(run, description, label, operation);
+      return part;
+    };
+    const resourceRead = (name, bytes) => {
+      const path = inside(directory, name);
+      if (paths(directory, target).includes(path))
+        throw new Error("模型资源不能引用当前建模输出文件");
+      if (!inputs.has(path)) inputs.set(path, bytes);
+    };
     shape = await api.buildShape(
       source,
       parameters,
       inside(directory, target),
       resources,
-      (name, bytes) => {
-        const path = inside(directory, name);
-        if (paths(directory, target).includes(path))
-          throw new Error("模型资源不能引用当前建模输出文件");
-        if (!inputs.has(path)) inputs.set(path, bytes);
-      },
+      resourceRead,
       directory,
+      checkpoint,
     );
     for (const [name, bytes] of Object.entries(resources))
       assets.set(name, bytes);
@@ -552,6 +579,9 @@ export class Store {
       operations: operations || [],
       assets: [...assets.keys()],
     };
+    journal.capture(run, state, "", "result");
+    journal.finish(run, "validating");
+    const finishedRun = { ...run, phase: "done", committedRevision: head + 1, updated: Date.now() / 1000 };
     this.record(
       key,
       target,
@@ -562,6 +592,7 @@ export class Store {
       inputs,
       assets,
       !args.preserveSelection,
+      new Map([[journal.manifest(run.id), jsonBytes(finishedRun)]]),
     );
     return this.project(key, args.geometry !== false, sourceFile);
   }
@@ -786,6 +817,13 @@ export class Store {
               relative(directory, modelPath(directory, args.sourceFile)),
             ),
       row = this.row(root, data, { ...task, sourceFile });
+    if (method === "process_location") return { directory, sourceFile };
+    if (["process_state", "process_history", "checkpoint_file"].includes(method)) {
+      const journal = new ProcessJournal(directory, sourceFile);
+      if (method === "process_state") return journal.latest();
+      if (method === "process_history") return journal.runs().toReversed();
+      if (method === "checkpoint_file") return journal.preview(args.runId, args.sequence);
+    }
     if (method === "get") return this.project(key, false, sourceFile);
     if (method === "preview_file") {
       const saved = this.snapshot(key, args.revision, sourceFile, false);

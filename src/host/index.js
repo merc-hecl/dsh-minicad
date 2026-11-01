@@ -24,6 +24,7 @@ const json = (value, status = 200) =>
     },
   });
 const clientMethods = new Set([
+  "process_state", "process_history",
   "geometry_annotation",
   "get_settings", "update_settings",
   "list",
@@ -49,7 +50,8 @@ export async function apply(ctx, config = {}) {
   });
   const bySession = new Map(),
     lastError = new Map(),
-    active = new Map();
+    active = new Map(),
+    building = new Map();
   let disposed = false;
   const call = async (method, args, signal) => {
     if (!["build", "edit", "restore", "update_parameters"].includes(method)) return worker.call(method, args, signal);
@@ -61,9 +63,11 @@ export async function apply(ctx, config = {}) {
     signal?.addEventListener("abort", abort, { once: true });
     active.set(args.projectId, controller);
     try {
+      building.set(args.projectId, await worker.call("get", { projectId: args.projectId, geometry: false }, controller.signal));
       return await worker.call(method, args, controller.signal);
     } finally {
       active.delete(args.projectId);
+      building.delete(args.projectId);
       signal?.removeEventListener("abort", abort);
     }
   };
@@ -227,11 +231,12 @@ export async function apply(ctx, config = {}) {
     }
     if (method === "models") return ctx.sessionController.modelCatalog();
     if (method === "status") {
-      const p = await call("get", {
+      const inFlight = building.get(args.projectId);
+      const p = inFlight || await call("get", {
         projectId: args.projectId,
         geometry: false,
       });
-      await alignDirectory(p, signal);
+      if (!inFlight) await alignDirectory(p, signal);
       const projection = p.session_id
         ? await ctx.sessionController.projections(
             { sessionId: p.session_id },
@@ -239,14 +244,16 @@ export async function apply(ctx, config = {}) {
           )
         : null;
       const title = projection?.values?.title || p.title;
-      if (title !== p.title) await call("rename", { projectId: p.id, title });
+      if (title !== p.title && !inFlight) await call("rename", { projectId: p.id, title });
       return {
         head: p.head,
         sourceVersion: p.sourceVersion,
         workspaceDirectory: p.workspaceDirectory,
         sourceFile: p.sourceFile,
         title,
-        projects: (await call("list")).map((project) => ({
+        progress: inFlight ? worker.processState({ projectId: p.id, sourceFile: p.sourceFile })
+          : await call("process_state", { projectId: p.id, sourceFile: p.sourceFile }),
+        projects: inFlight ? undefined : (await call("list")).map((project) => ({
           ...project,
           running: ctx.agents.get(project.session_id)?.status === "running" || active.has(project.id),
         })),
@@ -358,6 +365,13 @@ export async function apply(ctx, config = {}) {
   route("/api/minicad/preview", ["GET"], async (request) => {
     const params = Object.fromEntries(new URL(request.url).searchParams);
     const preview = await call("preview_file", { ...params, revision: Number(params.revision) }, request.signal);
+    return new Response(Readable.toWeb(createReadStream(preview.path, { signal: request.signal })), { headers: {
+      "content-type": "application/octet-stream", "content-length": String(preview.byteLength), "cache-control": "no-store",
+    } });
+  });
+  route("/api/minicad/checkpoint", ["GET"], async (request) => {
+    const params = Object.fromEntries(new URL(request.url).searchParams);
+    const preview = await call("checkpoint_file", params, request.signal);
     return new Response(Readable.toWeb(createReadStream(preview.path, { signal: request.signal })), { headers: {
       "content-type": "application/octet-stream", "content-length": String(preview.byteLength), "cache-control": "no-store",
     } });
