@@ -1,4 +1,5 @@
 import React from "react";
+import { registerGeometryReferences } from "./geometry-reference.jsx";
 import { Composer } from "./composer.jsx";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 import { decodePreview } from "../shared/preview.js";
@@ -8,7 +9,7 @@ import { zh, en } from "./locale.js";
 import css from "./styles.css";
 import workspaceCss from "./design-navigator.css";
 export const inject = [
-  "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts",
+  "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts", "inputTriggers", "uiConversation",
 ];
 export function apply(ctx) {
   ctx.effect(
@@ -52,6 +53,7 @@ export function apply(ctx) {
       });
     return data;
   };
+  const addGeometryReference = registerGeometryReferences(ctx, request);
   const setSidebarCollapsed = (workbench, collapsed) => {
     // DSH rc.5 exposes toggleSidebar but no state getter or explicit setter.
     // Read AppFrame's published state marker; leave all layout writes to DSH.
@@ -86,6 +88,7 @@ export function apply(ctx) {
             ctx.uiWorkspace.startSession();
           }}
           request={request}
+          addGeometryReference={addGeometryReference}
           SessionProvider={SessionProvider}
           renderSlot={renderSlot}
           retainSession={(id) => ctx.sessions.retain(id, { source: "minicad" })}

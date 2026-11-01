@@ -4,7 +4,7 @@ import { ArcballControls } from "three/addons/controls/ArcballControls.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
-import { Button, DisclosureRow, SegmentedTabs, Tag } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, DisclosureRow, IconContextInjectionOutlineRegular, IconEditOutlineRegular, SegmentedTabs, Tag } from "@deepseek-ai/dsh-client-ui-primitives";
 import { defaultIdFormats, geometryLabel, geometryReference } from "../shared/geometry-ids.js";
 import { ViewCube } from "./view-cube.jsx";
 
@@ -19,7 +19,7 @@ function millimetres(value) {
   return String(Number(value.toPrecision(6)));
 }
 
-export function Viewport({ id, active = true, design, wire, resetToken, selectionMode, onSelectionModeChange, onError, t }) {
+export function Viewport({ id, active = true, design, wire, resetToken, selectionMode, onSelectionModeChange, onReference, onEdit, referenceDisabled, editingDisabled, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
@@ -623,6 +623,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, selectio
         <SegmentedTabs label={t("selectGeometry")} items={["both", "faces", "edges"].map(value => ({ value, label: t(value) }))} value={selectionMode} onChange={onSelectionModeChange} />
         {picked && <Tag tone="neutral">{t(picked.kind)}</Tag>}
         {picked ? <><strong>{picked.label}</strong><DisclosureRow title={t("geometryReference")} open={referenceExpanded} expandable expandOnRowClick onToggle={() => setReferenceExpanded(value => !value)}><code>{picked.reference}</code></DisclosureRow></> : <span>{t("selectionHint")}</span>}
+        {picked && <><Button variant="outline" size="sm" icon={<IconContextInjectionOutlineRegular size={16} />} disabled={referenceDisabled} onClick={() => onReference(picked)}>{t("referenceGeometry")}</Button><Button variant="outline" size="sm" icon={<IconEditOutlineRegular size={16} />} disabled={editingDisabled} onClick={() => onEdit(picked)}>{t("editGeometry")}</Button></>}
         <Button variant="ghost" size="sm" onClick={() => onSelectionModeChange(null)}>{t("close")}</Button>
       </div>}
       <ViewCube

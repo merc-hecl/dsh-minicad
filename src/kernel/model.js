@@ -16,6 +16,7 @@ export {
   modelScope,
   measureShape,
   checkShape,
+  describeReference,
 } from "./inspection.js";
 
 export const kernelName = `SMLib / smlibwasm ${cad.version}`;

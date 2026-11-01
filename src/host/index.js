@@ -24,6 +24,7 @@ const json = (value, status = 200) =>
     },
   });
 const clientMethods = new Set([
+  "geometry_annotation",
   "get_settings", "update_settings",
   "list",
   "get",
@@ -177,6 +178,12 @@ export async function apply(ctx, config = {}) {
   }
   async function rpc(method, args, signal) {
     await startup;
+    if (method === "edit") {
+      const project = await call("get", { projectId: args.projectId, sourceFile: args.sourceFile, geometry: false }, signal);
+      if (active.has(project.id) || ctx.agents.get(project.session_id)?.status === "running")
+        throw new Error("当前设计正在构建，请稍后重试");
+      return call("edit", { ...args, preserveSelection: true }, signal);
+    }
     if (method === "create") return ensureSession(await call("create", args));
     if (method === "fork_project") {
       const source = await call("get", { projectId: args.projectId, geometry: false });

@@ -838,7 +838,7 @@ export class Store {
       return this.build(key, args, method === "edit");
     if (method === "update_parameters")
       return this.build(key, { ...args, parameterMode: args.mode ?? "merge" });
-    if (["query", "measure", "check"].includes(method)) {
+    if (["query", "measure", "check", "geometry_annotation"].includes(method)) {
       this.expect(row.head, args);
       const saved = this.snapshot(key, undefined, sourceFile, false);
       if (!saved) {
@@ -849,6 +849,25 @@ export class Store {
         shape = await this.shape(saved),
         scope = api.modelScope(key, sourceFile);
       const result = { sourceFile, revision: row.head };
+      if (method === "geometry_annotation") {
+        const { kind, geometry: item } = api.describeReference(
+          shape,
+          args.reference,
+          scope,
+          row.head,
+          saved.state.geometryIds || defaultIdFormats,
+        );
+        return {
+          projectId: key,
+          sourceFile,
+          expectedRevision: row.head,
+          reference: item.id,
+          kind,
+          label: item.displayId,
+          note: String(args.note || ""),
+          geometry: item,
+        };
+      }
       if (method === "measure")
         return {
           ...result,

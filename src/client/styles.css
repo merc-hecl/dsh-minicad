@@ -331,6 +331,9 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
 .mc-dialog.mc-history-dialog {
   width: min(660px, 100%);
 }
+.mc-dialog.mc-geometry-dialog {
+  width: min(680px, 100%);
+}
 .mc-name-field {
   display: flex;
   flex-direction: column;

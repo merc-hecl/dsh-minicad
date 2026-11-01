@@ -25,6 +25,7 @@ import {
   IconSettingsOutlineRegular,
   IconInspectOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
+import { GeometryActionDialog } from "./geometry-action-dialog.jsx";
 import { IdSettingsDialog } from "./id-settings-dialog.jsx";
 import { defaultIdFormats } from "../shared/geometry-ids.js";
 import { Viewport } from "./viewport.jsx";
@@ -68,7 +69,7 @@ const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
 };
 
 export function Workbench({
-  locale, t, enter, back, request, SessionProvider, renderSlot, retainSession, workspaceCatalog, forkTask,
+  locale, t, enter, back, request, addGeometryReference, SessionProvider, renderSlot, retainSession, workspaceCatalog, forkTask,
 }) {
   const workbench = useRef(null);
   const bottom = useRef(null);
@@ -99,6 +100,7 @@ export function Workbench({
     [error, setError] = useState(null);
   const [busy, setBusy] = useState(false),
     [running, setRunning] = useState(false);
+  const [geometryAction, setGeometryAction] = useState(null);
   const [selectionMode, setSelectionMode] = useState(null);
   const [idSettings, setIdSettings] = useState(defaultIdFormats);
   const [wire, setWire] = useState(false),
@@ -123,7 +125,7 @@ export function Workbench({
     if (alive.current) setError({ key: e.uiKey || errorKey(e.message || ""), detail: e.message || String(e) });
   };
   const api = async (method, params = {}) => {
-    const render = ["get", "build", "restore"].includes(method) && params.geometry !== false;
+    const render = ["get", "build", "restore", "edit"].includes(method) && params.geometry !== false;
     const controller = loadController.current;
     const data = await request(method, {
       ...params, ...(render ? { geometry: false } : {}),
@@ -183,6 +185,7 @@ export function Workbench({
     if (changed) await refreshList();
   }
   async function load(id) {
+    setGeometryAction(null);
     if (discardingTasks.current.has(id)) return;
     const previous = projects.find((task) => task.id === selection.current);
     if (selection.current && selection.current !== id && !previous?.has_messages && !previous?.head)
@@ -214,6 +217,7 @@ export function Workbench({
     }
   }
   function clearSelection() {
+    setGeometryAction(null);
     loadController.current.abort();
     loadController.current = new AbortController();
     previewCache.current = null;
@@ -331,6 +335,27 @@ export function Workbench({
       if (alive.current) setBusy(false);
     }
   }
+  function openGeometryAction(mode, target) {
+    setError(null);
+    setGeometryAction({ mode, target, projectId: selected, sourceFile: project.sourceFile, expectedRevision: project.head, sessionId: project.session_id });
+  }
+  async function saveGeometryAction({ operation, note }) {
+    const captured = geometryAction;
+    await action(async () => {
+      const args = { projectId: captured.projectId, sourceFile: captured.sourceFile, expectedRevision: captured.expectedRevision };
+      if (captured.mode === "annotation") {
+        const reference = await api("geometry_annotation", { ...args, reference: captured.target.reference, note });
+        if (!alive.current || selection.current !== captured.projectId) return;
+        if (!addGeometryReference(captured.sessionId, reference)) throw Object.assign(new Error(t("referenceInputBusy")), { uiKey: "referenceInputBusy" });
+      } else {
+        const updated = await api("edit", { ...args, operations: [operation], summary: `${t("manualEdit")} ${captured.target.label}: ${t(operation.op)}` });
+        if (!alive.current || selection.current !== captured.projectId) return;
+        setProject(updated);
+        await refreshList();
+      }
+      setGeometryAction(null);
+    });
+  }
   function open(kind) {
     setError(null);
     setEditTarget("");
@@ -406,6 +431,10 @@ export function Workbench({
         design={design}
         wire={wire}
         selectionMode={modal ? null : selectionMode}
+        referenceDisabled={busy || !sessionReference || sessionReference.sessionId !== project?.session_id}
+        editingDisabled={busy || running || !sessionReference || sessionReference.sessionId !== project?.session_id}
+        onReference={target => openGeometryAction("annotation", target)}
+        onEdit={target => openGeometryAction("edit", target)}
         onSelectionModeChange={setSelectionMode}
         resetToken={resetView}
         t={t}
@@ -553,6 +582,7 @@ export function Workbench({
           await refreshList();
         },
       })}
+      {geometryAction && <GeometryActionDialog key={`${geometryAction.mode}-${geometryAction.target.reference}`} action={geometryAction} busy={busy} error={error} onClose={() => setGeometryAction(null)} onSave={saveGeometryAction} t={t} />}
       {modal === "parameters" && design && (
         <ParameterDialog
           parameters={design.parameters}
@@ -692,7 +722,7 @@ export function Workbench({
             ))}
         </WorkbenchDialog>
       )}
-      {error && !modal && (
+      {error && !modal && !geometryAction && (
         <div role="alert" className="mc-error mc-panel">
           <div className="mc-error-head">
             <span>{t(error.key)}</span>

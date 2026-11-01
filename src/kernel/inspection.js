@@ -155,29 +155,50 @@ export function queryShape(
   const all = topologyItems(shape, kind);
   return select(shape, kind, selector, shape, all).map((item) => {
     const index = all.findIndex((candidate) => candidate.equals(item));
-    const box = item.bbox();
-    const result = {
-      id: geometryReference(scope, revision, kind, index),
-      ...(kind !== "solids"
-        ? { displayId: geometryLabel(kind, index, idFormats) }
-        : {}),
-      type: item.geomType || "solid",
-      name: item.name || null,
-      center: vector(item.center()),
-      bounds: { min: vector(box.min), max: vector(box.max) },
-    };
-    if (kind === "faces") {
-      result.area = item.area;
-      if (item.geomType === "plane") result.normal = vector(item.normalAt());
-    }
-    if (kind === "edges") result.length = item.length;
-    if (kind === "solids") result.volume = item.volume;
-    if (
-      ["circle", "cylinder", "sphere", "torus", "cone"].includes(item.geomType)
-    )
-      result.radius = item.radius;
-    return result;
+    return describeItem(item, index, kind, scope, revision, idFormats);
   });
+}
+export function describeReference(
+  shape,
+  id,
+  scope,
+  revision,
+  idFormats = defaultIdFormats,
+) {
+  const { kind, index } = bindReference(id, null, shape, scope, revision).$ref;
+  return {
+    kind,
+    geometry: describeItem(
+      topologyItems(shape, kind)[index],
+      index,
+      kind,
+      scope,
+      revision,
+      idFormats,
+    ),
+  };
+}
+function describeItem(item, index, kind, scope, revision, idFormats) {
+  const box = item.bbox();
+  const result = {
+    id: geometryReference(scope, revision, kind, index),
+    ...(kind !== "solids"
+      ? { displayId: geometryLabel(kind, index, idFormats) }
+      : {}),
+    type: item.geomType || "solid",
+    name: item.name || null,
+    center: vector(item.center()),
+    bounds: { min: vector(box.min), max: vector(box.max) },
+  };
+  if (kind === "faces") {
+    result.area = item.area;
+    if (item.geomType === "plane") result.normal = vector(item.normalAt());
+  }
+  if (kind === "edges") result.length = item.length;
+  if (kind === "solids") result.volume = item.volume;
+  if (["circle", "cylinder", "sphere", "torus", "cone"].includes(item.geomType))
+    result.radius = item.radius;
+  return result;
 }
 function entity(shape, input, scope, revision) {
   const spec =

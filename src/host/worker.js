@@ -26,6 +26,7 @@ const localMethods = new Set([
   "api",
 ]);
 const retryableReads = new Set([
+  "geometry_annotation",
   "get",
   "preview_file",
   "health",

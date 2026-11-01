@@ -10,7 +10,7 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 - Geometry measurement and dimensional checks: measure distances, angles, local directional wall thickness and dimensions, and check targets, tolerances or limits.
 - Drawing references: provide PDFs through DSH attachments for the agent to read using host capabilities.
 - Parameter and source editing: adjust model parameters or modify modeling source code through the agent.
-- Model viewing: view 3D models and reference drawings, select faces and edges, and inspect their geometry IDs.
+- Model interaction: view models and drawings, annotate selected faces and edges for the agent, or edit local geometry and save revisions.
 - Library and task management: organize part-design tasks in libraries, each with its own conversation, modeling resources, and revision history.
 - Export: STEP, STL, and editable project ZIP files.
 
@@ -71,6 +71,10 @@ PDF parsing and scanned drawing interpretation use DSH attachments, scripting, o
 The current implementation supports parametric single-part and multi-solid modeling, without assembly constraint solving or CAM toolpaths.
 
 Use the inspect icon in the right toolbar to enter selection mode. Faces and edges are both selectable by default, with edges taking priority near a line; filters restrict selection to faces or edges. Clicking highlights the geometry and shows its label. Expand “Full reference” for the model- and revision-scoped ID used by agent tools. Click empty space to clear, or press Esc or the toolbar button again to exit. Dragging still rotates the model.
+
+After selecting a face or edge, click “Reference” to add it to the native DSH composer with an optional requested change. A message can contain multiple references. References persist with drafts and appear as chips with comments in sent messages. The agent receives the model file, revision, full geometry reference, and element geometry. References belong to their original revision; reselect after a model update to avoid targeting a different element.
+
+Click “Edit” to modify the selected geometry without predefined model parameters. Faces support offset, XYZ movement, removal with healing, and fillet removal; edges support fillets and chamfers. Dimensions use mm. “Save changes” validates the exact solid, creates a revision, and updates the canvas with the successful result. History can restore earlier versions. Failed edits preserve the previous version. Manual edits are unavailable while the agent is modeling.
 
 The settings icon in the header edits face and edge ID formats. Defaults are `F-{n}` and `E-{n}`, shown as `F-1`, `E-1`, etc.; `{n}` starts at 1 without zero padding. Formats are stored in `settings.json` in the plugin data directory and saved with future successful modeling revisions. Existing revisions retain their formats; older models use the defaults. Short IDs apply within one model revision; use full references across models or revisions. Restoring a historical revision preserves its formats.
 
