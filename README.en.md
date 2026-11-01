@@ -6,7 +6,8 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 
 ## Features
 
-- Natural-language modeling: create and modify parametric 3D models through the DSH agent.
+- Natural-language modeling: create, query and edit parametric 3D models through ready-made operations or custom JavaScript with the DSH agent.
+- Geometry measurement and dimensional checks: measure distances, angles, local directional wall thickness and dimensions, and check targets, tolerances or limits.
 - Drawing references: provide PDFs through DSH attachments for the agent to read using host capabilities.
 - Parameter and source editing: adjust model parameters or modify modeling source code through the agent.
 - Model viewing: view 3D models and reference drawings.
@@ -79,7 +80,57 @@ Configuration overrides replace the entire configuration row. Do not let multipl
 
 ## Modeling interfaces
 
-Agents use `cad_query` to inspect geometry and `cad_edit` to create or edit solids. `cad_build` accepts JavaScript parametric source, and `cad_api` reads the installed API declarations. Define `build(parameters, cad)`; `cad` provides SMLib modeling functions and task-local resource loading:
+Agents can choose ready-made structured operations, write custom JavaScript with `cad_build`, or combine both. `cad_build` is a user-defined function (UDF) entry point. Both paths share exact solids, parameters, revisions, failure preservation and exports.
+
+| Tool | Purpose |
+| --- | --- |
+| `cad_read_project` | Read source, parameters, models, revisions and geometry summaries; optional `sourceFile` does not change the UI selection |
+| `cad_build` | Execute custom source; omit `source` to rebuild working files from disk |
+| `cad_edit` | Execute 1–100 sequential operations and commit one revision only if all succeed |
+| `cad_query` | Inspect faces, edges or independent solids and their scoped references |
+| `cad_measure` | Measure geometry in batches without changing the model |
+| `cad_check` | Check measured values against targets and tolerances or limits without changing the model |
+| `cad_update_parameters` | Merge top-level parameters and rebuild by default; `mode: "replace"` replaces the entire parameter object |
+| `cad_api` | Read installed SMLib JavaScript API declarations |
+| `cad_export` | Export a saved revision of a specified model file |
+| `cad_restore` | Restore a file's historical revision as a new increasing revision |
+
+Read model file names and revisions with `cad_read_project` first. All model tools except reading and API lookup require an explicit task-relative `sourceFile`; mutations, queries, measurements and checks also require that file's `expectedRevision`. Explicit agent targets do not change the UI selection. Revisions are independent per file; new files start at revision 0.
+
+### Ready-made operations and custom code
+
+`cad_edit` supports primitive solids, extrusion, booleans, fillets, chamfers, shells, offsets, face edits and transforms, plus:
+
+| Operation | Main parameters and semantics |
+| --- | --- |
+| `revolve` | `profile`, world-space `axis`, `angle`, optional `origin`; nonzero angle from -360 to 360 degrees |
+| `loft` | Two or more ordered `sections`; optional `ruled`, `smooth`, `closed` |
+| `sweep` | `profile` and `path` (line, polyline, spline, arc or helix); optional `orient`, `translational`, `twist` |
+| `linear_pattern` | `step`, `count`; repeat a body or `tool` at the translation step |
+| `circular_pattern` | `axis`, per-copy `angle`, `count`, optional `origin`; angle is the increment, not the total span |
+| `import` | Read a task-relative `file`, such as `resources/input.step`, `.brep` or `.smb`; resources travel with snapshots and ZIP exports |
+
+A `profile` is a rectangle, circle or polygon on XY by default; use `plane: "XZ"` / `"YZ"`, `rotate` and `center` to place it. The generated solid also accepts `rotate` and `center`. Pattern `count` includes the original, from 2 to 100. With a `tool`, combine its copies using `mode: "fuse" | "cut" | "intersect"`; without one, copy the target body.
+
+For example, create a plate and cut three holes in one batch:
+
+```json
+{
+  "sourceFile": "model.js",
+  "expectedRevision": 0,
+  "parameters": { "length": 40 },
+  "summary": "Create a three-hole plate",
+  "operations": [
+    { "op": "box", "size": [{ "parameter": "length" }, 20, 8] },
+    { "op": "linear_pattern", "step": [8, 0, 0], "count": 3, "mode": "cut",
+      "tool": { "shape": "cylinder", "radius": 1, "height": 10 } }
+  ]
+}
+```
+
+Each operation can select one independent solid with `target`, such as `{ nearest: [10, 0, 0], one: true }` or a current solid query ID. Only that solid is edited, then unioned with untouched solids; bodies that touch or overlap after editing may merge. Without `target`, the operation acts on the entire Part. The kernel enforces required fields, numeric bounds, vector lengths and unknown-field rejection. Failures include a zero-based `operationIndex`; a failed batch preserves the previous revision.
+
+Custom source defines `build(parameters, cad)` and returns a valid `cad.Part` with positive volume. `cad` exposes SMLib functions, the same `cad.edit(part, operations, parameters)`, and task-local resource loading:
 
 ```javascript
 function build(parameters, cad) {
@@ -87,7 +138,35 @@ function build(parameters, cad) {
 }
 ```
 
-Local edits are recorded in source and replayed when parameters change. Face and edge references belong to the queried revision; query again after an edit. `cad.readModel("resources/input.step")` imports task-local STEP, BREP, or SMLib resources, which are included in snapshots and editable ZIP exports. Exported files are written to the task's `exports/` directory.
+`cad.readModel("resources/input.step")` also imports exact resources. Local edits are stored in source and replayed when parameters change. `cad_update_parameters` merges top-level keys by default; nested values replace as a whole. Use `mode: "replace"` to replace the full object or remove parameters. For `cad_build` / `cad_edit`, supplied `parameters` are the complete object; omitting them retains working parameters.
+
+### Measurements, checks and geometry references
+
+`cad_measure.measurements` and `cad_check.checks` each accept 1–100 items. Measurements support:
+
+- `distance`: `from` and `to` accept query IDs, `{ kind, selector }`, or `{ point: [x,y,z] }`. Returns the minimum distance between bounded geometry. Points, faces, solids and pairs of straight edges are supported; pairs of curved edges currently return an explicit unsupported-distance error. A point inside a solid measures clearance to its surface; nested solids measure wall clearance, while touching or overlapping solids return 0.
+- `angle`: 0–180 degrees between plane normals, line directions, rotation axes of circles/cylinders, or explicit `{ direction: [x,y,z] }` vectors.
+- `thickness`: a `point` in/on a solid and a nonzero `direction` identify one continuous material segment. Returns its thickness and entry/exit points. This is local directional thickness, not the global minimum wall thickness. Cavity points, tangencies and indeterminate measurements are rejected.
+- `size`: bounding-box extent along `axis: "x" | "y" | "z"`; `volume`, `area`, `length`, `radius` and `diameter` return the corresponding property. Size, volume and thickness accept a single-solid `target`; face/edge properties use `entity: { kind, selector }`.
+
+Example dimensional checks:
+
+```json
+{
+  "sourceFile": "model.js",
+  "expectedRevision": 1,
+  "checks": [
+    { "measurement": { "kind": "size", "axis": "x" }, "expected": 40, "tolerance": 0.01 },
+    { "measurement": { "kind": "thickness", "point": [-10, 5, 4], "direction": [0, 0, -1] }, "min": 2 }
+  ]
+}
+```
+
+Checks return overall `passed` and each measured value, unit and result. Use `expected` +/- `tolerance` (default 1e-6), or inclusive `min` / `max` bounds (either can be omitted). Length, area, volume and angle use mm, mm², mm³ and degrees; tolerances use the measurement's unit.
+
+Geometry IDs bind the task, model file and revision. Stale and foreign references are rejected. `faces` / `edges` accept arrays of IDs. IDs resolve through topology positions and kernel derivation, never nearest-center guessing. A reference removed, split or no longer traceable after an earlier operation fails explicitly. Query again after edits; use geometry selectors for later steps in a batch. Replaying stored references requires unchanged topology, so prefer geometric selectors for parametric edits expected to change topology.
+
+Exports are written to the task's `exports/<model path without .js>/`, preventing equal revision numbers in different files from overwriting one another. Existing export files remain available.
 
 ## Development and verification
 

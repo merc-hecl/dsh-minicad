@@ -6,7 +6,8 @@
 
 ## 功能
 
-- 自然语言建模：通过 DSH agent 调用 SMLib 工具创建、查询和局部编辑三维模型。
+- 自然语言建模：通过 DSH agent 使用现成建模操作或自定义 JavaScript 创建、查询和局部编辑三维模型。
+- 几何测量与尺寸检查：测量距离、夹角、局部方向壁厚及模型尺寸，并按目标值、公差或上下限检查。
 - 图纸参考：通过 DSH 附件提供 PDF 图纸，供 agent 结合宿主能力读取。
 - 参数与源码编辑：调整模型参数，或通过 agent 修改建模源码。
 - 模型查看：查看三维模型和参考图纸。
@@ -79,7 +80,57 @@ SVG / PDF 当前为三视图参考图，包含外形尺寸说明；尚不包含�
 
 ## 建模接口
 
-agent 优先使用 `cad_query` 查询几何，再用 `cad_edit` 创建或局部修改实体。`cad_build` 支持 JavaScript 参数化源码，`cad_api` 可查询当前安装的 API。源码定义 `build(parameters, cad)`，`cad` 提供 SMLib 的建模函数和任务内资源读取：
+agent 可以自由选择现成的结构化建模操作，或用 `cad_build` 编写自定义 JavaScript，也可以混用。`cad_build` 相当于用户自定义函数（UDF）入口；两条路径共用精确实体、参数、版本、失败保留和导出流程。
+
+| 工具 | 用途 |
+| --- | --- |
+| `cad_read_project` | 读取源码、参数、模型列表、版本和几何摘要；可指定 `sourceFile`，读取不切换 UI 选中的模型 |
+| `cad_build` | 执行自定义源码；省略 `source` 时重建磁盘上的源码 |
+| `cad_edit` | 按顺序执行 1～100 个现成操作，全部成功后只提交一个版本 |
+| `cad_query` | 查询面、边或独立实体及其带作用域的引用 |
+| `cad_measure` | 批量测量几何，不修改模型 |
+| `cad_check` | 批量检查测量结果是否满足目标与公差或上下限，不修改模型 |
+| `cad_update_parameters` | 默认合并顶层参数并重建；`mode: "replace"` 替换完整参数对象 |
+| `cad_api` | 读取当前安装的 SMLib JavaScript API 声明 |
+| `cad_export` | 导出指定建模文件的已保存版本 |
+| `cad_restore` | 恢复指定文件的历史版本，并创建新的递增版本 |
+
+先用 `cad_read_project` 获取建模文件名和版本。除读取和 API 查询外，agent 的工具调用必须明确提供任务内相对路径 `sourceFile`；修改、查询、测量和检查还需提供该文件的 `expectedRevision`。这些显式目标调用不会改变 UI 当前选中的模型；不同文件的版本分别计算。新建文件从版本 0 开始。
+
+### 现成操作与自定义代码
+
+`cad_edit` 支持基本体、拉伸、布尔运算、圆角、倒角、抽壳、偏移、面编辑和变换，并提供以下操作：
+
+| 操作 | 主要参数与语义 |
+| --- | --- |
+| `revolve` | `profile`、世界坐标 `axis`、`angle`，可选 `origin`；角度为 -360～360 度且不能为零 |
+| `loft` | 两个以上依次排列的 `sections`，可选 `ruled`、`smooth`、`closed` |
+| `sweep` | `profile` 与 `path`；路径支持 line、polyline、spline、arc、helix，可选 `orient`、`translational`、`twist` |
+| `linear_pattern` | `step`、`count`；按位移步长复制实体或 `tool` |
+| `circular_pattern` | `axis`、每份之间的 `angle`、`count`，可选 `origin`；角度是步进角，不是总角度 |
+| `import` | 从任务内 `file` 读取精确资源，如 `resources/input.step`、`.brep`、`.smb`；资源随版本快照和 ZIP 保存 |
+
+轮廓 `profile` 支持 rectangle、circle、polygon，默认在 XY 平面；可用 `plane: "XZ"` / `"YZ"`、`rotate`、`center` 放置轮廓。整体生成结果也可用 `rotate`、`center` 放置。阵列 `count` 包含原始份，范围 2～100；有 `tool` 时把工具阵列按 `mode: "fuse" | "cut" | "intersect"` 作用于实体，没有 `tool` 时复制目标实体。
+
+例如，创建底板并一次切出三个孔：
+
+```json
+{
+  "sourceFile": "model.js",
+  "expectedRevision": 0,
+  "parameters": { "length": 40 },
+  "summary": "创建三孔底板",
+  "operations": [
+    { "op": "box", "size": [{ "parameter": "length" }, 20, 8] },
+    { "op": "linear_pattern", "step": [8, 0, 0], "count": 3, "mode": "cut",
+      "tool": { "shape": "cylinder", "radius": 1, "height": 10 } }
+  ]
+}
+```
+
+每个操作可用 `target` 指定一个独立实体，例如 `target: { nearest: [10, 0, 0], one: true }` 或当前查询返回的实体 ID。只修改选中实体，再与未修改实体做并集；移动后接触或重叠的实体可能合并。省略 `target` 时作用于整个 Part。操作的必填参数、数值范围、向量长度和未知字段均由内核校验；失败错误包含从 0 开始的 `operationIndex`，批次失败保留上一版。
+
+自定义代码定义 `build(parameters, cad)` 并返回有效、正体积的 `cad.Part`。`cad` 提供 SMLib 函数、同一套 `cad.edit(part, operations, parameters)`，以及任务内资源读取：
 
 ```javascript
 function build(parameters, cad) {
@@ -87,7 +138,35 @@ function build(parameters, cad) {
 }
 ```
 
-局部编辑也保存在源码中，参数重算会重新执行整个模型。面、边查询引用只对应返回的版本；成功编辑后应重新查询。`cad.readModel("resources/input.step")` 可导入任务内的 STEP、BREP 或 SMLib 资源，这些资源随版本快照和项目 ZIP 保存。导出文件会写入任务内的 `exports/`。
+`cad.readModel("resources/input.step")` 也可导入精确资源。局部编辑会记录在源码中，参数重算重新执行整个模型。`cad_update_parameters` 默认只合并顶层键，嵌套对象整体替换；完整替换或删除参数可用 `mode: "replace"`。`cad_build` / `cad_edit` 的 `parameters` 若提供则为完整对象，省略则沿用工作参数。
+
+### 测量、检查和几何引用
+
+`cad_measure` 的 `measurements` 与 `cad_check` 的 `checks` 均接受 1～100 项。测量支持：
+
+- `distance`：`from`、`to` 可为查询 ID、`{ kind, selector }` 或 `{ point: [x,y,z] }`。计算有界几何之间的最小距离，支持点、面、实体及两条直线边；当前不支持两条曲边之间的精确距离，会返回明确错误。点在实体内部时返回到表面的间距；嵌套实体测量壁间距，相交或接触的实体返回 0。
+- `angle`：两个平面的法向、直线方向、圆/圆柱等旋转轴，或 `{ direction: [x,y,z] }` 的夹角，范围 0～180 度。
+- `thickness`：给定实体内或表面的 `point` 和非零 `direction`，返回穿过该点的一段连续材料厚度及出入口点。它是局部方向测厚，不是全模型最小壁厚；空腔中的点、切向或无法判定的测量会被拒绝。
+- `size`：沿 `axis: "x" | "y" | "z"` 的包围盒尺寸；`volume`、`area`、`length`、`radius`、`diameter` 返回相应几何量。单实体尺寸、体积和壁厚可指定 `target`；面/边属性通过 `entity: { kind, selector }` 定位。
+
+尺寸检查示例：
+
+```json
+{
+  "sourceFile": "model.js",
+  "expectedRevision": 1,
+  "checks": [
+    { "measurement": { "kind": "size", "axis": "x" }, "expected": 40, "tolerance": 0.01 },
+    { "measurement": { "kind": "thickness", "point": [-10, 5, 4], "direction": [0, 0, -1] }, "min": 2 }
+  ]
+}
+```
+
+检查返回整体 `passed` 和各项实测值、单位及通过情况。可使用 `expected` ± `tolerance`（默认 1e-6），或 `min` / `max`（可单独指定，边界包含在内）。长度、面积、体积、角度分别使用 mm、mm²、mm³、度，公差使用对应测量单位。
+
+几何 ID 绑定设计任务、建模文件和版本；旧版本或其他模型的引用会被拒绝。`faces` / `edges` 可接受多个 ID。ID 通过拓扑位置和内核派生关系解析，不按最近中心猜测；前序操作导致引用消失、拆分或失去派生关系时会拒绝。修改后重新查询；同批次后续步骤可使用几何选择器。参数重放要求引用所在拓扑保持一致，预期会改变拓扑的参数化编辑宜使用几何选择器。
+
+导出文件写入任务的 `exports/<建模文件路径（不含 .js）>/`，不同文件的同号版本不会互相覆盖。旧的导出文件仍保留。
 
 ## 开发与验证
 

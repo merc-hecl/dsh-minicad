@@ -4,6 +4,14 @@ import { dirname, sep } from "node:path";
 import { createRequire } from "node:module";
 import { Script } from "node:vm";
 import { inside } from "./files.js";
+import { validate, operationSchema } from "../shared/cad-schema.js";
+import { select, bindReference, direction } from "./inspection.js";
+export {
+  queryShape,
+  modelScope,
+  measureShape,
+  checkShape,
+} from "./inspection.js";
 
 export const kernelName = `SMLib / smlibwasm ${cad.version}`;
 const vector = (v) => [v.x, v.y, v.z];
@@ -25,7 +33,8 @@ export function buildShape(
     if (file.startsWith(dirname(filename) + sep)) delete require.cache[file];
   const api = {
     ...cad,
-    edit: editShape,
+    edit: (part, operations, parameters) =>
+      editShape(part, operations, parameters, { readModel: api.readModel }),
     readModel: (name) => {
       const bytes = assets[name] || readFileSync(inside(root, name));
       onRead(name, bytes);
@@ -39,37 +48,7 @@ export function buildShape(
   ).runInThisContext();
   return fn(parameters, api, require, filename, dirname(filename));
 }
-function select(part, kind, selector = {}) {
-  let list = kind === "faces" ? part.faces() : part.edges();
-  if (selector.geomType) list = list.ofType(selector.geomType);
-  if (selector.parallelTo)
-    list = list.parallelTo(new cad.Axis([0, 0, 0], selector.parallelTo));
-  if (selector.facing) list = list.facing(selector.facing);
-  if (selector.position) {
-    if (
-      !["top", "bottom", "front", "back", "left", "right"].includes(
-        selector.position,
-      )
-    )
-      throw new Error("不支持的几何选择条件");
-    list = list[selector.position]();
-  }
-  if (selector.nearest)
-    list = list.minBy(
-      (item) =>
-        Math.hypot(
-          ...vector(item.center()).map(
-            (value, i) => value - selector.nearest[i],
-          ),
-        ),
-      1e-7,
-    );
-  if (!list.length) throw new Error("没有找到匹配的面或边，请重新查询几何");
-  if (selector.one && list.length !== 1)
-    throw new Error("几何选择不唯一，请缩小查询范围");
-  return list;
-}
-const values = (input, parameters) => {
+export function values(input, parameters = {}) {
   if (Array.isArray(input)) return input.map((v) => values(v, parameters));
   if (input && typeof input === "object") {
     if (
@@ -77,7 +56,7 @@ const values = (input, parameters) => {
       typeof input.parameter === "string"
     ) {
       if (!Object.hasOwn(parameters, input.parameter))
-        throw new Error(`参数不存在：${input.parameter}`);
+        throw new Error(`参数不存在 / missing parameter: ${input.parameter}`);
       return parameters[input.parameter];
     }
     return Object.fromEntries(
@@ -85,17 +64,58 @@ const values = (input, parameters) => {
     );
   }
   return input;
-};
+}
 function placed(shape, spec) {
-  if (spec.rotate)
+  if (spec.rotate) {
+    direction(spec.rotate.axis);
     shape = shape.rotate(
       new cad.Axis([0, 0, 0], spec.rotate.axis),
       spec.rotate.angle,
     );
+  }
   if (spec.center) shape = shape.translate(spec.center);
   return shape;
 }
-function primitive(spec) {
+function profile(spec) {
+  let sketch;
+  switch (spec.shape) {
+    case "circle":
+      sketch = cad.Circle(spec.radius);
+      break;
+    case "rectangle":
+      sketch = cad.Rectangle(...spec.size);
+      break;
+    case "polygon":
+      sketch = cad.Polygon(...spec.points);
+      break;
+    default:
+      throw new Error("不支持的轮廓 / unsupported profile");
+  }
+  if (spec.plane) sketch = sketch.on(cad.Plane[spec.plane]);
+  return placed(sketch, spec);
+}
+function path(spec) {
+  switch (spec.shape) {
+    case "line":
+      return cad.Line(spec.start, spec.end);
+    case "polyline":
+      return cad.Polyline(...spec.points, { close: spec.closed ?? false });
+    case "spline":
+      return cad.Spline(...spec.points);
+    case "arc":
+      return cad.ThreePointArc(spec.start, spec.through, spec.end);
+    case "helix":
+      if (spec.direction) direction(spec.direction);
+      return cad.Helix(spec.pitch, spec.height, spec.radius, {
+        center: spec.center,
+        direction: spec.direction,
+        leftHanded: spec.leftHanded,
+      });
+    default:
+      throw new Error("不支持的路径 / unsupported path");
+  }
+}
+function primitive(spec, context) {
   let shape;
   switch (spec.shape || spec.op) {
     case "box":
@@ -113,146 +133,214 @@ function primitive(spec) {
     case "torus":
       shape = cad.Torus(spec.majorRadius, spec.minorRadius);
       break;
-    case "extrude": {
-      const p = spec.profile;
-      const sketch =
-        p.shape === "circle"
-          ? cad.Circle(p.radius)
-          : p.shape === "polygon"
-            ? cad.Polygon(...p.points)
-            : cad.Rectangle(...p.size);
-      shape = sketch.extrude(spec.amount);
+    case "extrude":
+      if (!spec.amount)
+        throw new Error("拉伸量不能为零 / extrusion amount must be nonzero");
+      shape = profile(spec.profile).extrude(spec.amount);
       break;
-    }
+    case "revolve":
+      direction(spec.axis);
+      if (!spec.angle)
+        throw new Error(
+          "旋转成型角度不能为零 / revolution angle must be nonzero",
+        );
+      shape = profile(spec.profile).revolve(
+        new cad.Axis(spec.origin || [0, 0, 0], spec.axis),
+        spec.angle,
+      );
+      break;
+    case "loft":
+      shape = cad.loft(spec.sections.map(profile), {
+        ruled: spec.ruled,
+        smooth: spec.smooth,
+        closed: spec.closed,
+      });
+      break;
+    case "sweep":
+      shape = cad.sweep(profile(spec.profile), path(spec.path), {
+        orient: spec.orient,
+        translational: spec.translational,
+        twist: spec.twist,
+      });
+      break;
+    case "import":
+      if (!context.readModel)
+        throw new Error(
+          "资源导入需要任务工作目录 / import requires task context",
+        );
+      shape = context.readModel(spec.file);
+      break;
     default:
-      throw new Error("不支持的建模操作");
+      throw new Error("不支持的建模操作 / unsupported modeling operation");
   }
+  if (!(shape instanceof cad.Part))
+    throw new Error("操作必须生成实体 / operation must produce a solid Part");
   return placed(shape, spec);
 }
-export function editShape(part, operations, parameters = {}) {
-  for (const raw of operations) {
-    const op = values(raw, parameters);
-    if (
-      ["box", "cylinder", "sphere", "cone", "torus", "extrude"].includes(op.op)
-    ) {
-      const next = primitive(op);
-      if (op.mode && !["cut", "fuse", "intersect"].includes(op.mode))
-        throw new Error("不支持的实体组合方式");
-      part = part ? part[op.mode || "fuse"](next) : next;
-      continue;
+const primitiveOps = new Set([
+  "box",
+  "cylinder",
+  "sphere",
+  "cone",
+  "torus",
+  "extrude",
+  "revolve",
+  "loft",
+  "sweep",
+  "import",
+]);
+function applyOperation(part, op, base, context) {
+  if (primitiveOps.has(op.op)) {
+    const next = primitive(op, context);
+    return part ? part[op.mode || "fuse"](next) : next;
+  }
+  if (!part) throw new Error("请先创建实体 / create a solid first");
+  switch (op.op) {
+    case "cut":
+    case "fuse":
+    case "intersect":
+      return part[op.op](primitive(op.tool, context));
+    case "fillet":
+      return part.fillet(select(part, "edges", op.edges, base), op.radius);
+    case "chamfer":
+      return part.chamfer(select(part, "edges", op.edges, base), op.distance);
+    case "shell":
+      return part.shell(
+        op.thickness,
+        op.faces ? select(part, "faces", op.faces, base) : undefined,
+      );
+    case "offset":
+      return part.offset(op.distance);
+    case "move_faces":
+      return part.moveFaces(select(part, "faces", op.faces, base), op.by);
+    case "offset_faces":
+      return part.offsetFaces(
+        select(part, "faces", op.faces, base),
+        op.distance,
+      );
+    case "remove_faces":
+      return part.removeFaces(select(part, "faces", op.faces, base));
+    case "remove_fillets":
+      return part.removeFillets(select(part, "faces", op.faces, base));
+    case "translate":
+      return part.translate(op.by);
+    case "rotate":
+      direction(op.axis);
+      return part.rotate(
+        new cad.Axis(op.origin || [0, 0, 0], op.axis),
+        op.angle,
+      );
+    case "mirror":
+      direction(op.normal);
+      return part.mirror(
+        new cad.Plane(op.origin || [0, 0, 0], null, op.normal),
+      );
+    case "linear_pattern":
+    case "circular_pattern": {
+      if (op.op === "linear_pattern") direction(op.step);
+      else {
+        direction(op.axis);
+        if (!op.angle)
+          throw new Error("阵列角度不能为零 / pattern angle must be nonzero");
+      }
+      const seed = op.tool ? primitive(op.tool, context) : part;
+      let copies = seed;
+      for (let i = 1; i < op.count; i++) {
+        const copy =
+          op.op === "linear_pattern"
+            ? seed.translate(op.step.map((v) => v * i))
+            : seed.rotate(
+                new cad.Axis(op.origin || [0, 0, 0], op.axis),
+                op.angle * i,
+              );
+        copies = copies.fuse(copy);
+      }
+      if (!op.tool && op.mode && op.mode !== "fuse")
+        throw new Error(
+          "切除或求交阵列需提供 tool / cut/intersect patterns require a tool",
+        );
+      return op.tool ? part[op.mode || "fuse"](copies) : copies;
     }
-    if (!part) throw new Error("请先创建实体");
-    switch (op.op) {
-      case "cut":
-      case "fuse":
-      case "intersect":
-        part = part[op.op](primitive(op.tool));
-        break;
-      case "fillet":
-        part = part.fillet(select(part, "edges", op.edges), op.radius);
-        break;
-      case "chamfer":
-        part = part.chamfer(select(part, "edges", op.edges), op.distance);
-        break;
-      case "shell":
-        part = part.shell(
-          op.thickness,
-          op.faces ? select(part, "faces", op.faces) : undefined,
-        );
-        break;
-      case "offset":
-        part = part.offset(op.distance);
-        break;
-      case "move_faces":
-        part = part.moveFaces(select(part, "faces", op.faces), op.by);
-        break;
-      case "offset_faces":
-        part = part.offsetFaces(select(part, "faces", op.faces), op.distance);
-        break;
-      case "remove_faces":
-        part = part.removeFaces(select(part, "faces", op.faces));
-        break;
-      case "remove_fillets":
-        part = part.removeFillets(select(part, "faces", op.faces));
-        break;
-      case "translate":
-        part = part.translate(op.by);
-        break;
-      case "rotate":
-        part = part.rotate(
-          new cad.Axis(op.origin || [0, 0, 0], op.axis),
-          op.angle,
-        );
-        break;
-      case "mirror":
-        part = part.mirror(
-          new cad.Plane(op.origin || [0, 0, 0], null, op.normal),
-        );
-        break;
-      default:
-        throw new Error(`不支持的建模操作：${op.op}`);
+    default:
+      throw new Error(`不支持的建模操作 / unsupported operation: ${op.op}`);
+  }
+}
+function publicOperation(value) {
+  if (Array.isArray(value)) return value.map(publicOperation);
+  if (value && typeof value === "object") {
+    if (value.$ref) return "resolved-reference";
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, publicOperation(v)]),
+    );
+  }
+  return value;
+}
+export function editShape(part, operations, parameters = {}, context = {}) {
+  const base = part;
+  for (const [index, raw] of operations.entries()) {
+    try {
+      const op = values(raw, parameters);
+      validate(publicOperation(op), operationSchema, `operations[${index}]`);
+      if (op.target !== undefined) {
+        if (!part) throw new Error("请先创建实体 / create a solid first");
+        const solids = part.solids();
+        const selected = select(part, "solids", op.target, base, solids).one();
+        const rest = solids.filter((item) => item !== selected);
+        const next = applyOperation(selected, op, base, context);
+        part = rest.length ? next.fuse(rest) : next;
+      } else part = applyOperation(part, op, base, context);
+    } catch (cause) {
+      throw Object.assign(
+        new Error(
+          `第 ${index + 1} 个操作 (${raw.op}) 失败 / operation ${index + 1} failed: ${cause.message}`,
+          { cause },
+        ),
+        { operationIndex: index, operation: raw.op },
+      );
     }
   }
   return part;
 }
-export function normalizeOperations(operations, shape, revision) {
+export function normalizeOperations(operations, shape, revision, scope) {
   if (
     !Array.isArray(operations) ||
     !operations.length ||
     operations.length > 100
   )
-    throw new Error("请提供 1 至 100 个建模操作");
-  return operations.map((input) => {
-    const op = structuredClone(input);
-    for (const [field, kind] of [
-      ["faces", "faces"],
-      ["edges", "edges"],
-    ]) {
-      if (typeof op[field] !== "string") continue;
-      const match = /^v(\d+):(faces|edges):(\d+)$/.exec(op[field]);
-      if (!match || Number(match[1]) !== revision || match[2] !== kind)
-        throw new Error("几何引用已过期，请重新查询当前版本");
-      const item = shape?.[kind]()[Number(match[3])];
-      if (!item) throw new Error("几何引用不存在，请重新查询当前版本");
-      op[field] = {
-        geomType: item.geomType,
-        nearest: vector(item.center()),
-        one: true,
-      };
+    throw new Error("请提供 1 至 100 个建模操作 / provide 1 to 100 operations");
+  return operations.map((input, index) => {
+    try {
+      validate(input, operationSchema, `operations[${index}]`);
+      const op = structuredClone(input);
+      for (const [field, kind] of [
+        ["faces", "faces"],
+        ["edges", "edges"],
+        ["target", "solids"],
+      ]) {
+        const bind = (value) =>
+          typeof value === "string"
+            ? bindReference(value, kind, shape, scope, revision)
+            : value;
+        if (op[field] !== undefined)
+          op[field] = Array.isArray(op[field])
+            ? op[field].map(bind)
+            : bind(op[field]);
+      }
+      return op;
+    } catch (cause) {
+      throw Object.assign(
+        new Error(
+          `第 ${index + 1} 个操作失败 / operation ${index + 1} failed: ${cause.message}`,
+          { cause },
+        ),
+        { operationIndex: index, operation: input?.op },
+      );
     }
-    return op;
   });
 }
 export function editSource(source, operations, revision) {
   const name = `build_before_v${revision + 1}`;
   return `${source || "function build(parameters, cad) { return null; }"}\n\nconst ${name} = build;\nbuild = function(parameters, cad) {\n  return cad.edit(${name}(parameters, cad), ${JSON.stringify(operations, null, 2)}, parameters);\n};\n`;
-}
-export function queryShape(shape, revision, kind = "faces", selector = {}) {
-  if (!["faces", "edges", "solids"].includes(kind))
-    throw new Error("不支持的几何查询类型");
-  const all = shape[kind](),
-    picked = kind === "solids" ? all : select(shape, kind, selector);
-  return picked.map((item) => {
-    const index = all.findIndex((candidate) => candidate.equals(item));
-    const box = item.bbox();
-    const result = {
-      id: `v${revision}:${kind}:${index}`,
-      type: item.geomType || "solid",
-      center: vector(item.center()),
-      bounds: { min: vector(box.min), max: vector(box.max) },
-    };
-    if (kind === "faces") {
-      result.area = item.area;
-      if (item.geomType === "plane") result.normal = vector(item.normalAt());
-    }
-    if (kind === "edges") result.length = item.length;
-    if (kind === "solids") result.volume = item.volume;
-    if (
-      ["circle", "cylinder", "sphere", "torus", "cone"].includes(item.geomType)
-    )
-      result.radius = item.radius;
-    return result;
-  });
 }
 export function describeShape(shape) {
   if (

@@ -25,6 +25,8 @@ try {
       id: request.id,
       error: String(error.message || error),
       status: error.status || 400,
+      operationIndex: error.operationIndex,
+      operation: error.operation,
     }) + "\n",
     () => process.exit(0),
   );

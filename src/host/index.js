@@ -47,7 +47,7 @@ export async function apply(ctx, config = {}) {
     active = new Map();
   let disposed = false;
   const call = async (method, args, signal) => {
-    if (!["build", "edit", "restore"].includes(method)) return worker.call(method, args, signal);
+    if (!["build", "edit", "restore", "update_parameters"].includes(method)) return worker.call(method, args, signal);
     if (active.has(args.projectId))
       throw new Error("当前设计正在构建，请稍后重试");
     const controller = new AbortController();

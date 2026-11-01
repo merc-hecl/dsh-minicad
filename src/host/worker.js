@@ -86,6 +86,8 @@ export function createWorker({
               reject(
                 Object.assign(new Error(response.error), {
                   status: response.status,
+                  operationIndex: response.operationIndex,
+                  operation: response.operation,
                 }),
               );
             else resolve(response.result);

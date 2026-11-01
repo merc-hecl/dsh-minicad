@@ -223,21 +223,36 @@ export class Store {
       model = task.models[sourceFile || task.sourceFile] || {},
       number = revision === undefined ? model.head || 0 : Number(revision);
     if (!number) return null;
-    const entry = model.revisions.find((item) => item.revision === number);
+    const entry = (model.revisions || []).find(
+      (item) => item.revision === number,
+    );
     if (!entry) throw new Error("版本不存在");
     const folder = inside(this.taskRoot(root, task), entry.folder);
     return { folder, state: readJson(join(folder, "state.json")) };
   }
-  project(key, geometry = true) {
-    const [root, data, task] = this.locate(key),
+  project(key, geometry = true, sourceFile) {
+    const [root, data, storedTask] = this.locate(key),
+      task =
+        sourceFile === undefined
+          ? storedTask
+          : {
+              ...storedTask,
+              sourceFile: portable(
+                relative(
+                  this.taskRoot(root, storedTask),
+                  modelPath(this.taskRoot(root, storedTask), sourceFile),
+                ),
+              ),
+            },
       result = this.row(root, data, task),
       directory = result.directory,
-      saved = this.snapshot(key),
+      saved = this.snapshot(key, undefined, task.sourceFile),
       state = saved?.state || null;
     const [source, parameter] = paths(directory, task.sourceFile),
       sourceData = fileBytes(source),
       parameterData = fileBytes(parameter);
     result.workspaceDirectory = directory;
+    result.selectedSourceFile = storedTask.sourceFile;
     result.modelSelection = task.model_selection || "";
     result.models = Object.entries(task.models).map(([sourceFile, model]) => ({
       sourceFile,
@@ -324,6 +339,7 @@ export class Store {
     expected,
     inputs,
     assets = new Map(),
+    selectModel = true,
   ) {
     const [root, data, task] = this.locate(key),
       directory = this.taskRoot(root, task);
@@ -352,7 +368,7 @@ export class Store {
       created: time,
     });
     task.models[sourceFile] = model;
-    task.sourceFile = sourceFile;
+    if (selectModel) task.sourceFile = sourceFile;
     task.started = true;
     task.updated = data.updated = time;
     state.revision = revision;
@@ -393,9 +409,30 @@ export class Store {
       api = await kernel();
     let source = args.source ?? inputs.get(sourcePath)?.toString("utf8") ?? "",
       parameters;
+    if (
+      args.parameterMode !== undefined &&
+      !["merge", "replace"].includes(args.parameterMode)
+    )
+      throw new Error("不支持的参数更新模式 / unsupported parameter mode");
     try {
+      const previous =
+        args.parameterMode === "replace" ||
+        (args.parameterMode !== "merge" && args.parameters !== undefined)
+          ? {}
+          : JSON.parse(inputs.get(parameterPath) || "{}");
+      if (!previous || typeof previous !== "object" || Array.isArray(previous))
+        throw new Error("parameters 必须是 JSON 对象");
+      if (
+        args.parameters !== undefined &&
+        (!args.parameters ||
+          typeof args.parameters !== "object" ||
+          Array.isArray(args.parameters))
+      )
+        throw new Error("parameters 必须是 JSON 对象");
       parameters =
-        args.parameters ?? JSON.parse(inputs.get(parameterPath) || "{}");
+        args.parameterMode === "merge"
+          ? { ...previous, ...args.parameters }
+          : (args.parameters ?? previous);
     } catch {
       throw new Error("parameters 必须是 JSON 对象");
     }
@@ -412,15 +449,18 @@ export class Store {
       target = sourceFile,
       operations;
     if (edit) {
-      if (sourceFile !== task.sourceFile)
-        throw new Error("请先选择当前建模文件");
-      if (saved && this.project(key, false).workingTreeChanged)
+      if (saved && this.project(key, false, sourceFile).workingTreeChanged)
         throw new Conflict("源码或参数已修改，请先构建工作文件再进行局部编辑");
       shape = saved ? await this.shape(saved) : null;
       if (saved)
         for (const name of saved.state.assets || [])
           assets.set(name, fs.readFileSync(inside(directory, name)));
-      operations = api.normalizeOperations(args.operations, shape, head);
+      operations = api.normalizeOperations(
+        args.operations,
+        shape,
+        head,
+        api.modelScope(key, sourceFile),
+      );
       source = api.editSource(source, operations, head);
     } else {
       if (!source.trim() || source.length > 2 * 1024 * 1024)
@@ -471,11 +511,12 @@ export class Store {
       head,
       inputs,
       assets,
+      !args.preserveSelection,
     );
-    return this.project(key, args.geometry !== false);
+    return this.project(key, args.geometry !== false, sourceFile);
   }
   async export(key, args) {
-    const saved = this.snapshot(key, args.revision);
+    const saved = this.snapshot(key, args.revision, args.sourceFile);
     if (!saved) throw new Error("请先完成建模");
     const api = await kernel(),
       shape = await this.shape(saved),
@@ -533,7 +574,7 @@ export class Store {
     }
     const path = inside(
       this.taskRoot(root, task),
-      `exports/${name}.${args.format}`,
+      `exports/${portable(stem(state.sourceFile || task.sourceFile))}/${name}.${args.format}`,
     );
     this.write(path, bytes);
     return {
@@ -542,6 +583,7 @@ export class Store {
       mediaType,
       data: bytes.toString("base64"),
       revision: Number(args.revision),
+      sourceFile: state.sourceFile || task.sourceFile,
     };
   }
   async dispatch(method, args = {}) {
@@ -694,9 +736,18 @@ export class Store {
     const key = String(args.projectId),
       [root, data, task] = this.locate(key),
       directory = this.taskRoot(root, task),
-      row = this.row(root, data, task);
+      sourceFile =
+        args.sourceFile === undefined
+          ? task.sourceFile
+          : portable(
+              relative(directory, modelPath(directory, args.sourceFile)),
+            ),
+      row = this.row(root, data, { ...task, sourceFile });
     if (method === "get") {
-      const saved = args.geometry === false ? null : this.snapshot(key);
+      const saved =
+        args.geometry === false
+          ? null
+          : this.snapshot(key, undefined, sourceFile);
       if (saved && saved.state.previewVersion !== 1) {
         const preview = (await kernel()).previewShape(await this.shape(saved));
         this.write(
@@ -704,7 +755,7 @@ export class Store {
           jsonBytes({ ...saved.state, ...preview }),
         );
       }
-      const p = this.project(key, args.geometry !== false);
+      const p = this.project(key, args.geometry !== false, sourceFile);
       if (p.design?.views && args.geometry !== false)
         p.design.drawing = drawingSvg(
           p.design.views,
@@ -723,27 +774,56 @@ export class Store {
     }
     if (method === "build" || method === "edit")
       return this.build(key, args, method === "edit");
-    if (method === "query") {
+    if (method === "update_parameters")
+      return this.build(key, { ...args, parameterMode: args.mode ?? "merge" });
+    if (["query", "measure", "check"].includes(method)) {
       this.expect(row.head, args);
-      const saved = this.snapshot(key);
-      if (!saved) return { revision: 0, items: [] };
-      const shape = await this.shape(saved);
+      const saved = this.snapshot(key, undefined, sourceFile);
+      if (!saved) {
+        if (method === "query") return { sourceFile, revision: 0, items: [] };
+        throw new Error("请先完成建模 / build a model first");
+      }
+      const api = await kernel(),
+        shape = await this.shape(saved),
+        scope = api.modelScope(key, sourceFile);
+      const result = { sourceFile, revision: row.head };
+      if (method === "measure")
+        return {
+          ...result,
+          items: api.measureShape(
+            shape,
+            api.values(args.measurements, saved.state.parameters),
+            scope,
+            row.head,
+          ),
+        };
+      if (method === "check")
+        return {
+          ...result,
+          ...api.checkShape(
+            shape,
+            api.values(args.checks, saved.state.parameters),
+            scope,
+            row.head,
+          ),
+        };
       return {
-        revision: row.head,
+        ...result,
         kind: args.kind || "faces",
-        items: (await kernel()).queryShape(
+        items: api.queryShape(
           shape,
           row.head,
           args.kind,
-          args.selector,
+          api.values(args.selector, saved.state.parameters),
+          scope,
         ),
       };
     }
     if (method === "restore") {
       this.expect(row.head, args);
-      const saved = this.snapshot(key, args.revision);
+      const saved = this.snapshot(key, args.revision, sourceFile);
       if (!saved) throw new Error("版本不存在");
-      const inputs = this.prepareInputs(directory, task.sourceFile),
+      const inputs = this.prepareInputs(directory, sourceFile),
         shape = await this.shape(saved),
         api = await kernel(),
         assets = new Map(
@@ -761,17 +841,18 @@ export class Store {
       };
       this.record(
         key,
-        task.sourceFile,
+        sourceFile,
         state,
         api.saveShape(shape),
         args.summary || `Restore v${args.revision}`,
         row.head,
         inputs,
         assets,
+        !args.preserveSelection,
       );
-      return this.project(key);
+      return this.project(key, args.geometry !== false, sourceFile);
     }
-    if (method === "export") return this.export(key, args);
+    if (method === "export") return this.export(key, { ...args, sourceFile });
     if (method === "fork_project" || method === "move_project") {
       if (
         method === "fork_project" &&

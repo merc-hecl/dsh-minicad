@@ -35,7 +35,7 @@
     "build": "node scripts/build.mjs",
     "setup": "npm run build",
     "dev": "node scripts/dev.mjs",
-    "check": "node --check src/host/index.js && node --check src/host/tools.js && node --check src/kernel/store.js && node --check src/kernel/model.js && npm run build",
+    "check": "node --check src/host/index.js && node --check src/host/tools.js && node --check src/kernel/store.js && node --check src/kernel/model.js && node --check src/kernel/inspection.js && node --check src/shared/cad-schema.js && npm run build",
     "test": "node --test tests/*.test.mjs"
   },
   "dsh": {
