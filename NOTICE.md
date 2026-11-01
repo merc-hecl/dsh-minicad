@@ -4,7 +4,7 @@ MiniCAD uses the DSH host's React runtime, UI primitives, locale and theme servi
 
 The MiniCAD agent preset's standard tool composition in `cordis.patch.yml` is adapted from DeepSeek Harness 0.2.1-rc.5 (`packages/bundle/web-app/presets/standard.patch.yml`). It retains the official platform conditions and isolation groups, with MiniCAD tools added. The same DSH MIT license is preserved in [docs/licenses/dsh-workspace-MIT.txt](docs/licenses/dsh-workspace-MIT.txt).
 
-The design navigation adapts the workspace/session row presentation, styles and dictionaries from DeepSeek Harness 0.2.1-rc.5 (`packages/client/ui-workspace/src/client/rows/Rows` and `WorkspaceBrowser`). Scoped copies are in `src/client/design-navigation-rows.jsx` and `src/client/design-navigator.css`; MiniCAD supplies its own design workspace bindings and folder actions, and reuses the installed native session menu and rename dialog components. The original MIT license is preserved in [docs/licenses/dsh-workspace-MIT.txt](docs/licenses/dsh-workspace-MIT.txt).
+The design navigation adapts the workspace/session row presentation, styles and dictionaries from DeepSeek Harness 0.2.1-rc.5 (`packages/client/ui-workspace/src/client/rows/Rows` and `WorkspaceBrowser`). Scoped copies are in `src/client/design-navigation-rows.jsx` and `src/client/design-navigator.css`; MiniCAD supplies its own design workspace bindings and folder actions, and reuses the installed native workspace browser, session menu and rename dialog components. The original MIT license is preserved in [docs/licenses/dsh-workspace-MIT.txt](docs/licenses/dsh-workspace-MIT.txt).
 
 Runtime and build dependencies retain their own licenses, distributed with their packages:
 

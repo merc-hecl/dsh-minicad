@@ -99,6 +99,18 @@ export async function apply(ctx, config = {}) {
       }),
     )
     .catch((error) => ctx.logger.warn(`MiniCAD: ${error.message}`));
+  // Native main-window forks must inherit the same design ownership as forks
+  // created in the workbench. Session headers identify seeded forks explicitly.
+  ctx.on("session/created", (session) => {
+    if (!session.header.isSeeded || !session.header.parentSession || session.header.origin === "subagent") return;
+    startup.then(async () => {
+      const projectId = bySession.get(session.header.parentSession);
+      if (!projectId || disposed || bySession.has(session.id)) return;
+      const project = await call("bind", { projectId, sessionId: session.id });
+      bySession.set(session.id, projectId);
+      await alignDirectory(project, undefined, [session.id]);
+    }).catch(error => ctx.logger.warn(`MiniCAD fork binding: ${error.message}`));
+  });
   // Conversation titles belong to DSH; they never rename the design document.
   ctx.on("session/event", (session, event) => {
     if (event.type !== "user/message" || event.data.source.kind !== "user") return;

@@ -1,6 +1,7 @@
 import React from "react";
 import { registerGeometryReferences } from "./geometry-reference.jsx";
 import { Composer } from "./composer.jsx";
+import { createDesignCatalog, registerMainWorkspaces, mirrorNativeSlot } from "./main-workspaces.jsx";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 import { decodePreview } from "../shared/preview.js";
 const Workbench = React.lazy(() => import(__MINICAD_WORKBENCH_URL__).then((asset) => ({ default: asset.createModule(__MINICAD_REQUIRE__).Workbench })));
@@ -52,8 +53,12 @@ export function apply(ctx) {
       throw Object.assign(new Error(data.error || response.statusText), {
         uiKey: data.code,
       });
+    if (method === "list") designCatalog.update(data);
+    else if (method === "status" && data.projects) designCatalog.update(data.projects);
     return data;
   };
+  const designCatalog = createDesignCatalog(() => request("list"));
+  registerMainWorkspaces(ctx, designCatalog, request);
   const addGeometryReference = registerGeometryReferences(ctx, request);
   const setSidebarCollapsed = (workbench, collapsed) => {
     // DSH rc.5 exposes toggleSidebar but no state getter or explicit setter.
@@ -111,25 +116,7 @@ export function apply(ctx) {
   );
   // Native session actions keep their own pin/archive behavior and dialogs.
   // MiniCAD redirects only rename requests and fork placement into this workspace.
-  const mirror = (target, source, select = () => true, adapt = () => ({})) => {
-    return ctx.slots.inject(target, () => {
-      let entries = [], disposers = [];
-      const sync = () => {
-        const next = ctx.slots.entriesOfSlot(source).filter(select);
-        if (next.length === entries.length && next.every((entry, index) => entry === entries[index])) return;
-        disposers.forEach(dispose => dispose());
-        entries = next;
-        disposers = next.map((entry, index) => {
-          const Component = entry.component;
-          return ctx.slots.register({ name: target, id: `action-${index}`, order: index,
-            inject: entry.inject, locale: entry.locale, store: entry.store }, props => <Component {...props} {...adapt(props)} />);
-        });
-      };
-      const unsubscribe = ctx.slots.subscribe(source, sync);
-      sync();
-      return () => { unsubscribe(); disposers.forEach(dispose => dispose()); };
-    });
-  };
+  const mirror = (...args) => mirrorNativeSlot(ctx, ...args);
   mirror("minicad.session.menu", "sidebar.workspaces.session.menu.item", undefined, props => ({
     requestSessionRename: props.onRenameSession, forkSession: props.onForkSession,
   }));
