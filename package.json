@@ -31,8 +31,15 @@
   "engines": {
     "node": ">=22.19.0"
   },
+  "bundleDependencies": [
+    "@classcad/smlibwasm",
+    "@deepseek-ai/schemastery",
+    "fflate",
+    "three"
+  ],
   "scripts": {
     "build": "node scripts/build.mjs",
+    "prepack": "npm run build",
     "setup": "npm run build",
     "dev": "node scripts/dev.mjs",
     "check": "node --check src/host/index.js && node --check src/host/tools.js && node --check src/kernel/store.js && node --check src/kernel/model.js && node --check src/kernel/inspection.js && node --check src/shared/cad-schema.js && npm run build",

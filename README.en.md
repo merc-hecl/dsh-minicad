@@ -16,28 +16,43 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 
 ## Local installation
 
-Requires Node.js 22.19+, pnpm, and DSH. The current development compatibility target is DSH **0.2.1-rc.5**. DSH plugin APIs are changing rapidly; other versions require verification.
+The current development compatibility target is DSH **0.2.1-rc.5**. DSH plugin APIs are changing rapidly; other versions require verification.
+
+### Install the prebuilt package
+
+Extract `dsh-minicad-<version>.tgz` and use its `package` directory containing `package.json`. The archive includes the prebuilt client, SMLib WebAssembly kernel and other runtime dependencies. No manual `npm install` or build is needed. Keep the bundled `node_modules` directory.
+
+Desktop plugins are exclusively managed by the Electron application. In DSH's **Plugins** page, install the extracted directory, for example `link:F:/MiniCAD/package`, review the preview and enable it. Restart if requested, then open MiniCAD from the sidebar. Do not modify the `desktop` profile through the CLI.
+
+A Web profile requires Node.js 22.19+ and pnpm (`npm install -g pnpm` if needed). Install the extracted directory with:
+
+```powershell
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add link:F:/MiniCAD/package -w
+```
+
+If dsh is installed globally, use `dsh plugin --profile web add link:F:/MiniCAD/package -w`. Restart the Web host after installation and open MiniCAD from the sidebar. This repository has not been published to npm; use the local path instead of a package name.
+
+For a Web profile without pnpm, place the extracted `package` directory in the profile's `node_modules/dsh-minicad`, then merge the complete entries from this repository's `cordis.patch.yml` into the profile's patch array. Do not append YAML after an existing `[]`. This manual method does not apply to the Desktop profile.
+
+### Develop and package from source
+
+Source development requires Node.js 22.19+. In the repository directory, run:
 
 ```powershell
 npm install
 npm run setup
 ```
 
-`setup` builds the client. The SMLib WebAssembly kernel is installed with npm dependencies and runs in a separate Node process.
+`setup` builds the client; npm installs runtime dependencies. Install `link:F:/Projects/dsh-minicad` through Desktop plugin management or the Web CLI. The SMLib kernel runs in a separate Node process and needs no Python environment.
 
-If pnpm is not installed, run `npm install -g pnpm`.
-
-The Electron application exclusively manages Desktop plugins. In DSH's **Plugins** page, choose to install a local plugin and enter `link:F:/Projects/dsh-minicad`, replacing the path with your repository's absolute path. Review the installation preview and enable the plugin. Restart if requested, then open MiniCAD from the sidebar. Do not modify the `desktop` profile through the CLI.
-
-For a Web profile, use the CLI:
+To create a distributable prebuilt package:
 
 ```powershell
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add link:F:/Projects/dsh-minicad -w
+New-Item -ItemType Directory -Force dist | Out-Null
+npm pack --pack-destination dist
 ```
 
-If dsh is installed globally, use `dsh plugin --profile web add link:F:/Projects/dsh-minicad -w`. Restart the Web host after installation and open MiniCAD from the sidebar. This repository has not been published to npm; use the local path instead of a package name.
-
-For a Web profile without pnpm, place the repository in the target profile's `node_modules/dsh-minicad`, install dependencies, and build it. Merge the complete entries from this repository's `cordis.patch.yml` into the profile's patch array; do not append YAML after an existing `[]`. This manual method does not apply to the Desktop profile.
+`npm pack` builds the client automatically and includes declared runtime dependencies and their transitive dependencies. Development dependencies, design data and local configuration are excluded.
 
 ## Usage
 

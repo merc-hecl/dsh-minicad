@@ -16,28 +16,43 @@
 
 ## 本地安装
 
-需要 Node.js 22.19+、pnpm，以及 DSH。当前开发兼容目标为 DSH **0.2.1-rc.5**。DSH 插件 API 仍在快速变化，其他版本需重新验证。
+当前开发兼容目标为 DSH **0.2.1-rc.5**。DSH 插件 API 仍在快速变化，其他版本需重新验证。
+
+### 安装预构建包
+
+解压 `dsh-minicad-<版本>.tgz`，使用其中包含 `package.json` 的 `package` 目录。包内已包含预构建客户端、SMLib WebAssembly 内核和其他运行依赖，无需手工执行 `npm install` 或构建。请保留包内的 `node_modules` 目录。
+
+桌面版由 Electron 应用独占管理插件：在 DSH 的「插件」页安装解压后的本地目录，例如 `link:F:/MiniCAD/package`，查看安装预览并启用。若宿主提示需要重启，重启后从侧栏进入 MiniCAD。不要通过 CLI 修改 `desktop` profile。
+
+Web 配置需要 Node.js 22.19+ 和 pnpm（尚未安装时可执行 `npm install -g pnpm`），使用 CLI 安装解压目录：
+
+```powershell
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add link:F:/MiniCAD/package -w
+```
+
+已有全局 dsh 时可用 `dsh plugin --profile web add link:F:/MiniCAD/package -w`。安装后重启 Web 宿主，从侧栏点击 MiniCAD。本仓库尚未发布到 npm，不要使用不存在的 npm 安装包名。
+
+Web 配置没有 pnpm 时，可把解压后的 `package` 目录放到目标 profile 的 `node_modules/dsh-minicad`，再把本仓库 `cordis.patch.yml` 的完整条目合并到该 profile 的补丁数组；不要在已有 `[]` 后直接追加 YAML。此手动方式不适用于桌面独占配置。
+
+### 从源码开发与打包
+
+源码开发需要 Node.js 22.19+，在仓库目录执行：
 
 ```powershell
 npm install
 npm run setup
 ```
 
-`setup` 构建客户端。SMLib 的 WebAssembly 内核随 npm 依赖安装，在独立 Node 进程中运行。
+`setup` 构建客户端，运行依赖通过 npm 安装。随后可在桌面插件页安装 `link:F:/Projects/dsh-minicad`，或通过 Web CLI 安装这个仓库路径。SMLib 内核在独立 Node 进程中运行，不需要 Python 环境。
 
-若 pnpm 尚未安装：`npm install -g pnpm`。
-
-桌面版的插件管理由 Electron 应用独占：在 DSH 的「插件」页选择安装本地插件，输入 `link:F:/Projects/dsh-minicad`（替换成本地仓库绝对路径），查看安装预览并启用。若宿主提示需要重启，重启后从侧栏进入 MiniCAD。不要通过 CLI 修改 `desktop` profile。
-
-Web 配置使用 CLI：
+生成可分发的预构建包：
 
 ```powershell
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add link:F:/Projects/dsh-minicad -w
+New-Item -ItemType Directory -Force dist | Out-Null
+npm pack --pack-destination dist
 ```
 
-已有全局 dsh 时可用 `dsh plugin --profile web add link:F:/Projects/dsh-minicad -w`。安装后重启 Web 宿主，从侧栏点击 MiniCAD。本仓库尚未发布到 npm，不要使用不存在的 npm 安装包名。
-
-Web 配置没有 pnpm 时，可把仓库放到目标 profile 的 `node_modules/dsh-minicad`，完成依赖安装和构建，再把本仓库 `cordis.patch.yml` 的完整条目合并到该 profile 的补丁数组；不要在已有 `[]` 后直接追加 YAML。此手动方式不适用于桌面独占配置。
+`npm pack` 会自动构建客户端，并携带声明的运行依赖及其传递依赖；开发依赖、设计数据和本地配置不会打入安装包。
 
 ## 使用
 
