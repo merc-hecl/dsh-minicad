@@ -61,7 +61,7 @@ test("preview decoding rejects truncation, invalid numeric values and out-of-ran
 });
 
 test(
-  "previews repair from historical solids and projections are generated only for drawing exports",
+  "previews repair from historical solids without changing working files or revisions",
   { timeout: 30000 },
   async () => {
     const root = await mkdtemp(join(tmpdir(), "minicad-binary-preview-"));
@@ -80,17 +80,8 @@ test(
       const saved = JSON.parse(
         await readFile(join(folder, "state.json"), "utf8"),
       );
-      for (const name of ["mesh", "edges", "drawing", "views"])
+      for (const name of ["mesh", "edges"])
         assert.equal(saved[name], undefined);
-      const projection = join(folder, "views.json");
-      await assert.rejects(readFile(projection), { code: "ENOENT" });
-      await worker.call("export", { ...args, revision: 1, format: "step" });
-      await assert.rejects(readFile(projection), { code: "ENOENT" });
-      await worker.call("export", { ...args, revision: 1, format: "svg" });
-      const views = await readFile(projection);
-      assert.equal(JSON.parse(views).views.length, 3);
-      await worker.call("export", { ...args, revision: 1, format: "pdf" });
-      assert.deepEqual(await readFile(projection), views);
       const solid = await readFile(join(task.directory, "model.smb"));
       await writeFile(
         join(task.directory, "model.parameters.json"),

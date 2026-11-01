@@ -637,7 +637,7 @@ export function Workbench({
           {modal === "history" && !project.revisions.length && <p>{t("noHistory")}</p>}
           {modal === "export" && (
             <div className="mc-export-options">
-              {["step", "stl", "svg", "pdf", "zip"].map((format) => (
+              {["step", "stl", "zip"].map((format) => (
                 <Button
                   key={format}
                   variant="outline"

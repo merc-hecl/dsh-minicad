@@ -83,7 +83,7 @@ async function setup(fn, options = {}) {
 }
 
 test(
-  "SMLib: real parametric geometry, drawing projections, exports and immutable restore",
+  "SMLib: real parametric geometry, exports and immutable restore",
   { timeout: 90000 },
   async () =>
     setup(async (worker, dataDir) => {
@@ -101,7 +101,6 @@ test(
       assert.equal(built.design.metrics.solidCount, 1);
       assert.equal(built.design.metrics.valid, true);
       assert.equal(built.design.mesh, undefined);
-      assert.equal(built.design.views, undefined);
       const previewFile = await worker.call("preview_file", {
         projectId: p.id,
         revision: 1,
@@ -109,31 +108,6 @@ test(
       assert.ok(
         decodePreview(await readFile(previewFile.path)).indices.length > 60,
       );
-      const projectionFile = join(
-        p.directory,
-        built.revisions[0].folder,
-        "views.json",
-      );
-      await assert.rejects(readFile(projectionFile), { code: "ENOENT" });
-      await worker.call("export", {
-        projectId: p.id,
-        revision: 1,
-        format: "svg",
-      });
-      const views = JSON.parse(await readFile(projectionFile, "utf8")).views;
-      for (const [index, size] of [
-        [0, [60, 40]],
-        [1, [60, 8]],
-        [2, [40, 8]],
-      ]) {
-        const points = views[index].paths.flatMap((path) => path.points);
-        for (const axis of [0, 1])
-          near(
-            Math.max(...points.map((p) => p[axis])) -
-              Math.min(...points.map((p) => p[axis])),
-            size[axis],
-          );
-      }
       const original = await readFile(join(p.directory, "model.smb"));
       await assert.rejects(
         worker.call("build", {
@@ -166,7 +140,7 @@ test(
       );
       assert.equal((await worker.call("get", { projectId: p.id })).head, 1);
       await writeFile(join(p.directory, "model.js"), source);
-      for (const format of ["step", "stl", "svg", "pdf", "smb", "zip"]) {
+      for (const format of ["step", "stl", "smb", "zip"]) {
         const exported = await worker.call("export", {
           projectId: p.id,
           revision: 1,
@@ -183,29 +157,10 @@ test(
           assert.ok(back.isValid());
           back.dispose();
         }
-        if (format === "pdf")
-          assert.match(bytes.toString("ascii", 0, 8), /^%PDF-1\.4/);
-        if (format === "svg") assert.match(bytes.toString(), /参数化底板/);
         if (format === "zip") {
           const files = unzipSync(bytes);
           assert.equal(strFromU8(files["model.js"]), source);
           assert.ok(files["model.smb"].length);
-        }
-        if (format === "pdf") {
-          const attached = await worker.call("attach", {
-            projectId: p.id,
-            name: exported.name,
-            data: exported.data,
-          });
-          assert.equal(
-            (
-              await worker.call("reference_file", {
-                projectId: p.id,
-                attachmentId: attached.attachments[0].id,
-              })
-            ).data,
-            exported.data,
-          );
         }
       }
       const second = await worker.call("build", {

@@ -28,7 +28,7 @@ cad_edit commits 1–100 sequential operations as one revision, only if all succ
 cad_query returns faces, edges or solids and scoped IDs valid only for that task, sourceFile and revision. Use geometry selectors (geomType, name, facing, parallelTo, position, nearest, one), a current ID, or an array of face/edge IDs. IDs are resolved by exact topology/derivation, never by nearest-center guessing. A removed, split or untraceable reference fails; query again (including when a preceding transform discards derivation). Parametric replay of stored references requires unchanged topology; prefer geometric selectors for edits intended to survive topology changes.
 cad_measure accepts multiple measurements. Distances are minimum distances between points, faces, solids and straight edge pairs; two curved-edge endpoints are not supported by the installed kernel API. A point inside a solid measures clearance to its surface. Angles are 0–180 degrees between plane normals, line directions, rotation axes or explicit directions. Thickness is a local material segment through a point in/on the solid along a specified direction, not a global minimum-wall assessment. cad_check checks the same measurements against expected +/- tolerance (default 1e-6 in the measurement unit), or min/max, and returns passed plus each result without modifying the model.
 cad_update_parameters merges top-level keys by default (nested values replace as a whole); mode:'replace' replaces the entire parameter object. It rebuilds the full JavaScript and all recorded edits. cad_build/cad_edit parameters, when provided, are the complete object. Files changed externally are read from disk. Keep model.js, model.parameters.json, model.smb and resources in this task folder. Structured imports via op:'import',file:'resources/input.step' and cad.readModel snapshot the imported resource with the version.
-cad_restore creates an increasing revision. cad_export exports a saved revision as STEP/STL/SVG/PDF/SMB/ZIP; use only returned paths and download URLs. SVG/PDF are orthographic reference sheets, not complete manufacturing drawings.
+cad_restore creates an increasing revision. cad_export exports a saved revision as STEP/STL/SMB/ZIP; use only returned paths and download URLs.
 PDFs/images arrive as DSH attachments; use the host's attachment, filesystem or multimodal capabilities. MiniCAD does not parse PDF input. Do not infer unspecified dimensions from pixels or assume a silhouette uniquely determines 3D. Ask only what is needed to resolve design intent. Complete modeling through tools. Respond in the user's language.
 `,
   });
@@ -185,7 +185,7 @@ PDFs/images arrive as DSH attachments; use the host's attachment, filesystem or 
       revision: { type: "integer", minimum: 1 },
       format: {
         type: "string",
-        enum: ["step", "stl", "svg", "pdf", "smb", "zip"],
+        enum: ["step", "stl", "smb", "zip"],
       },
     }),
     async (project, args, signal) => {
@@ -200,7 +200,7 @@ PDFs/images arrive as DSH attachments; use the host's attachment, filesystem or 
         path,
         sourceFile,
         downloadUrl: `/api/minicad/download?${new URLSearchParams({ projectId: project.id, sourceFile, revision, format: args.format })}`,
-        note: "在工作台「导出」中下载。SVG/PDF 只含正投影和外形尺寸。 / Download from the workbench. SVG/PDF contain orthographic reference views and overall dimensions only.",
+        note: "在工作台「导出」中下载。 / Download from the workbench.",
       };
     },
   );

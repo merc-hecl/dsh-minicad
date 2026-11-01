@@ -15,6 +15,9 @@ import { createWorker } from "../src/host/worker.js";
 
 import { Store } from "../src/kernel/store.js";
 import { atomicWrite, jsonBytes } from "../src/kernel/files.js";
+const referencePdf = (
+  await readFile(new URL("./fixtures/reference.pdf", import.meta.url))
+).toString("base64");
 const box = "function build(p, cad) { return cad.Box(p.width,10,5); }";
 
 test(
@@ -42,15 +45,10 @@ test(
         source: box,
         parameters: { width: 20 },
       });
-      const pdf = await worker.call("export", {
-        projectId: task.id,
-        revision: 1,
-        format: "pdf",
-      });
       const referenced = await worker.call("attach", {
         projectId: task.id,
         name: "reference.pdf",
-        data: pdf.data,
+        data: referencePdf,
       });
       const referenceId = referenced.attachments[0].id;
       await writeFile(
@@ -77,7 +75,7 @@ test(
             attachmentId: referenceId,
           })
         ).data,
-        pdf.data,
+        referencePdf,
       );
       const edited = await worker.call("build", {
         projectId: branch.id,
@@ -205,7 +203,7 @@ test(
       );
 
       const modeled = await worker.call("create", {});
-      const built = await worker.call("build", {
+      await worker.call("build", {
         projectId: modeled.id,
         expectedRevision: 0,
         source: box,
@@ -216,16 +214,11 @@ test(
           .discarded,
         false,
       );
-      const pdf = await worker.call("export", {
-        projectId: modeled.id,
-        revision: built.head,
-        format: "pdf",
-      });
       const referenced = await worker.call("create", {});
       const attachment = await worker.call("attach", {
         projectId: referenced.id,
         name: "reference.pdf",
-        data: pdf.data,
+        data: referencePdf,
       });
       assert.equal(
         (await worker.call("discard_empty", { projectId: referenced.id }))
@@ -239,7 +232,7 @@ test(
             attachmentId: attachment.attachments[0].id,
           })
         ).data,
-        pdf.data,
+        referencePdf,
       );
 
       await worker.dispose();
@@ -403,15 +396,10 @@ test(
             .volume - 350,
         ) < 1e-6,
       );
-      const pdf = await worker.call("export", {
-        projectId: task.id,
-        revision: 2,
-        format: "pdf",
-      });
       const attached = await worker.call("attach", {
         projectId: task.id,
         name: "drawing.pdf",
-        data: pdf.data,
+        data: referencePdf,
       });
       const referenceId = attached.attachments[0].id;
       await assert.rejects(
@@ -502,7 +490,7 @@ test(
             attachmentId: referenceId,
           })
         ).data,
-        pdf.data,
+        referencePdf,
       );
       assert.ok(
         (

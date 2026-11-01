@@ -12,7 +12,7 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 - Parameter and source editing: adjust model parameters or modify modeling source code through the agent.
 - Model viewing: view 3D models and reference drawings.
 - Library and task management: organize part-design tasks in libraries, each with its own conversation, modeling resources, and revision history.
-- Export: STEP, STL, SVG, PDF, and editable project ZIP files.
+- Export: STEP, STL, and editable project ZIP files.
 
 ## Local installation
 
@@ -68,7 +68,7 @@ The agent should ask for clarification when dimensions are incomplete or multipl
 
 PDF parsing and scanned drawing interpretation use DSH attachments, scripting, or multimodal input, depending on the host tools and selected model.
 
-SVG / PDF exports currently provide three-view reference sheets with overall dimensions. They do not include complete hole-location dimension chains, geometric tolerances, surface roughness, or manufacturing annotations. Production drawings still require engineering review and additional annotations. The current implementation supports parametric single-part and multi-solid modeling, without assembly constraint solving or CAM toolpaths.
+The current implementation supports parametric single-part and multi-solid modeling, without assembly constraint solving or CAM toolpaths.
 
 ## Storage and runtime boundaries
 
@@ -84,7 +84,7 @@ Directory, status and saved-preview reads run in the host without starting a mod
 
 Read-only geometry requests retry once after a short delay for transient allocation failures. Cancellation, timeouts, invalid arguments and modeling writes are never automatically retried.
 
-Preview meshes and BREP lines are stored separately as `preview.bin` in each revision and fetched as binary data on demand; model summaries contain no large arrays. Legacy or damaged previews are rebuilt from that revision's exact solid without changing source, parameters or revision records. Three-view projections are generated only for SVG/PDF exports and cached in `views.json`; ordinary builds and STEP/STL/SMB/ZIP exports do not generate them. Solid validity checks, exact-model persistence and revision commits still run on every successful build.
+Preview meshes and BREP lines are stored separately as `preview.bin` in each revision and fetched as binary data on demand; model summaries contain no large arrays. Legacy or damaged previews are rebuilt from that revision's exact solid without changing source, parameters or revision records. Solid validity checks, exact-model persistence and revision commits still run on every successful build.
 
 Larger frontend modules, including the 3D viewport, load when entering the workbench. The frontend reuses the current model's preview buffer and cancels old preview reads when switching tasks. The viewport redraws only when the model, camera or display state changes, and pauses drawing while hidden.
 

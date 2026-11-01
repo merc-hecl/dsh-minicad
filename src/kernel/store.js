@@ -19,7 +19,6 @@ import {
   jsonBytes,
   readJson,
 } from "./files.js";
-import { drawingPdf, drawingSvg } from "./drawing.js";
 import { encodePreview, previewInfo } from "../shared/preview.js";
 const kernel = () => import("./model.js");
 const now = () => Date.now() / 1000;
@@ -569,49 +568,11 @@ export class Store {
       name = `${cleanName(task.title)}-v${Number(args.revision)}`;
     let bytes,
       mediaType = "application/octet-stream";
-    let views;
-    if (["svg", "pdf"].includes(args.format)) {
-      const cache = join(saved.folder, "views.json");
-      try {
-        const data = readJson(cache);
-        if (data.version === api.projectionVersion && Array.isArray(data.views))
-          views = data.views;
-      } catch {
-        /* Rebuild a missing or invalid projection cache. */
-      }
-      if (!views) {
-        views = api.projectShape(shape);
-        try {
-          this.write(
-            cache,
-            jsonBytes({ version: api.projectionVersion, views }),
-          );
-        } catch {
-          /* Exports do not require a writable projection cache. */
-        }
-      }
-    }
     switch (args.format) {
       case "step":
       case "stl":
       case "smb":
         bytes = api.exportShape(shape, args.format);
-        break;
-      case "svg":
-        bytes = Buffer.from(
-          drawingSvg(views, state.metrics, task.title, args.locale),
-        );
-        mediaType = "image/svg+xml";
-        break;
-      case "pdf":
-        bytes = drawingPdf(
-          views,
-          state.metrics,
-          task.title,
-          args.revision,
-          args.locale,
-        );
-        mediaType = "application/pdf";
         break;
       case "zip": {
         const sourceFile = state.sourceFile || task.sourceFile;

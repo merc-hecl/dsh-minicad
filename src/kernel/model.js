@@ -370,26 +370,6 @@ export function describeShape(shape) {
   };
 }
 
-export const projectionVersion = 3;
-export function projectShape(shape) {
-  return cad.drawingViews(shape, ["top", "front", "right"]).map((view) => ({
-    name: view.name.toUpperCase(),
-    paths: [
-      [false, view.visible],
-      [true, view.hidden],
-    ].flatMap(([hidden, group]) =>
-      group.map((edge) => ({
-        hidden,
-        points: Array.from(
-          { length: edge.geomType === "line" ? 2 : 49 },
-          (_, i) =>
-            vector(edge.pointAt(i / ((edge.geomType === "line" ? 2 : 49) - 1))),
-        ).map((p) => p.slice(0, 2)),
-      })),
-    ),
-  }));
-}
-
 export function previewShape(shape) {
   const size = vector(shape.bbox().size);
   const raw = shape.mesh(
