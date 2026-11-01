@@ -362,34 +362,32 @@ export function describeShape(shape) {
     faceCount: shape.faces().length,
     valid: true,
   };
-  const preview = previewShape(shape);
-  const views = cad
-    .drawingViews(shape, ["top", "front", "right"])
-    .map((view) => ({
-      name: view.name.toUpperCase(),
-      paths: [
-        [false, view.visible],
-        [true, view.hidden],
-      ].flatMap(([hidden, group]) =>
-        group.map((edge) => ({
-          hidden,
-          points: Array.from(
-            { length: edge.geomType === "line" ? 2 : 49 },
-            (_, i) =>
-              vector(
-                edge.pointAt(i / ((edge.geomType === "line" ? 2 : 49) - 1)),
-              ).slice(0, 2),
-          ),
-        })),
-      ),
-    }));
   return {
     metrics,
-    ...preview,
-    views,
-    projectionVersion: 3,
+    preview: previewShape(shape),
+    previewVersion: 2,
     kernel: kernelName,
   };
+}
+
+export const projectionVersion = 3;
+export function projectShape(shape) {
+  return cad.drawingViews(shape, ["top", "front", "right"]).map((view) => ({
+    name: view.name.toUpperCase(),
+    paths: [
+      [false, view.visible],
+      [true, view.hidden],
+    ].flatMap(([hidden, group]) =>
+      group.map((edge) => ({
+        hidden,
+        points: Array.from(
+          { length: edge.geomType === "line" ? 2 : 49 },
+          (_, i) =>
+            vector(edge.pointAt(i / ((edge.geomType === "line" ? 2 : 49) - 1))),
+        ).map((p) => p.slice(0, 2)),
+      })),
+    ),
+  }));
 }
 
 export function previewShape(shape) {
@@ -400,49 +398,70 @@ export function previewShape(shape) {
   );
   if (raw.triangles.length / 3 > 500000)
     throw new Error("预览网格超过 50 万三角形，请简化模型");
-  // SMLib shares positions across BREP faces, but its normals belong to triangle
-  // corners. Split vertices at normal discontinuities to keep planar faces flat
-  // and curved faces smooth, without averaging across sharp CAD boundaries.
-  const vertices = [],
-    normals = [],
-    triangles = [],
-    indices = new Map();
+  const positions = new Float32Array(raw.triangles.length * 3);
+  const normals = new Float32Array(positions.length);
+  const indices = new Uint32Array(raw.triangles.length);
+  const corners = new Map();
   const cornerNormals = raw.normals?.length === raw.triangles.length * 3;
+  let vertices = 0;
   for (let i = 0; i < raw.triangles.length; i += 3) {
-    const points = Array.from(raw.triangles.slice(i, i + 3), (index) =>
-      Array.from(raw.vertices.slice(index * 3, index * 3 + 3)),
-    );
-    const a = points[1].map((v, axis) => v - points[0][axis]),
-      b = points[2].map((v, axis) => v - points[0][axis]);
-    const cross = [
-      a[1] * b[2] - a[2] * b[1],
-      a[2] * b[0] - a[0] * b[2],
-      a[0] * b[1] - a[1] * b[0],
-    ];
-    const length = Math.hypot(...cross) || 1;
-    const triangle = [];
-    for (let corner = 0; corner < 3; corner++) {
-      const normal = cornerNormals
-        ? Array.from(raw.normals.slice((i + corner) * 3, (i + corner + 1) * 3))
-        : cross.map((v) => v / length);
-      const key = `${raw.triangles[i + corner]}:${normal.join(",")}`;
-      if (!indices.has(key)) {
-        indices.set(key, vertices.length);
-        vertices.push(points[corner]);
-        normals.push(normal);
-      }
-      triangle.push(indices.get(key));
+    let fallback;
+    if (!cornerNormals) {
+      const point = (corner, axis) =>
+        raw.vertices[raw.triangles[i + corner] * 3 + axis];
+      const a = [0, 1, 2].map((axis) => point(1, axis) - point(0, axis));
+      const b = [0, 1, 2].map((axis) => point(2, axis) - point(0, axis));
+      const cross = [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+      ];
+      const length = Math.hypot(...cross) || 1;
+      fallback = cross.map((n) => n / length);
     }
-    triangles.push(triangle);
+    for (let corner = 0; corner < 3; corner++) {
+      const sourceIndex = raw.triangles[i + corner];
+      const n = cornerNormals
+        ? [0, 1, 2].map((axis) => raw.normals[(i + corner) * 3 + axis])
+        : fallback;
+      const key = `${sourceIndex}:${n.join(",")}`;
+      if (!corners.has(key)) {
+        corners.set(key, vertices);
+        for (let axis = 0; axis < 3; axis++) {
+          positions[vertices * 3 + axis] = raw.vertices[sourceIndex * 3 + axis];
+          normals[vertices * 3 + axis] = n[axis];
+        }
+        vertices++;
+      }
+      indices[i + corner] = corners.get(key);
+    }
   }
-  const edges = shape
-    .edges({ seams: true })
-    .map((e) =>
-      Array.from({ length: e.geomType === "line" ? 2 : 33 }, (_, i) =>
-        vector(e.pointAt(i / ((e.geomType === "line" ? 2 : 33) - 1))),
-      ),
-    );
-  return { mesh: { vertices, triangles, normals }, edges, previewVersion: 1 };
+  const brepEdges = shape.edges({ seams: true });
+  const segments = brepEdges.reduce(
+    (sum, edge) => sum + (edge.geomType === "line" ? 1 : 32),
+    0,
+  );
+  const edges = new Float32Array(segments * 6);
+  let offset = 0;
+  for (const edge of brepEdges) {
+    const count = edge.geomType === "line" ? 1 : 32;
+    let previous = edge.pointAt(0);
+    for (let i = 1; i <= count; i++) {
+      const point = edge.pointAt(i / count);
+      edges.set(
+        [previous.x, previous.y, previous.z, point.x, point.y, point.z],
+        offset,
+      );
+      offset += 6;
+      previous = point;
+    }
+  }
+  return {
+    positions: positions.subarray(0, vertices * 3),
+    normals: normals.subarray(0, vertices * 3),
+    indices,
+    edges,
+  };
 }
 export function exportShape(shape, format) {
   if (format === "smb") return saveShape(shape);

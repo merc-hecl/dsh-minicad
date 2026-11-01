@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 export const jsonBytes = (value) =>
   Buffer.from(
     JSON.stringify(
@@ -16,6 +16,26 @@ export const jsonBytes = (value) =>
 export const fileBytes = (file) =>
   fs.existsSync(file) ? fs.readFileSync(file) : null;
 export const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
+/** Bound the temporary buffer even for large imported STEP/SMB resources. */
+export function hashFile(file) {
+  const hash = createHash("sha256");
+  let descriptor;
+  try {
+    descriptor = fs.openSync(file, "r");
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  try {
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    let length;
+    while ((length = fs.readSync(descriptor, buffer, 0, buffer.length, null)))
+      hash.update(buffer.subarray(0, length));
+    return hash.digest("hex");
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
 export function atomicWrite(file, value) {
   if (value === null) {
     fs.rmSync(file, { force: true });

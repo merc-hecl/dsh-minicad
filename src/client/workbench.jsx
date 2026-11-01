@@ -63,19 +63,6 @@ const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
   ) : button;
 };
 
-const NoConversationView = () => null;
-const COMPOSER_SLOTS = { views: NoConversationView };
-
-// Use DSH 0.2.1-rc.5's public Factory, which owns its child slots exclusively.
-// Only omit the transcript here; retain the complete native composer and takeovers.
-export function Composer({ renderFactorySlot }) {
-  return renderFactorySlot(
-    "conversation.content",
-    { variant: "embedded", phase: "active", hero: false },
-    { slots: COMPOSER_SLOTS },
-  );
-}
-
 export function Workbench({
   locale, t, enter, back, request, SessionProvider, renderSlot, retainSession, workspaceCatalog, forkTask,
 }) {
@@ -123,18 +110,50 @@ export function Workbench({
   languageRef.current = language;
   selection.current = selected;
   projectRef.current = project;
+  const previewCache = useRef(null), previewRequest = useRef(null);
+  const loadController = useRef(new AbortController());
   const showError = (e) => {
-    if (alive.current)
-      setError({
-        key: e.uiKey || errorKey(e.message || ""),
-        detail: e.message || String(e),
-      });
+    if (e.name === "AbortError" || e.code === "ABORT_ERR") return;
+    if (alive.current) setError({ key: e.uiKey || errorKey(e.message || ""), detail: e.message || String(e) });
   };
-  const api = (method, params = {}) =>
-    request(method, {
-      ...params,
+  const api = async (method, params = {}) => {
+    const render = ["get", "build", "restore"].includes(method) && params.geometry !== false;
+    const controller = loadController.current;
+    const data = await request(method, {
+      ...params, ...(render ? { geometry: false } : {}),
       locale: languageRef.current === "zh" ? "zh" : "en",
-    });
+    }, method === "get" ? controller.signal : undefined);
+    if (!render) return data;
+    const checkCurrent = () => {
+      const current = projectRef.current;
+      if (controller.signal.aborted || selection.current !== data.id ||
+          (current?.id === data.id && current.sourceFile === data.sourceFile && current.head > data.head))
+        throw new DOMException("Superseded model preview", "AbortError");
+    };
+    checkCurrent();
+    if (!data.design || !data.head) return data;
+    const key = JSON.stringify([data.id, data.sourceFile, data.head]);
+    try {
+      let previewData;
+      if (previewCache.current?.key === key) previewData = previewCache.current.data;
+      else {
+        let pending = previewRequest.current;
+        if (!pending || pending.key !== key || pending.signal !== controller.signal) {
+          pending = { key, signal: controller.signal };
+          pending.promise = request("preview", { projectId: data.id, sourceFile: data.sourceFile, revision: data.head }, controller.signal);
+          previewRequest.current = pending;
+        }
+        try { previewData = await pending.promise; }
+        finally { if (previewRequest.current === pending) previewRequest.current = null; }
+        checkCurrent();
+        previewCache.current = { key, data: previewData };
+      }
+      return { ...data, design: { ...data.design, previewData } };
+    } catch (error) {
+      if (error.name !== "AbortError" && alive.current && !controller.signal.aborted && selection.current === data.id) setProject(data);
+      throw error;
+    }
+  };
   async function refreshList() {
     const [p, groups] = await Promise.all([api("list"), api("libraries")]);
     if (alive.current) { setProjects(p); setLibraries(groups); }
@@ -163,6 +182,11 @@ export function Workbench({
     if (selection.current && selection.current !== id && !previous?.has_messages && !previous?.head)
       abandonedTasks.current.add(selection.current);
     abandonedTasks.current.delete(id);
+    loadController.current.abort();
+    loadController.current = new AbortController();
+    const controller = loadController.current;
+    previewCache.current = null;
+    previewRequest.current = null;
     selection.current = id;
     lastStatusError.current = "";
     setError(null);
@@ -173,17 +197,21 @@ export function Workbench({
     setRunning(false);
     try {
       const p = await api("get", { projectId: id });
-      if (selection.current === id && alive.current) {
+      if (selection.current === id && alive.current && controller === loadController.current) {
         setProject(p);
         await discardAbandonedTasks(id);
       }
     } catch (e) {
       showError(e);
     } finally {
-      if (selection.current === id) setLoading(false);
+      if (selection.current === id && controller === loadController.current) setLoading(false);
     }
   }
   function clearSelection() {
+    loadController.current.abort();
+    loadController.current = new AbortController();
+    previewCache.current = null;
+    previewRequest.current = null;
     selection.current = "";
     setSelected("");
     setProject(null);
@@ -211,6 +239,8 @@ export function Workbench({
       });
     return () => {
       alive.current = false;
+      loadController.current.abort();
+      previewCache.current = null;
     };
   }, []);
   useEffect(() => {
@@ -595,8 +625,7 @@ export function Workbench({
                           revision: r.revision,
                           expectedRevision: project.head,
                         });
-                        setProject(p);
-                        setModal(null);
+                        if (selection.current === selected) { setProject(p); setModal(null); }
                       })
                     }
                   >

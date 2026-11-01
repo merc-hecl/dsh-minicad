@@ -85,6 +85,20 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       orbitDistance: camera.position.length(),
     };
     let turn = null, cubeDrag = null, fitFrame = 0;
+    let renderFrame = 0, disposed = false, inView = true;
+    state.active = active;
+    const canRender = () => !disposed && inView && state.active && !document.hidden;
+    function invalidate() {
+      if (canRender() && !renderFrame) renderFrame = requestAnimationFrame(draw);
+    }
+    state.invalidate = invalidate;
+    state.setActive = (value) => {
+      state.active = value;
+      controls.enabled = canRender() && !turn && !cubeDrag;
+      if (canRender()) invalidate();
+      else { cancelAnimationFrame(renderFrame); renderFrame = 0; }
+    };
+    controls.addEventListener("change", invalidate);
     function leaveDefaultView() {
       state.defaultView = false;
       cancelAnimationFrame(fitFrame);
@@ -126,6 +140,8 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       controls.saveState();
       controls.setGizmosVisible(false);
       state.controls = controls;
+      controls.addEventListener("change", invalidate);
+      controls.enabled = canRender() && !turn && !cubeDrag;
     }
     function finishTurn() {
       if (!turn) return;
@@ -157,6 +173,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
         target: currentTarget(),
       };
       controls.enabled = false;
+      invalidate();
     };
     state.beginCubeDrag = () => {
       leaveDefaultView();
@@ -175,11 +192,14 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
         new THREE.Quaternion().setFromAxisAngle(axis.normalize(), -angle),
       );
       applyOrbit(cubeDrag.target, rotation);
+      invalidate();
     };
     state.endCubeDrag = () => {
       if (!cubeDrag) return;
-      rebaseControls(cubeDrag.target);
+      const target = cubeDrag.target;
       cubeDrag = null;
+      rebaseControls(target);
+      invalidate();
     };
     state.fit = (rotation = camera.quaternion.clone()) => {
       stopMotion();
@@ -323,6 +343,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       // The projection span can change when a different model is fitted.
       scaleHeight = 0;
       updateGrid();
+      invalidate();
     }
     state.resize = resize;
     const observer = new ResizeObserver(() => {
@@ -349,6 +370,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
         }
       });
       gridTheme();
+      invalidate();
     }
     state.theme = theme;
     const themeObserver = new MutationObserver(theme);
@@ -358,7 +380,9 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
     });
     theme();
     resize();
-    renderer.setAnimationLoop(() => {
+    function draw() {
+      renderFrame = 0;
+      if (!canRender()) return;
       if (turn) {
         const amount = turn.duration ? Math.min((performance.now() - turn.start) / turn.duration, 1) : 1;
         const eased = amount * amount * (3 - 2 * amount);
@@ -372,11 +396,23 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       renderer.render(gridScene, gridCamera);
       renderer.clearDepth();
       renderer.render(scene, camera);
+      if (turn) invalidate();
+    }
+    const visibility = () => state.setActive(state.active);
+    document.addEventListener("visibilitychange", visibility);
+    const intersection = new IntersectionObserver((entries) => {
+      inView = entries[0]?.isIntersecting ?? false;
+      visibility();
     });
+    intersection.observe(el);
     runtime.current = state;
+    invalidate();
     return () => {
-      renderer.setAnimationLoop(null);
+      disposed = true;
+      cancelAnimationFrame(renderFrame);
       cancelAnimationFrame(fitFrame);
+      intersection.disconnect();
+      document.removeEventListener("visibilitychange", visibility);
       observer.disconnect();
       themeObserver.disconnect();
       renderer.domElement.removeEventListener("pointerdown", beginNavigation, true);
@@ -403,7 +439,8 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       o.material.dispose();
       s.model.remove(o);
     }
-    if (!design?.mesh) {
+    const preview = design?.previewData;
+    if (!preview) {
       s.center.set(0, 0, 0);
       s.bounds.makeEmpty();
       s.span = 180;
@@ -413,13 +450,13 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute(
       "position",
-      new THREE.Float32BufferAttribute(design.mesh.vertices.flat(), 3),
+      new THREE.BufferAttribute(preview.positions, 3),
     );
-    geometry.setIndex(design.mesh.triangles.flat());
-    if (design.mesh.normals) {
+    geometry.setIndex(new THREE.BufferAttribute(preview.indices, 1));
+    if (preview.normals) {
       geometry.setAttribute(
         "normal",
-        new THREE.Float32BufferAttribute(design.mesh.normals.flat(), 3),
+        new THREE.BufferAttribute(preview.normals, 3),
       );
     } else geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(
@@ -434,35 +471,23 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       }),
     );
     s.model.add(mesh);
-    const points = [];
-    for (const edge of design.edges)
-      for (let i = 1; i < edge.length; i++)
-        points.push(...edge[i - 1], ...edge[i]);
-    // Screen-space width stays legible at every zoom level and pixel ratio.
-    const edgeGeometry = new LineSegmentsGeometry();
-    edgeGeometry.setPositions(points);
-    s.model.add(
-      new LineSegments2(
-        edgeGeometry,
-        new LineMaterial({
-          color: 0x9ca8b8,
-          linewidth: 1,
-          worldUnits: false,
-          alphaToCoverage: true,
-          transparent: true,
-          opacity: 0.65,
-          depthWrite: false,
-        }),
-      ),
-    );
+    if (preview.edges.length) {
+      const edgeGeometry = new LineSegmentsGeometry();
+      edgeGeometry.setPositions(preview.edges);
+      s.model.add(new LineSegments2(edgeGeometry, new LineMaterial({
+        color: 0x9ca8b8, linewidth: 1, worldUnits: false, alphaToCoverage: true,
+        transparent: true, opacity: 0.65, depthWrite: false,
+      })));
+    }
     const bounds = new THREE.Box3().setFromObject(mesh);
     s.bounds.copy(bounds);
     bounds.getCenter(s.center);
     s.theme();
-  }, [design]);
+  }, [design?.previewData]);
   useEffect(() => {
     runtime.current?.scheduleFit();
-  }, [design]);
+  }, [design?.previewData]);
+  useEffect(() => { runtime.current?.setActive(active); }, [active]);
   useEffect(() => {
     if (resetToken > 0) runtime.current?.resetView();
   }, [resetToken]);
@@ -476,7 +501,7 @@ export function Viewport({ id, active = true, design, wire, resetToken, onError,
       else if (o.isMesh) o.visible = !wire;
     });
     s.theme();
-  }, [wire, design]);
+  }, [wire, design?.previewData]);
   return (
     <div id={id} ref={mount} aria-hidden={!active} className="mc-viewport" aria-label="3D">
       <ViewCube

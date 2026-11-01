@@ -1,6 +1,9 @@
 import z from "@deepseek-ai/schemastery";
 import { createWorker } from "./worker.js";
 import { errorKey } from "../shared/errors.js";
+import { createReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { Readable } from "node:stream";
 export const inject = [
   "connection",
   "sessionController",
@@ -227,7 +230,6 @@ export async function apply(ctx, config = {}) {
             signal,
           )
         : null;
-      const messages = projection?.values?.minicadTranscript?.messages || p.messages;
       const title = projection?.values?.title || p.title;
       if (title !== p.title) await call("rename", { projectId: p.id, title });
       return {
@@ -240,7 +242,6 @@ export async function apply(ctx, config = {}) {
           ...project,
           running: ctx.agents.get(project.session_id)?.status === "running" || active.has(project.id),
         })),
-        messages,
         running:
           ctx.agents.get(p.session_id)?.status === "running" ||
           active.has(p.id),
@@ -340,6 +341,18 @@ export async function apply(ctx, config = {}) {
     if (body.length > 29 * 1024 * 1024) return json({ error: "请求过大" }, 413);
     const { method, params = {} } = JSON.parse(body);
     return json(await rpc(method, params, request.signal));
+  });
+  // Same authenticated channel as the workbench. No arbitrary file paths.
+  route("/api/minicad/workbench.js", ["GET"], async () => new Response(
+    await readFile(new URL("../../lib/workbench.mjs", import.meta.url)),
+    { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" } },
+  ));
+  route("/api/minicad/preview", ["GET"], async (request) => {
+    const params = Object.fromEntries(new URL(request.url).searchParams);
+    const preview = await call("preview_file", { ...params, revision: Number(params.revision) }, request.signal);
+    return new Response(Readable.toWeb(createReadStream(preview.path, { signal: request.signal })), { headers: {
+      "content-type": "application/octet-stream", "content-length": String(preview.byteLength), "cache-control": "no-store",
+    } });
   });
   route("/api/minicad/download", ["GET"], async (request) => {
     const params = Object.fromEntries(new URL(request.url).searchParams);

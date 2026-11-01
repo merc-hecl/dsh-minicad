@@ -14,11 +14,13 @@ import { zipSync, strToU8 } from "fflate";
 import {
   atomicWrite,
   fileBytes,
+  hashFile,
   inside,
   jsonBytes,
   readJson,
 } from "./files.js";
 import { drawingPdf, drawingSvg } from "./drawing.js";
+import { encodePreview, previewInfo } from "../shared/preview.js";
 const kernel = () => import("./model.js");
 const now = () => Date.now() / 1000;
 const id = () => randomUUID().replaceAll("-", "");
@@ -32,6 +34,17 @@ const cleanName = (name) =>
     .slice(0, 100) || "design";
 const equalBytes = (a, b) =>
   a === null ? b === null : b !== null && a.equals(b);
+const summaryOf = ({ mesh, edges, drawing, views, ...state }) => state;
+const stateStamp = (file) => {
+  const info = fs.statSync(file, { bigint: true });
+  return `${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
+};
+export class KernelRequired extends Error {
+  constructor() {
+    super("此操作需要独立建模进程 / isolated kernel process required");
+    this.code = "KERNEL_REQUIRED";
+  }
+}
 export class Conflict extends Error {
   constructor(message = "设计已更新，请重新读取当前版本后再修改") {
     super(message);
@@ -72,9 +85,13 @@ function entries(root) {
     });
 }
 export class Store {
-  constructor(root, { write = atomicWrite } = {}) {
+  constructor(root, { write = atomicWrite, allowKernel = true } = {}) {
     this.root = resolve(root);
     this.write = write;
+    this.kernel = () => {
+      if (!allowKernel) throw new KernelRequired();
+      return kernel();
+    };
     fs.mkdirSync(this.root, { recursive: true });
     this.registry = join(this.root, "libraries.json");
     this.journal = join(this.root, "pending-files.json");
@@ -218,7 +235,19 @@ export class Store {
     );
     return this.libraryInfo(root, data);
   }
-  snapshot(key, revision, sourceFile) {
+  cacheSummary(folder, state, stamp) {
+    try {
+      stamp ??= stateStamp(join(folder, "state.json"));
+      this.write(
+        join(folder, "summary.json"),
+        jsonBytes({ stamp, state: summaryOf(state) }),
+      );
+    } catch {
+      // This is a disposable read cache. Failure must not turn a committed build
+      // into an apparent failure, or prevent opening an otherwise readable design.
+    }
+  }
+  snapshot(key, revision, sourceFile, geometry = true) {
     const [root, , task] = this.locate(key),
       model = task.models[sourceFile || task.sourceFile] || {},
       number = revision === undefined ? model.head || 0 : Number(revision);
@@ -228,9 +257,31 @@ export class Store {
     );
     if (!entry) throw new Error("版本不存在");
     const folder = inside(this.taskRoot(root, task), entry.folder);
-    return { folder, state: readJson(join(folder, "state.json")) };
+    const file = join(folder, "state.json"),
+      stamp = stateStamp(file);
+    if (!geometry) {
+      try {
+        const cached = readJson(join(folder, "summary.json"));
+        if (
+          cached.stamp === stamp &&
+          cached.state &&
+          typeof cached.state === "object" &&
+          !Array.isArray(cached.state) &&
+          cached.state.revision === number &&
+          !["mesh", "edges", "drawing", "views"].some((key) =>
+            Object.hasOwn(cached.state, key),
+          )
+        )
+          return { folder, state: cached.state };
+      } catch {
+        // Older revisions and missing/corrupt caches are read from their source.
+      }
+    }
+    const state = readJson(file);
+    if (stateStamp(file) === stamp) this.cacheSummary(folder, state, stamp);
+    return { folder, state: geometry ? state : summaryOf(state) };
   }
-  project(key, geometry = true, sourceFile) {
+  project(key, geometry = true, sourceFile, savedSnapshot) {
     const [root, data, storedTask] = this.locate(key),
       task =
         sourceFile === undefined
@@ -246,7 +297,10 @@ export class Store {
             },
       result = this.row(root, data, task),
       directory = result.directory,
-      saved = this.snapshot(key, undefined, task.sourceFile),
+      saved =
+        savedSnapshot === undefined
+          ? this.snapshot(key, undefined, task.sourceFile, false)
+          : savedSnapshot,
       state = saved?.state || null;
     const [source, parameter] = paths(directory, task.sourceFile),
       sourceData = fileBytes(source),
@@ -286,27 +340,16 @@ export class Store {
         JSON.stringify(result.parameters) !== JSON.stringify(state.parameters)),
     );
     for (const name of state?.assets || []) {
-      const bytes = fileBytes(inside(directory, name));
-      result.sourceVersion += createHash("sha256")
-        .update(bytes || "")
-        .digest("hex");
-      if (!equalBytes(bytes, fileBytes(inside(saved.folder, name))))
+      const digest = hashFile(inside(directory, name));
+      result.sourceVersion += digest ?? createHash("sha256").digest("hex");
+      if (digest !== hashFile(inside(saved.folder, name)))
         result.workingTreeChanged = true;
     }
     if (state) {
       state.source = result.source;
       if (result.parameters !== null) state.parameters = result.parameters;
-      if (geometry && state.views)
-        state.drawing = drawingSvg(state.views, state.metrics, task.title);
     }
-    result.design =
-      state && !geometry
-        ? Object.fromEntries(
-            Object.entries(state).filter(
-              ([k]) => !["mesh", "edges", "drawing", "views"].includes(k),
-            ),
-          )
-        : state;
+    result.design = state;
     result.revisions = [
       ...(task.models[task.sourceFile]?.revisions || []),
     ].sort((a, b) => b.revision - a.revision);
@@ -320,7 +363,7 @@ export class Store {
     if (args.expectedRevision !== head) throw new Conflict();
   }
   async shape(saved) {
-    return (await kernel()).readShape(
+    return (await this.kernel()).readShape(
       fs.readFileSync(join(saved.folder, "model.smb")),
       "model.smb",
     );
@@ -374,8 +417,14 @@ export class Store {
     state.revision = revision;
     state.parent = expected || null;
     state.sourceFile = sourceFile;
+    const preview = encodePreview(state.preview);
+    state.preview = {
+      ...previewInfo(preview),
+      digest: createHash("sha256").update(preview).digest("hex"),
+    };
     const [source, parameters, solid] = paths(directory, sourceFile),
       changes = new Map([
+        [join(folder, "preview.bin"), preview],
         [join(folder, "model.js"), Buffer.from(state.source)],
         [join(folder, "parameters.json"), jsonBytes(state.parameters)],
         [join(folder, "model.smb"), binary],
@@ -392,6 +441,7 @@ export class Store {
     }
     changes.set(join(root, "minicad.json"), jsonBytes(data));
     this.commit(changes);
+    this.cacheSummary(folder, state);
   }
   async build(key, args, edit = false) {
     const [root, , task] = this.locate(key),
@@ -406,7 +456,7 @@ export class Store {
     this.expect(head, args);
     const inputs = this.prepareInputs(directory, sourceFile),
       [sourcePath, parameterPath] = paths(directory, sourceFile),
-      api = await kernel();
+      api = await this.kernel();
     let source = args.source ?? inputs.get(sourcePath)?.toString("utf8") ?? "",
       parameters;
     if (
@@ -443,7 +493,7 @@ export class Store {
     )
       throw new Error("parameters 必须是 JSON 对象");
     jsonBytes(parameters);
-    const saved = this.snapshot(key, undefined, sourceFile),
+    const saved = this.snapshot(key, undefined, sourceFile, false),
       assets = new Map();
     let shape,
       target = sourceFile,
@@ -496,12 +546,6 @@ export class Store {
       operations: operations || [],
       assets: [...assets.keys()],
     };
-    state.drawing = drawingSvg(
-      state.views,
-      state.metrics,
-      task.title,
-      args.locale,
-    );
     this.record(
       key,
       target,
@@ -516,16 +560,37 @@ export class Store {
     return this.project(key, args.geometry !== false, sourceFile);
   }
   async export(key, args) {
-    const saved = this.snapshot(key, args.revision, args.sourceFile);
+    const saved = this.snapshot(key, args.revision, args.sourceFile, false);
     if (!saved) throw new Error("请先完成建模");
-    const api = await kernel(),
+    const api = await this.kernel(),
       shape = await this.shape(saved),
       state = saved.state,
       [root, , task] = this.locate(key),
       name = `${cleanName(task.title)}-v${Number(args.revision)}`;
     let bytes,
       mediaType = "application/octet-stream";
-    const views = state.views || api.describeShape(shape).views;
+    let views;
+    if (["svg", "pdf"].includes(args.format)) {
+      const cache = join(saved.folder, "views.json");
+      try {
+        const data = readJson(cache);
+        if (data.version === api.projectionVersion && Array.isArray(data.views))
+          views = data.views;
+      } catch {
+        /* Rebuild a missing or invalid projection cache. */
+      }
+      if (!views) {
+        views = api.projectShape(shape);
+        try {
+          this.write(
+            cache,
+            jsonBytes({ version: api.projectionVersion, views }),
+          );
+        } catch {
+          /* Exports do not require a writable projection cache. */
+        }
+      }
+    }
     switch (args.format) {
       case "step":
       case "stl":
@@ -622,7 +687,7 @@ export class Store {
     if (method === "health")
       return {
         ready: true,
-        kernel: (await kernel()).kernelName,
+        kernel: (await this.kernel()).kernelName,
         node: process.versions.node,
       };
     if (method === "list")
@@ -743,27 +808,45 @@ export class Store {
               relative(directory, modelPath(directory, args.sourceFile)),
             ),
       row = this.row(root, data, { ...task, sourceFile });
-    if (method === "get") {
-      const saved =
-        args.geometry === false
-          ? null
-          : this.snapshot(key, undefined, sourceFile);
-      if (saved && saved.state.previewVersion !== 1) {
-        const preview = (await kernel()).previewShape(await this.shape(saved));
-        this.write(
-          join(saved.folder, "state.json"),
-          jsonBytes({ ...saved.state, ...preview }),
-        );
+    if (method === "get") return this.project(key, false, sourceFile);
+    if (method === "preview_file") {
+      const saved = this.snapshot(key, args.revision, sourceFile, false);
+      if (!saved) throw new Error("请先完成建模 / build a model first");
+      const path = join(saved.folder, "preview.bin");
+      let valid = false;
+      try {
+        valid =
+          saved.state.previewVersion === 2 &&
+          fs.statSync(path).size === saved.state.preview?.byteLength &&
+          hashFile(path) === saved.state.preview.digest;
+      } catch {
+        /* Generate the preview from the revision's exact solid. */
       }
-      const p = this.project(key, args.geometry !== false, sourceFile);
-      if (p.design?.views && args.geometry !== false)
-        p.design.drawing = drawingSvg(
-          p.design.views,
-          p.design.metrics,
-          task.title,
-          args.locale,
+      if (!valid) {
+        const api = await this.kernel();
+        const bytes = encodePreview(api.previewShape(await this.shape(saved)));
+        const state = {
+          ...summaryOf(saved.state),
+          previewVersion: 2,
+          preview: {
+            ...previewInfo(bytes),
+            digest: createHash("sha256").update(bytes).digest("hex"),
+          },
+        };
+        this.commit(
+          new Map([
+            [path, bytes],
+            [join(saved.folder, "state.json"), jsonBytes(state)],
+          ]),
         );
-      return p;
+        this.cacheSummary(saved.folder, state);
+      }
+      return {
+        path,
+        byteLength: fs.statSync(path).size,
+        sourceFile,
+        revision: args.revision ?? row.head,
+      };
     }
     if (method === "select_model") {
       task.sourceFile = portable(
@@ -778,12 +861,12 @@ export class Store {
       return this.build(key, { ...args, parameterMode: args.mode ?? "merge" });
     if (["query", "measure", "check"].includes(method)) {
       this.expect(row.head, args);
-      const saved = this.snapshot(key, undefined, sourceFile);
+      const saved = this.snapshot(key, undefined, sourceFile, false);
       if (!saved) {
         if (method === "query") return { sourceFile, revision: 0, items: [] };
         throw new Error("请先完成建模 / build a model first");
       }
-      const api = await kernel(),
+      const api = await this.kernel(),
         shape = await this.shape(saved),
         scope = api.modelScope(key, sourceFile);
       const result = { sourceFile, revision: row.head };
@@ -821,11 +904,11 @@ export class Store {
     }
     if (method === "restore") {
       this.expect(row.head, args);
-      const saved = this.snapshot(key, args.revision, sourceFile);
+      const saved = this.snapshot(key, args.revision, sourceFile, false);
       if (!saved) throw new Error("版本不存在");
       const inputs = this.prepareInputs(directory, sourceFile),
         shape = await this.shape(saved),
-        api = await kernel(),
+        api = await this.kernel(),
         assets = new Map(
           (saved.state.assets || []).map((name) => [
             name,

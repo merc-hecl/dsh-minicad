@@ -1,5 +1,8 @@
 import React from "react";
-import { Workbench, Composer } from "./workbench.jsx";
+import { Composer } from "./composer.jsx";
+import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
+import { decodePreview } from "../shared/preview.js";
+const Workbench = React.lazy(() => import(__MINICAD_WORKBENCH_URL__).then((asset) => ({ default: asset.createModule(__MINICAD_REQUIRE__).Workbench })));
 import { ForgeIcon } from "./forge-icon.jsx";
 import { zh, en } from "./locale.js";
 import css from "./styles.css";
@@ -26,12 +29,21 @@ export function apply(ctx) {
   };
   const controller = new AbortController();
   ctx.effect(() => () => controller.abort(), "minicad: requests");
-  const request = async (method, params) => {
+  const request = async (method, params, signal) => {
+    const combined = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
+    if (method === "preview") {
+      const response = await fetch("/api/minicad/preview?" + new URLSearchParams(params), { signal: combined });
+      if (!response.ok) {
+        const data = await response.json();
+        throw Object.assign(new Error(data.error || response.statusText), { uiKey: data.code });
+      }
+      return decodePreview(await response.arrayBuffer());
+    }
     const response = await fetch("/api/minicad/rpc", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ method, params }),
-      signal: controller.signal,
+      signal: combined,
     });
     const data = await response.json();
     if (!response.ok)
@@ -64,6 +76,7 @@ export function apply(ctx) {
         },
       },
       ({ SessionProvider, renderSlot }) => (
+        <React.Suspense fallback={<div className="mc-workbench"><div className="mc-empty"><span role="status" className="mc-loading"><StateDot state="ongoing" />{t("loading")}</span></div></div>}>
         <Workbench
           t={t}
           locale={locale}
@@ -84,6 +97,7 @@ export function apply(ctx) {
             }, { allowMigration: false }).catch(reject);
           })}
         />
+        </React.Suspense>
       ),
     ),
   );

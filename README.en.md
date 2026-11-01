@@ -80,6 +80,14 @@ Moving a task to another library moves its entire folder, including source files
 
 Paths of opened directories are stored in `$DSH_HOME/storages/minicad/libraries.json`, or `~/.dsh/storages/minicad/libraries.json` when DSH_HOME is unset. The default library uses the adjacent `default/` directory. Set `dataDir` to override this settings directory.
 
+Directory, status and saved-preview reads run in the host without starting a modeling process or loading SMLib. An isolated process is started only for real geometry calculations or legacy-preview refresh. All file operations share one serial queue. Each revision's `summary.json` is a rebuildable read cache without meshes or views; deleting or corrupting it does not delete models or change revisions. Imported-resource fingerprints are computed in chunks instead of loading entire files into memory.
+
+Read-only geometry requests retry once after a short delay for transient allocation failures. Cancellation, timeouts, invalid arguments and modeling writes are never automatically retried.
+
+Preview meshes and BREP lines are stored separately as `preview.bin` in each revision and fetched as binary data on demand; model summaries contain no large arrays. Legacy or damaged previews are rebuilt from that revision's exact solid without changing source, parameters or revision records. Three-view projections are generated only for SVG/PDF exports and cached in `views.json`; ordinary builds and STEP/STL/SMB/ZIP exports do not generate them. Solid validity checks, exact-model persistence and revision commits still run on every successful build.
+
+Larger frontend modules, including the 3D viewport, load when entering the workbench. The frontend reuses the current model's preview buffer and cancels old preview reads when switching tasks. The viewport redraws only when the model, camera or display state changes, and pauses drawing while hidden.
+
 Modeling code runs with the current user's privileges in a separate Node service process. **Process isolation is not a security sandbox.** Run only trusted design code. The agent instructions explicitly treat PDFs and documents as reference data. The default operation timeout is 120 seconds. Stopping a running build terminates its worker process while preserving committed revisions.
 
 Override settings through a profile patch:
@@ -193,7 +201,7 @@ npm test
 
 `dev` uses a real DSH `minicad-dev` profile on port 3079 and stores project data in `.local/designs`. It reuses credentials and settings from the current DSH_HOME. Set `DSH_ELECTRON` and `DSH_CLI` to the installed Desktop executable and its bundled `dsh/lib/bin.js` to use that host instead of installing another one. Set `PORT` to override the port.
 
-Write automated tests only for the modeling kernel service, which the agent verifies. All other changes are accepted by the user; see [AGENTS.md](AGENTS.md). `check` checks host syntax and builds the client; it is not a UI test.
+Kernel test files run sequentially to avoid loading several WebAssembly kernels at once. Write automated tests only for the modeling kernel service, which the agent verifies. All other changes are accepted by the user; see [AGENTS.md](AGENTS.md). `check` checks host syntax and builds the client; it is not a UI test.
 
 Source layout: `src/client` contains the workbench, `src/host` contains the DSH service and agent tools, and `src/kernel` contains SMLib modeling and file persistence. The UI and the agent share the same service interface, and all design changes include `expectedRevision`.
 

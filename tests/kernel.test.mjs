@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { unzipSync, strFromU8 } from "fflate";
 import { createWorker } from "../src/host/worker.js";
+import { decodePreview } from "../src/shared/preview.js";
 
 const near = (a, b, tolerance = 1e-6) =>
   assert.ok(Math.abs(a - b) < tolerance, `${a} != ${b}`);
@@ -99,15 +100,33 @@ test(
       near(built.design.metrics.volume, 60 * 40 * 8 - Math.PI * 16 * 8);
       assert.equal(built.design.metrics.solidCount, 1);
       assert.equal(built.design.metrics.valid, true);
-      assert.ok(built.design.mesh.triangles.length > 20);
+      assert.equal(built.design.mesh, undefined);
+      assert.equal(built.design.views, undefined);
+      const previewFile = await worker.call("preview_file", {
+        projectId: p.id,
+        revision: 1,
+      });
+      assert.ok(
+        decodePreview(await readFile(previewFile.path)).indices.length > 60,
+      );
+      const projectionFile = join(
+        p.directory,
+        built.revisions[0].folder,
+        "views.json",
+      );
+      await assert.rejects(readFile(projectionFile), { code: "ENOENT" });
+      await worker.call("export", {
+        projectId: p.id,
+        revision: 1,
+        format: "svg",
+      });
+      const views = JSON.parse(await readFile(projectionFile, "utf8")).views;
       for (const [index, size] of [
         [0, [60, 40]],
         [1, [60, 8]],
         [2, [40, 8]],
       ]) {
-        const points = built.design.views[index].paths.flatMap(
-          (path) => path.points,
-        );
+        const points = views[index].paths.flatMap((path) => path.points);
         for (const axis of [0, 1])
           near(
             Math.max(...points.map((p) => p[axis])) -
@@ -136,10 +155,17 @@ test(
         await readFile(join(p.directory, "model.smb")),
         original,
       );
-    await rm(join(p.directory, "model.js"));
-    await assert.rejects(worker.call("edit", { projectId: p.id, expectedRevision: 1, operations: [{ op: "box", size: [1, 1, 1] }] }), /源码或参数已修改/);
-    assert.equal((await worker.call("get", { projectId: p.id })).head, 1);
-    await writeFile(join(p.directory, "model.js"), source);
+      await rm(join(p.directory, "model.js"));
+      await assert.rejects(
+        worker.call("edit", {
+          projectId: p.id,
+          expectedRevision: 1,
+          operations: [{ op: "box", size: [1, 1, 1] }],
+        }),
+        /源码或参数已修改/,
+      );
+      assert.equal((await worker.call("get", { projectId: p.id })).head, 1);
+      await writeFile(join(p.directory, "model.js"), source);
       for (const format of ["step", "stl", "svg", "pdf", "smb", "zip"]) {
         const exported = await worker.call("export", {
           projectId: p.id,
@@ -331,7 +357,7 @@ test(
       const result = await worker.call("build", {
         projectId: p.id,
         expectedRevision: 0,
-      sourceFile: "parts/plate.js",
+        sourceFile: "parts/plate.js",
         source:
           'function build(p,cad) { return cad.readModel("resources/input.step"); }',
         parameters: {},
@@ -354,8 +380,18 @@ test(
         join(p.directory, "resources", "input.step"),
         cad.toStep(cad.Box(2, 3, 4)),
       );
-    assert.equal((await worker.call("get", { projectId: p.id })).workingTreeChanged, true);
-    await assert.rejects(worker.call("edit", { projectId: p.id, expectedRevision: 1, operations: [{ op: "translate", by: [1, 0, 0] }] }), /源码或参数已修改/);
+      assert.equal(
+        (await worker.call("get", { projectId: p.id })).workingTreeChanged,
+        true,
+      );
+      await assert.rejects(
+        worker.call("edit", {
+          projectId: p.id,
+          expectedRevision: 1,
+          operations: [{ op: "translate", by: [1, 0, 0] }],
+        }),
+        /源码或参数已修改/,
+      );
       const rebuilt = await worker.call("build", {
         projectId: p.id,
         expectedRevision: 1,
