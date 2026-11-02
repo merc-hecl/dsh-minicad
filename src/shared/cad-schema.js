@@ -153,10 +153,12 @@ export const operationSchema = {
     operation("shell", { thickness: positive }, { faces: references }),
     operation("offset", { distance: scalar }),
     operation("move_faces", { faces: references, by: vector }),
+    operation("rotate_faces", { faces: references, axis: vector, angle: scalar }, { origin: vector }),
     operation("offset_faces", { faces: references, distance: scalar }),
     operation("remove_faces", { faces: references }),
     operation("remove_fillets", { faces: references }),
     operation("translate", { by: vector }),
+    operation("scale", { factor: { anyOf: [positive, array(positive, 3, 3)] } }, { origin: vector }),
     operation("rotate", { axis: vector, angle: scalar }, { origin: vector }),
     operation("mirror", { normal: vector }, { origin: vector }),
     operation(

@@ -33,7 +33,6 @@ const clientMethods = new Set([
   "rename",
   "attach",
   "reference_file",
-  "build",
   "restore",
   "export",
   "health",
@@ -213,12 +212,6 @@ export async function apply(ctx, config = {}) {
   }
   async function rpc(method, args, signal) {
     await startup;
-    if (method === "edit") {
-      const project = await call("get", { projectId: args.projectId, sourceFile: args.sourceFile, geometry: false }, signal);
-      if (designBusy(project))
-        throw new Error("当前设计正在构建，请稍后重试");
-      return call("edit", { ...args, preserveSelection: true }, signal);
-    }
     if (method === "create" || method === "open_design") return ensureSession(await call(method, args));
     if (method === "new_session") {
       const project = await call("get", { projectId: args.projectId, geometry: false });

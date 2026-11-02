@@ -224,6 +224,11 @@ function applyOperation(part, op, base, context) {
       return part.offset(op.distance);
     case "move_faces":
       return part.moveFaces(select(part, "faces", op.faces, base), op.by);
+    case "rotate_faces": {
+      direction(op.axis);
+      const location = cad.Location.about(new cad.Axis(op.origin || [0, 0, 0], op.axis), op.angle);
+      return part.moveFaces(select(part, "faces", op.faces, base), location);
+    }
     case "offset_faces":
       return part.offsetFaces(
         select(part, "faces", op.faces, base),
@@ -235,6 +240,8 @@ function applyOperation(part, op, base, context) {
       return part.removeFillets(select(part, "faces", op.faces, base));
     case "translate":
       return part.translate(op.by);
+    case "scale":
+      return part.scale(op.factor, op.origin || [0, 0, 0]);
     case "rotate":
       direction(op.axis);
       return part.rotate(
@@ -354,7 +361,9 @@ export function normalizeOperations(operations, shape, revision, scope) {
   });
 }
 export function editSource(source, operations, revision) {
-  const name = `build_before_v${revision + 1}`;
+  const prefix = `build_before_v${revision + 1}`;
+  let name = prefix, index = 1;
+  while (source?.includes(`const ${name} = build;`)) name = `${prefix}_${++index}`;
   return `${source || "function build(parameters, cad) { return null; }"}\n\nconst ${name} = build;\nbuild = async function(parameters, cad) {\n  return cad.edit(await ${name}(parameters, cad), ${JSON.stringify(operations, null, 2)}, parameters);\n};\n`;
 }
 export function describeShape(shape) {

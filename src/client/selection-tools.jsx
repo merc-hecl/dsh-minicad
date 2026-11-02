@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
-import { Button, Tooltip, IconContextInjectionOutlineRegular, IconSlidersTwoOutlineRegular, IconCloseOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
-import { GeometryActionPanel } from "./geometry-action-panel.jsx";
+import { Button, Tooltip, IconContextInjectionOutlineRegular, IconCloseOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
+import { GeometryReferencePanel } from "./geometry-reference-panel.jsx";
 import { MeasurementPanel } from "./measurement-panel.jsx";
 
 function Ruler({ size = 16 }) {
@@ -9,16 +9,14 @@ function Ruler({ size = 16 }) {
   </svg>;
 }
 
-export function SelectionTools({ targets, tool, onToolChange, onClear, onRemove, referenceDisabled, editingDisabled, busy, error, project, request, onResult, onSave, t }) {
+export function SelectionTools({ targets, tool, onToolChange, onClear, onRemove, referenceDisabled, busy, error, project, request, onResult, onReference, t }) {
   // Preserve the last label during the CSS exit, without retaining active reads.
   const lastTargets = useRef(targets);
   if (targets.length) lastTargets.current = targets;
   const summary = lastTargets.current.length === 1 ? lastTargets.current[0].label : t("selectionCount", { count: lastTargets.current.length });
-  const mixed = targets.some(target => target.kind !== targets[0]?.kind);
   const actions = [
     { key: "measure", label: "measureGeometry", Icon: Ruler, disabled: !targets.length || targets.length > 2, hint: "measurementSelectionLimit" },
     { key: "annotation", label: "referenceGeometry", Icon: IconContextInjectionOutlineRegular, disabled: referenceDisabled },
-    { key: "edit", label: "modifyGeometry", Icon: IconSlidersTwoOutlineRegular, disabled: editingDisabled || mixed, hint: mixed ? "sameKindEditingHint" : undefined },
   ];
   return <>
     <div className="mc-selection-bar mc-panel" role="toolbar" aria-label={t("selectionActions")} onKeyDown={event => {
@@ -39,7 +37,7 @@ export function SelectionTools({ targets, tool, onToolChange, onClear, onRemove,
     </div>
     {targets.length > 0 && tool && <div className="mc-selection-body">
       {tool === "measure" && targets.length <= 2 ? <MeasurementPanel targets={targets} onClose={() => onToolChange(null)} project={project} request={request} onResult={onResult} t={t} />
-        : tool !== "measure" && !(tool === "edit" && mixed) && <GeometryActionPanel key={tool === "annotation" ? tool : `${tool}-${targets[0].kind}`} mode={tool} targets={targets} busy={busy} error={error} onRemove={onRemove} onClose={() => onToolChange(null)} onSave={onSave} t={t} />}
+        : tool === "annotation" && <GeometryReferencePanel targets={targets} busy={busy} error={error} onRemove={onRemove} onClose={() => onToolChange(null)} onAdd={onReference} t={t} />}
     </div>}
   </>;
 }

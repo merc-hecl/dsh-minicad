@@ -69,7 +69,7 @@ export function Workbench({
   const sessionState = useSyncExternalStore(sessionCatalog.subscribe, sessionCatalog.getSnapshot);
   const workspaceState = useSyncExternalStore(workspaceCatalog.subscribe, workspaceCatalog.getSnapshot);
   const [renameTarget, setRenameTarget] = useState(null);
-  const [editTarget, setEditTarget] = useState("");
+  const [renameDesignId, setRenameDesignId] = useState("");
   const [selected, setSelected] = useState(""),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(null);
@@ -85,8 +85,7 @@ export function Workbench({
   const [wire, setWire] = useState(false),
     [resetView, setResetView] = useState(0);
   const [modal, setModal] = useState(null),
-    [value, setValue] = useState(""),
-    [editHead, setEditHead] = useState(0);
+    [value, setValue] = useState("");
   const [sessionReference, setSessionReference] = useState(null);
   const [reference, setReference] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false), [transcriptTarget, setTranscriptTarget] = useState(null);
@@ -94,8 +93,7 @@ export function Workbench({
   const [nativeRunning, setNativeRunning] = useState(false);
   useLayoutEffect(() => { setSelectionTargets([]); setMeasurementResult(null); setActiveTool(null); }, [measurementKey, !!processDesign, historyOpen]);
   useEffect(() => {
-    const mixed = selectionTargets.some(target => target.kind !== selectionTargets[0]?.kind);
-    if (!selectionTargets.length || (activeTool === "measure" && selectionTargets.length > 2) || (activeTool === "edit" && mixed)) setActiveTool(null);
+    if (!selectionTargets.length || (activeTool === "measure" && selectionTargets.length > 2)) setActiveTool(null);
     setMeasurementResult(null);
   }, [selectionTargets, activeTool]);
 
@@ -116,7 +114,7 @@ export function Workbench({
     if (alive.current) setError({ key: e.uiKey || errorKey(e.message || ""), detail: e.message || String(e) });
   };
   const api = async (method, params = {}) => {
-    const render = ["get", "build", "restore", "edit"].includes(method) && params.geometry !== false;
+    const render = ["get", "restore"].includes(method) && params.geometry !== false;
     const controller = loadController.current;
     const data = await request(method, {
       ...params, ...(render ? { geometry: false } : {}),
@@ -358,62 +356,38 @@ export function Workbench({
     });
   }
   function selectTool(tool) { setError(null); setActiveTool(tool); }
-  async function saveGeometryAction({ operation, note }) {
-    const captured = { mode: activeTool, targets: selectionTargets, projectId: selected,
+  async function addSelectedReferences({ note }) {
+    const captured = { targets: selectionTargets, projectId: selected,
       sourceFile: project.sourceFile, expectedRevision: project.head, sessionId: project.activeSessionId };
     const currentContext = () => alive.current && selection.current === captured.projectId
       && projectRef.current?.sourceFile === captured.sourceFile && projectRef.current?.activeSessionId === captured.sessionId;
     await action(async () => {
       const args = { projectId: captured.projectId, sourceFile: captured.sourceFile, expectedRevision: captured.expectedRevision };
-      if (captured.mode === "annotation") {
-        const { items } = await api("geometry_annotation", { ...args, references: captured.targets.map(target => target.reference), note });
-        if (!currentContext() || projectRef.current.head !== captured.expectedRevision) return;
-        if (!addGeometryReference(captured.sessionId, items)) throw Object.assign(new Error(t("referenceInputBusy")), { uiKey: "referenceInputBusy" });
-        dock.current?.reveal();
-      } else {
-        const updated = await api("edit", { ...args, operations: [operation], summary: `${t("manualEdit")} ${captured.targets.map(target => target.label).join(", ")}: ${t(operation.op)}` });
-        if (!currentContext()) return;
-        setProject(updated);
-        await refreshList();
-      }
+      const { items } = await api("geometry_annotation", { ...args, references: captured.targets.map(target => target.reference), note });
+      if (!currentContext() || projectRef.current.head !== captured.expectedRevision) return;
+      if (!addGeometryReference(captured.sessionId, items)) throw Object.assign(new Error(t("referenceInputBusy")), { uiKey: "referenceInputBusy" });
+      dock.current?.reveal();
       setActiveTool(null);
     });
   }
   function open(kind) {
     setError(null);
-    setEditTarget("");
+    setRenameDesignId("");
     setModal(kind);
-    setEditHead(project?.head || 0);
-    setValue(
-      kind === "rename" ? project.title : kind === "source" ? project.design.source : "",
-    );
+    setValue(kind === "rename" ? project.title : "");
   }
   function openReference(id, projectId = selected) {
     if (selection.current !== projectId) return;
     setReference({ name: project?.attachments.find((item) => item.id === id)?.name || t("pdfPreview"), url: "/api/minicad/reference?" + new URLSearchParams({ projectId, attachmentId: id }) });
     setModal("reference");
   }
-  async function saveEditor() {
+  async function saveDesignName() {
     await action(async () => {
-      const id = editTarget || selected;
-      if (modal === "rename") {
-        await api("rename", { projectId: id, title: value });
-        await refreshList();
-        if (selection.current === id) setProject(await api("get", { projectId: id }));
-        setModal(null);
-        return;
-      }
-      const next = await api("build", {
-        projectId: id,
-        expectedRevision: editHead,
-        source: value,
-        summary: t("sourceEdited"),
-      });
-      if (selection.current === id) {
-        setProject(next);
-        setModal(null);
-      }
+      const id = renameDesignId || selected;
+      await api("rename", { projectId: id, title: value });
       await refreshList();
+      if (selection.current === id) setProject(await api("get", { projectId: id }));
+      setModal(null);
     });
   }
   const design = project?.design;
@@ -423,7 +397,6 @@ export function Workbench({
       dateStyle: "medium",
       timeStyle: "short",
     }).format(timestamp * 1000);
-  const editable = ["rename", "source"].includes(modal);
   return (
     <div
       ref={workbench}
@@ -460,8 +433,7 @@ export function Workbench({
           onToolChange={selectTool} onClear={clearGeometrySelection}
           onRemove={reference => { if (!busy) setSelectionTargets(current => current.filter(target => target.reference !== reference)); }}
           referenceDisabled={busy || !sessionReference || sessionReference.sessionId !== project.activeSessionId}
-          editingDisabled={busy || running || nativeRunning || !sessionReference || sessionReference.sessionId !== project.activeSessionId}
-          busy={busy} error={error} project={project} request={request} onResult={setMeasurementResult} onSave={saveGeometryAction} t={t} />}
+          busy={busy} error={error} project={project} request={request} onResult={setMeasurementResult} onReference={addSelectedReferences} t={t} />}
         resetToken={resetView}
         t={t}
         onError={() => setError({ key: "webglError" })}
@@ -510,7 +482,7 @@ export function Workbench({
             onRenameSession={(sessionId, currentTitle) => setRenameTarget({ sessionId, currentTitle })} onForkSession={forkConversation}
             onCollapse={() => setPanelCollapsed(true)} pickerBusy={!!picker || busy}
             onCreate={() => { if (!busy) { setError(null); setPicker({ type: "open" }); } }}
-            onRename={task => { setError(null); setEditTarget(task.id); setValue(task.title); setModal("rename"); }}
+            onRename={task => { setError(null); setRenameDesignId(task.id); setValue(task.title); setModal("rename"); }}
             onFork={task => { setError(null); setPicker({ type: "saveAs", project: task }); }}
             onNewSession={createConversation}
             onRemove={async task => {
@@ -585,23 +557,23 @@ export function Workbench({
         <WorkbenchDialog
           key={modal}
           title={t(modal === "reference" ? "pdfPreview" : modal === "rename" ? "renameDesign" : modal)}
-          className={["reference", "source"].includes(modal) ? "mc-wide" : modal === "history" ? "mc-history-dialog" : ""}
+          className={modal === "reference" ? "mc-wide" : modal === "history" ? "mc-history-dialog" : ""}
           busy={busy}
           error={error}
           onClose={() => setModal(null)}
           t={t}
-          footer={editable ? (
+          footer={modal === "rename" ? (
             <>
               <Button variant="outline" disabled={busy} onClick={() => setModal(null)}>
                 {t("cancel")}
               </Button>
               <Button
                 variant="primary"
-                disabled={busy || (modal === "rename" && !value.trim())}
+                disabled={busy || !value.trim()}
                 icon={busy ? <StateDot state="ongoing" /> : undefined}
-                onClick={() => saveEditor()}
+                onClick={saveDesignName}
               >
-                {t(busy ? "working" : modal === "rename" ? "rename" : "save")}
+                {t(busy ? "working" : "rename")}
               </Button>
             </>
           ) : undefined}
@@ -618,21 +590,11 @@ export function Workbench({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {
                     e.preventDefault();
-                    if (value.trim()) saveEditor();
+                    if (value.trim()) saveDesignName();
                   }
                 }}
               />
             </label>
-          )}
-          {modal === "source" && (
-            <textarea
-              className="mc-code"
-              disabled={busy}
-              spellCheck={false}
-              aria-label={t(modal)}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-            />
           )}
           {modal === "history" &&
             project.revisions.map((r) => (

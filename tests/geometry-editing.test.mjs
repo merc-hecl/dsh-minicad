@@ -55,7 +55,7 @@ test("local face and edge operations heal exact solids", () => {
 });
 
 test(
-  "geometry annotations and manual edits share exact targets, preview, replay and revision persistence",
+  "geometry annotations and agent edits share exact targets, preview, replay and revision persistence",
   { timeout: 90000 },
   async () => {
     const root = await mkdtemp(join(tmpdir(), "minicad-editing-"));
@@ -142,7 +142,7 @@ test(
         /foreign/,
       );
 
-      const summary = `Manual edit ${top.displayId}: move face`;
+      const summary = `Agent edit ${top.displayId}: move face`;
       const edited = await worker.call("edit", {
         ...args,
         expectedRevision: 1,
@@ -286,4 +286,58 @@ test("selected face and edge batches measure and edit the same saved geometry in
     const readback = cad.fromSmb(await readFile(exported.path));
     try { near(readback.volume, rounded.design.metrics.volume); } finally { readback.dispose(); }
   } finally { await worker.dispose(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("agent edit trials preserve saved files and commit a checked replayable batch as one version", { timeout: 120000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "minicad-agent-trial-"));
+  let worker = createWorker({ dataDir: root });
+  try {
+    const task = await worker.call("create");
+    const args = { projectId: task.id, sourceFile: "model.js", geometry: false, expectedRevision: 1 };
+    const built = await worker.call("build", { ...args, expectedRevision: 0,
+      source: "function build(p,cad){return cad.Box(20,10,p.thickness);}", parameters: { thickness: 4 } });
+    const before = await readFile(join(built.workspaceDirectory, "model.smb"));
+    const sourceBefore = await readFile(join(built.workspaceDirectory, "model.js"));
+    const top = (await worker.call("query", { ...args, kind: "faces", selector: { position: "top" } })).items[0];
+    const operations = [{ op: "offset_faces", faces: top.id, distance: 3 },
+      { op: "scale", factor: [2, 1, 1] }, { op: "rotate", axis: [0, 0, 1], angle: 90 }];
+    const trial = await worker.call("edit", { ...args, commit: false, operations,
+      checks: [{ measurement: { kind: "size", axis: "z" }, expected: 7, tolerance: 1e-6 }] });
+    near(trial.metrics.volume, 2800); near(trial.metrics.sizeX, 10); near(trial.metrics.sizeY, 40);
+    assert.equal(trial.validation.passed, true);
+    const candidate = await worker.call("query", { ...args, runId: trial.runId, kind: "faces", selector: { position: "top" } });
+    near(candidate.items[0].center[2], 5);
+    assert.equal((await worker.call("get", args)).head, 1);
+    assert.deepEqual(await readFile(join(built.workspaceDirectory, "model.js")), sourceBefore);
+    assert.deepEqual(await readFile(join(built.workspaceDirectory, "model.smb")), before);
+    const failed = await worker.call("edit", { ...args, commit: false, operations,
+      checks: [{ measurement: { kind: "size", axis: "z" }, expected: 9, tolerance: 1e-6 }] });
+    await assert.rejects(worker.call("commit", { ...args, runId: failed.runId }), /dimensional checks failed/);
+    assert.equal((await worker.call("get", args)).head, 1);
+    assert.deepEqual(await readFile(join(built.workspaceDirectory, "model.smb")), before);
+    const committed = await worker.call("commit", { ...args, runId: trial.runId, summary: "Agent face offset, scale and rotation" });
+    assert.equal(committed.head, 2); assert.equal(committed.revisions.length, 2);
+    near(committed.design.metrics.volume, 2800);
+    assert.equal(committed.design.operations.length, 3);
+    await assert.rejects(worker.call("commit", { ...args, runId: trial.runId }), /设计已更新/);
+    const replayed = await worker.call("update_parameters", { ...args, expectedRevision: 2, parameters: { thickness: 6 } });
+    near(replayed.design.metrics.volume, 3600);
+    await worker.dispose(); worker = createWorker({ dataDir: root });
+    near((await worker.call("get", args)).design.metrics.volume, 3600);
+    const step = await worker.call("export", { ...args, revision: 2, format: "step" });
+    const shape = cad.fromStep(await readFile(step.path, "utf8"));
+    try { near(shape.volume, 2800); } finally { shape.dispose(); }
+  } finally { await worker.dispose(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("rotating a face about an explicit center and scaling preserve exact valid solids", () => {
+  const base = cad.Box(10, 20, 30);
+  const tilted = editShape(base, [{ op: "rotate_faces", faces: { position: "top" }, axis: [1, 0, 0], angle: 5, origin: [0, 0, 15] }]);
+  const scaled = editShape(base, [{ op: "scale", factor: 2, origin: [3, 0, 0] }]);
+  try {
+    assert.ok(tilted.isValid()); near(tilted.volume, 6000);
+    near(tilted.bbox().max.z, 15 + 10 * Math.tan(5 * Math.PI / 180));
+    assert.ok(scaled.isValid()); near(scaled.volume, 48000);
+    near(scaled.bbox().min.x, -13); near(scaled.bbox().max.x, 7);
+  } finally { tilted.dispose(); scaled.dispose(); base.dispose(); }
 });
