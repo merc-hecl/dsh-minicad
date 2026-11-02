@@ -28,11 +28,11 @@ import { IdSettingsDialog } from "./id-settings-dialog.jsx";
 import { defaultIdFormats } from "../shared/geometry-ids.js";
 import { Viewport } from "./viewport.jsx";
 import { errorKey } from "./locale.js";
-import { ForgeIcon } from "./forge-icon.jsx";
+import { PluginIcon } from "./plugin-icon.jsx";
 import { ParameterDialog } from "./parameter-dialog.jsx";
 import { ErrorDetails, WorkbenchDialog } from "./workbench-dialog.jsx";
 import { DesignNavigator } from "./design-navigator.jsx";
-import { ImmersiveDock } from "./immersive-dock.jsx";
+import { ConversationDock } from "./conversation-dock.jsx";
 import { MakingRecord } from "./making-record.jsx";
 
 export function Cube({ size = 22, ...props }) {
@@ -534,7 +534,7 @@ export function Workbench({
       {!displayedDesign && !loading && !running && !nativeRunning && (
         <div className="mc-empty">
           <div className="mc-brand-icon">
-            <ForgeIcon size={44} />
+            <PluginIcon size={44} />
           </div>
           <h1>{t("emptyTitle")}</h1>
           <p>{t("emptyHint")}</p>
@@ -547,7 +547,7 @@ export function Workbench({
       )}
       {historyOpen && project && <MakingRecord key={`${project.id}:${project.sourceFile}`} project={project} progress={progress}
         request={request} t={t} language={language} onClose={() => setHistoryOpen(false)} onTranscriptTarget={setTranscriptTarget} />}
-      <ImmersiveDock ref={dock} sourceKey={project?.activeSessionId} t={t} hidden={historyOpen}
+      <ConversationDock ref={dock} sourceKey={project?.activeSessionId} t={t} hidden={historyOpen}
         running={running} progress={progress} error={error} onHistory={() => setHistoryOpen(true)}
         onStart={() => setError(null)}
         onCancel={() => action(() => api("cancel", { projectId: selected }))} onRunning={setNativeRunning} onHeight={dockHeight}>
@@ -561,7 +561,7 @@ export function Workbench({
         )}
         <div className="mc-help">{t(selectionMode ? "selectionControls" : "controls")}</div>
         </>}
-      </ImmersiveDock>
+      </ConversationDock>
       {renderSlot("minicad.session.renameDialog", { renameTarget, onSettleRename: () => setRenameTarget(null),
         onRenameSession: renameConversation })}
       {geometryAction && <GeometryActionDialog key={`${geometryAction.mode}-${geometryAction.target.reference}`} action={geometryAction} busy={busy} error={error} onClose={() => setGeometryAction(null)} onSave={saveGeometryAction} t={t} />}

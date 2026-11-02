@@ -5,11 +5,11 @@ import { createDesignCatalog, registerMainWorkspaces, mirrorNativeSlot } from ".
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 import { decodePreview } from "../shared/preview.js";
 const Workbench = React.lazy(() => import(__MINICAD_WORKBENCH_URL__).then((asset) => ({ default: asset.createModule(__MINICAD_REQUIRE__).Workbench })));
-import { ForgeIcon } from "./forge-icon.jsx";
+import { PluginIcon } from "./plugin-icon.jsx";
 import { zh, en } from "./locale.js";
-import css from "./styles.css";
-import immersiveCss from "./immersive.css";
-import workspaceCss from "./design-navigator.css";
+import workbenchCss from "./workbench.css";
+import workbenchPanelsCss from "./workbench-panels.css";
+import designNavigatorCss from "./design-navigator.css";
 export const inject = [
   "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts", "inputTriggers", "uiConversation",
 ];
@@ -21,7 +21,7 @@ export function apply(ctx) {
   ctx.effect(() => {
     const style = document.createElement("style");
     style.dataset.plugin = "dsh-minicad";
-    style.textContent = `${workspaceCss}\n${css}\n${immersiveCss}`;
+    style.textContent = `${designNavigatorCss}\n${workbenchCss}\n${workbenchPanelsCss}`;
     document.head.append(style);
     return () => style.remove();
   }, "minicad: styles");
@@ -155,7 +155,7 @@ export function apply(ctx) {
         label: () => "MiniCAD",
         locale: "minicad",
       },
-      ForgeIcon,
+      PluginIcon,
     ),
   );
 }

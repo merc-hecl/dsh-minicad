@@ -1,9 +1,9 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button, IconChevronDownOutlineRegular, IconCloseOutlineRegular,
   IconCheckOutlineRegular, pointerModality, useDismissOnOutsidePointer } from "@deepseek-ai/dsh-client-ui-primitives";
-import { ForgeIcon } from "./forge-icon.jsx";
+import { PluginIcon } from "./plugin-icon.jsx";
 
-export const ImmersiveDock = forwardRef(function ImmersiveDock({ children, running, progress, error,
+export const ConversationDock = forwardRef(function ConversationDock({ children, running, progress, error,
   hidden, t, sourceKey, onHistory, onCancel, onRunning, onHeight, onStart }, ref) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -12,11 +12,11 @@ export const ImmersiveDock = forwardRef(function ImmersiveDock({ children, runni
   const [feedback, setFeedback] = useState(null);
   const input = useRef(null), wasRunning = useRef(false);
   const baseline = useRef(null), stopped = useRef(false);
-  const island = useRef(null), hoverTimer = useRef(null), pinned = useRef(false);
+  const statusPanel = useRef(null), hoverTimer = useRef(null), pinned = useRef(false);
   const closeExpanded = useCallback(() => {
     clearTimeout(hoverTimer.current); pinned.current = false; setExpanded(false);
   }, []);
-  useDismissOnOutsidePointer(island, expanded, closeExpanded);
+  useDismissOnOutsidePointer(statusPanel, expanded, closeExpanded);
   useEffect(() => () => clearTimeout(hoverTimer.current), []);
   const alive = running || native.running || pending;
   const phase = native.waiting ? "waiting" : error ? "error" : alive
@@ -70,7 +70,7 @@ export const ImmersiveDock = forwardRef(function ImmersiveDock({ children, runni
   const last = progress?.steps.at(-1);
   const label = phase === "working" && last
     ? last.label || t(last.operation || "modeling")
-    : phase === "waiting" && progress?.phase === "preview" ? t("trialReady") : t(`island.${phase}`);
+    : phase === "waiting" && progress?.phase === "preview" ? t("trialReady") : t(`taskStatus.${phase}`);
   return <>
     <section ref={input} className="mc-bottom mc-native-input" data-open={open && !hidden || undefined} data-instant={!pointerModality() || undefined}
       inert={!open || hidden ? "" : undefined} aria-hidden={!open || hidden}>
@@ -78,28 +78,28 @@ export const ImmersiveDock = forwardRef(function ImmersiveDock({ children, runni
         onSessionState: setNative,
         onRestored: () => { setPending(false); setFeedback("error"); reveal(); } })}
     </section>
-    {!open && !hidden && phase ? <div ref={island} className="mc-island-anchor"
+    {!open && !hidden && phase ? <div ref={statusPanel} className="mc-task-status-anchor"
       onPointerEnter={event => {
         if (event.pointerType !== "mouse" || !matchMedia("(hover: hover) and (pointer: fine)").matches) return;
         clearTimeout(hoverTimer.current);
         hoverTimer.current = setTimeout(() => setExpanded(true), 150);
       }}
-      onPointerLeave={() => { clearTimeout(hoverTimer.current); if (!pinned.current && !island.current?.contains(document.activeElement)) setExpanded(false); }}>
-      <div className="mc-island" data-state={phase} data-expanded={expanded || undefined} data-instant={!pointerModality() || undefined}
+      onPointerLeave={() => { clearTimeout(hoverTimer.current); if (!pinned.current && !statusPanel.current?.contains(document.activeElement)) setExpanded(false); }}>
+      <div className="mc-task-status" data-state={phase} data-expanded={expanded || undefined} data-instant={!pointerModality() || undefined}
         onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) closeExpanded(); }}>
-        <Button className="mc-island-main" variant="ghost" onClick={() => { pinned.current = !pinned.current; setExpanded(pinned.current); }} aria-expanded={expanded}>
-          <span className="mc-island-mark">{phase === "done" ? <IconCheckOutlineRegular size={20} /> : <ForgeIcon size={20} />}</span>
-          <span className="mc-island-label" role="status">{label}</span><IconChevronDownOutlineRegular size={14} />
+        <Button className="mc-task-status-main" variant="ghost" onClick={() => { pinned.current = !pinned.current; setExpanded(pinned.current); }} aria-expanded={expanded}>
+          <span className="mc-task-status-mark">{phase === "done" ? <IconCheckOutlineRegular size={20} /> : <PluginIcon size={20} />}</span>
+          <span className="mc-task-status-label" role="status">{label}</span><IconChevronDownOutlineRegular size={14} />
         </Button>
-        {expanded && <div className="mc-island-details">
+        {expanded && <div className="mc-task-status-details">
           {last && <span className="mc-muted">{t("checkpoint")} {last.sequence}</span>}
-          {progress?.error && <p className="mc-island-error">{progress.error}</p>}
-          <div className="mc-island-actions"><Button variant="ghost" size="sm" onClick={onHistory}>{t("makingRecord")}</Button>
+          {progress?.error && <p className="mc-task-status-error">{progress.error}</p>}
+          <div className="mc-task-status-actions"><Button variant="ghost" size="sm" onClick={onHistory}>{t("makingRecord")}</Button>
             <Button variant="ghost" size="sm" onClick={reveal}>{t(phase === "waiting" ? "answer" : "openInput")}</Button>
             {alive && <Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={14} />} onClick={() => { stopped.current = true; setFeedback("stopped"); onCancel(); }}>{t("stop")}</Button>}
           </div>
         </div>}
       </div>
-    </div> : !open && !hidden ? <Button className="mc-input-peek" variant="ghost" aria-label={t("openInput")} icon={<ForgeIcon size={24} />} onClick={reveal} /> : null}
+    </div> : !open && !hidden ? <Button className="mc-input-peek" variant="ghost" aria-label={t("openInput")} icon={<PluginIcon size={24} />} onClick={reveal} /> : null}
   </>;
 });

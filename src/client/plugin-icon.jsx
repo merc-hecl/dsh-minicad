@@ -2,7 +2,7 @@ import React from "react";
 
 // Approved four-stroke mark: Figma node 33:13 in dsh-minicad.
 // The anvil reference and adaptation are credited in NOTICE.md.
-export function ForgeIcon({ size = 16, className, style }) {
+export function PluginIcon({ size = 16, className, style }) {
   return (
     <svg
       width={size}
