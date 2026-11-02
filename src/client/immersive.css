@@ -56,7 +56,6 @@ body[data-ds-dark-theme] .mc-island[data-state="validating"] { --island-surface:
 body[data-ds-dark-theme] .mc-island[data-state="done"] { --island-surface:#294a38; --island-end:#315a42; --island-ink:#ddf4e5; --island-accent:#89ca9d; --island-border:#4e805e; }
 body[data-ds-dark-theme] .mc-island[data-state="waiting"], body[data-ds-dark-theme] .mc-island[data-state="error"] { --island-surface:#513d28; --island-end:#624b31; --island-ink:#ffe9c6; --island-accent:#dbb17a; --island-border:#896941; }
 body[data-ds-dark-theme] .mc-island[data-state="stopped"] { --island-surface:#38414d; --island-end:#414c5a; --island-ink:#e2e8f0; --island-accent:#a4b1c3; --island-border:#616e7e; }
-.mc-process-caption { position: absolute; top: calc(62px + var(--mc-top-inset)); left: var(--mc-canvas-center); transform: translateX(-50%); color: var(--mc-muted); font-size: 12px; pointer-events: none; }
 /* A single review stage and an independent native conversation scrollport. */
 .mc-making-record {
   position: absolute;

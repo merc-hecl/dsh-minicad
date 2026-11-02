@@ -412,6 +412,7 @@ export function Workbench({
     });
   }
   const design = project?.design;
+  const displayedDesign = processDesign || design;
   const date = (timestamp) =>
     new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
       dateStyle: "medium",
@@ -440,7 +441,7 @@ export function Workbench({
       <Viewport
         id="mc-view-model-panel"
         active={!historyOpen}
-        design={processDesign || design}
+        design={displayedDesign}
         wire={wire}
         selectionMode={modal || processDesign || historyOpen ? null : selectionMode}
         referenceDisabled={busy || !sessionReference || sessionReference.sessionId !== project?.activeSessionId}
@@ -530,7 +531,7 @@ export function Workbench({
             />
             <Btn icon={IconInspectOutlineRegular} label={t("selectGeometry")} aria-pressed={!!selectionMode} disabled={!design || !!processDesign} onClick={() => setSelectionMode(mode => mode ? null : "both")} />
           </div>
-      {!design && !loading && (
+      {!displayedDesign && !loading && !running && !nativeRunning && (
         <div className="mc-empty">
           <div className="mc-brand-icon">
             <ForgeIcon size={44} />
@@ -544,7 +545,6 @@ export function Workbench({
           <span role="status" className="mc-loading"><StateDot state="ongoing" />{t("loading")}</span>
         </div>
       )}
-      {processDesign && !historyOpen && <span className="mc-process-caption">{t("processPreview")} · {t("checkpoint")} {processDesign.checkpoint.sequence}</span>}
       {historyOpen && project && <MakingRecord key={`${project.id}:${project.sourceFile}`} project={project} progress={progress}
         request={request} t={t} language={language} onClose={() => setHistoryOpen(false)} onTranscriptTarget={setTranscriptTarget} />}
       <ImmersiveDock ref={dock} sourceKey={project?.activeSessionId} t={t} hidden={historyOpen}
