@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { Button, Tooltip, IconContextInjectionOutlineRegular, IconEditOutlineRegular, IconCloseOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, Tooltip, IconContextInjectionOutlineRegular, IconSlidersTwoOutlineRegular, IconCloseOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 import { GeometryActionPanel } from "./geometry-action-panel.jsx";
 import { MeasurementPanel } from "./measurement-panel.jsx";
 
@@ -18,7 +18,7 @@ export function SelectionTools({ targets, tool, onToolChange, onClear, onRemove,
   const actions = [
     { key: "measure", label: "measureGeometry", Icon: Ruler, disabled: !targets.length || targets.length > 2, hint: "measurementSelectionLimit" },
     { key: "annotation", label: "referenceGeometry", Icon: IconContextInjectionOutlineRegular, disabled: referenceDisabled },
-    { key: "edit", label: "modifyGeometry", Icon: IconEditOutlineRegular, disabled: editingDisabled || mixed, hint: mixed ? "sameKindEditingHint" : undefined },
+    { key: "edit", label: "modifyGeometry", Icon: IconSlidersTwoOutlineRegular, disabled: editingDisabled || mixed, hint: mixed ? "sameKindEditingHint" : undefined },
   ];
   return <>
     <div className="mc-selection-bar mc-panel" role="toolbar" aria-label={t("selectionActions")} onKeyDown={event => {

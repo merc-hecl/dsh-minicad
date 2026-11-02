@@ -9,7 +9,7 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 - Natural-language modeling: create, query and edit parametric 3D models through ready-made operations or custom JavaScript with the DSH agent.
 - Geometry measurement and dimensional checks: measure distances, angles, local directional wall thickness and dimensions, and check targets, tolerances or limits.
 - Drawing references: provide reference drawings as task files or DSH attachments.
-- Parameter and source editing: adjust model parameters or modify modeling source code through the agent.
+- Parameter and source editing: use the agent to adjust model parameters or modify modeling source code.
 - Model interaction: view models and drawings, annotate selected faces and edges for the agent, or edit local geometry and save revisions.
 - Making record: review modeling steps, compare saved versions, and read the complete native conversation and tool records.
 - Designs and conversations: each design has its own workspace, with multiple conversations sharing modeling resources and revision history.
@@ -60,7 +60,7 @@ npm pack --pack-destination dist
 1. Click **Open or create design** in the design header and select or create a workspace through DSH's folder picker. That folder is the design root. Opening it for the first time uses its name for the design and creates the first DSH conversation. Describe dimensions, units, features and constraints, and add files through DSH's native composer.
 2. Select a model already configured in DSH. MiniCAD does not store separate model credentials.
 3. The sidebar follows Folder → Conversation, with each folder representing one design workspace. Use the new-conversation button beside a folder to start another modification, and click its conversation rows to switch. Conversations in the same design share its workspace, models, parameters and revision history; each has its own chat context. The agent reads design files and the current revision, then calls modeling tools. The canvas updates from valid geometry checkpoints during construction and displays the saved model after a successful build.
-4. Edit values in the parameter panel or modify modeling source code through the agent. Saving rebuilds the model and validates solid geometry.
+4. Use the agent to adjust model parameters or modify modeling source code. Saving rebuilds the model and validates solid geometry.
 5. Export the current revision or restore a previous one. Restoring creates a new revision with an increasing number, preventing stale requests from overwriting newer state.
 
 When idle, the input folds below the canvas with half the official plugin icon visible. Click it or press Enter on the canvas to expand; Escape folds it while preserving the draft. Sending folds it automatically. Clicking the canvas also folds the input when it contains no text, attachments or geometry references. The state island uses purple for understanding/planning, blue for modeling and teal for checking/saving. Green briefly settles after saving, amber indicates input needed or failure, and slate stays still after stopping. Hover or click it to inspect the step, add input or stop work. Theme, language and reduced motion follow the host or system.

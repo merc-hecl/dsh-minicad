@@ -460,17 +460,6 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.mc-parameter-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 12px 0;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--dsw-alias-label-primary);
-}
 .mc-export-options {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

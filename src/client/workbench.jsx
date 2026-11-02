@@ -18,37 +18,20 @@ import {
   IconDownloadOutlineRegular,
   IconClockOutlineRegular,
   IconRefreshOutlineRegular,
-  IconSlidersTwoOutlineRegular,
   IconSettingsOutlineRegular,
-  IconInspectOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { IdSettingsDialog } from "./id-settings-dialog.jsx";
 import { defaultIdFormats } from "../shared/geometry-ids.js";
 import { Viewport } from "./viewport.jsx";
 import { errorKey } from "./locale.js";
 import { PluginIcon } from "./plugin-icon.jsx";
-import { ParameterDialog } from "./parameter-dialog.jsx";
 import { ErrorDetails, WorkbenchDialog } from "./workbench-dialog.jsx";
 import { DesignNavigator } from "./design-navigator.jsx";
 import { ConversationDock } from "./conversation-dock.jsx";
 import { SelectionTools } from "./selection-tools.jsx";
 import { MakingRecord } from "./making-record.jsx";
+import { SolidViewIcon, WireframeViewIcon, SelectGeometryIcon } from "./viewport-tool-icons.jsx";
 
-export function Cube({ size = 22, ...props }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.2"
-      {...props}
-    >
-      <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z M4 7.5l8 4.5 8-4.5 M12 12v9 M8 5.2l8 4.6" />
-    </svg>
-  );
-}
 const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
   const button = (
     <Button
@@ -410,7 +393,7 @@ export function Workbench({
     setReference({ name: project?.attachments.find((item) => item.id === id)?.name || t("pdfPreview"), url: "/api/minicad/reference?" + new URLSearchParams({ projectId, attachmentId: id }) });
     setModal("reference");
   }
-  async function saveEditor(parameterValues) {
+  async function saveEditor() {
     await action(async () => {
       const id = editTarget || selected;
       if (modal === "rename") {
@@ -420,12 +403,11 @@ export function Workbench({
         setModal(null);
         return;
       }
-      const params = modal === "parameters" ? parameterValues : undefined;
       const next = await api("build", {
         projectId: id,
         expectedRevision: editHead,
-        ...(params ? { parameters: params } : { source: value }),
-        summary: t(params ? "edited" : "sourceEdited"),
+        source: value,
+        summary: t("sourceEdited"),
       });
       if (selection.current === id) {
         setProject(next);
@@ -557,17 +539,12 @@ export function Workbench({
           <div className="mc-tools mc-panel">
             <Btn icon={IconRefreshOutlineRegular} label={t("resetView")} onClick={() => setResetView((value) => value + 1)} />
             <Btn
-              icon={Cube}
+              icon={wire ? WireframeViewIcon : SolidViewIcon}
               label={t(wire ? "solid" : "wire")}
+              aria-pressed={wire}
               onClick={() => setWire((w) => !w)}
             />
-            <Btn
-              icon={IconSlidersTwoOutlineRegular}
-              label={t("parameters")}
-              disabled={!design}
-              onClick={() => open("parameters")}
-            />
-            <Btn icon={IconInspectOutlineRegular} label={t("selectGeometry")} aria-pressed={selecting} disabled={!design || !!processDesign || busy}
+            <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selecting} disabled={!design || !!processDesign || busy}
               onClick={() => { clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
           </div>
       {!displayedDesign && !loading && !running && !nativeRunning && (
@@ -602,19 +579,9 @@ export function Workbench({
       </ConversationDock>
       {renderSlot("minicad.session.renameDialog", { renameTarget, onSettleRename: () => setRenameTarget(null),
         onRenameSession: renameConversation })}
-      {modal === "parameters" && design && (
-        <ParameterDialog
-          parameters={design.parameters}
-          busy={busy}
-          error={error}
-          onClose={() => setModal(null)}
-          onSave={saveEditor}
-          t={t}
-        />
-      )}
       {modal === "idSettings" && <IdSettingsDialog settings={idSettings} busy={busy} error={error} onClose={() => setModal(null)} t={t}
         onSave={formats => action(async () => { setIdSettings(await api("update_settings", formats)); setModal(null); })} />}
-      {modal && modal !== "parameters" && modal !== "idSettings" && (
+      {modal && modal !== "idSettings" && (
         <WorkbenchDialog
           key={modal}
           title={t(modal === "reference" ? "pdfPreview" : modal === "rename" ? "renameDesign" : modal)}
