@@ -213,7 +213,7 @@ export class Store {
       task.id = id(); task.sessions = []; task.activeSessionId = null;
     }
     this.commit(new Map([[file, jsonBytes(task)],
-      [this.registry, jsonBytes({ version: 1, paths: [...known, root] })]]));
+      [this.registry, jsonBytes({ version: 1, paths: [root, ...known] })]]));
     return this.project(task.id, false);
   }
   cacheSummary(folder, state, stamp) {
@@ -697,14 +697,14 @@ export class Store {
         kernel: (await this.kernel()).kernelName,
         node: process.versions.node,
       };
+    // Match DSH's workspace registry: activity never changes folder order.
     if (method === "list")
       return this.workspaces()
         .flatMap(([root, data]) =>
           Object.values(data.projects).map((task) =>
             this.row(root, data, task),
           ),
-        )
-        .sort((a, b) => b.updated - a.updated);
+        );
     if (method === "open_design") return this.openDesign(args.path);
     if (method === "create") return this.openDesign(args.path || this.managedDirectory(args.title), args.title);
     if (method === "close_design") {
@@ -913,7 +913,7 @@ export class Store {
         sessions: args.sessionId ? [args.sessionId] : [], activeSessionId: args.sessionId || null,
         created: now(), updated: now() };
       changes.set(this.designFile(target), jsonBytes(branch));
-      changes.set(this.registry, jsonBytes({ version: 1, paths: [...this.registered(), target] }));
+      changes.set(this.registry, jsonBytes({ version: 1, paths: [target, ...this.registered()] }));
       this.commit(changes);
       return this.project(branch.id, false);
     }

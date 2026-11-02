@@ -71,6 +71,8 @@ Open **Making record** in the header to review the model in an independently fra
 
 Like DSH's main interface, the sidebar groups conversations under collapsible workspace folders. DSH's main workspace list also groups these conversations by the same design folders. New and forked conversations retain design ownership. The main interface keeps its native list, search, ordering, pins and archive controls; workbench grouping stays unchanged. Groups are derived from MiniCAD's design index without rewriting Session headers or creating extra directories. Design names are independent of DSH conversation titles; generated or edited conversation titles never rename a design. The folder menu offers design rename, save as, references and removal. Conversation rows reuse DSH rename, pin, archive and fork actions; a forked conversation continues to share the same design files. Removing a design closes its list entry and keeps files and conversations; reopen its workspace to restore it.
 
+Design folders keep their registration order, like DSH workspaces, with newly registered workspaces placed first. Switching or creating conversations and updating models do not move existing folders. Workbench sorting options apply only to conversations within each folder.
+
 The agent should ask for clarification when dimensions are incomplete or multiple views do not uniquely determine the geometry. Geometric validity checks do not establish structural strength, manufacturability, or complete dimensional correctness.
 
 PDF parsing and scanned drawing interpretation use DSH attachments, scripting, or multimodal input, depending on the host tools and selected model.
