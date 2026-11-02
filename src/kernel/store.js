@@ -1,4 +1,4 @@
-import { defaultIdFormats, validateIdFormats } from "../shared/geometry-ids.js";
+import { defaultIdFormats } from "../shared/geometry-ids.js";
 import fs from "node:fs";
 import {
   basename,
@@ -445,7 +445,7 @@ export class Store {
     const head = task.models[sourceFile]?.head || 0;
     this.expect(head, args);
     const journal = new ProcessJournal(directory, sourceFile);
-    const run = journal.begin(sourceFile, head, args.summary, await this.dispatch("get_settings"));
+    const run = journal.begin(sourceFile, head, args.summary, defaultIdFormats);
     try {
       const result = await this.executeBuild(key, args, edit, journal, run);
       return result;
@@ -565,7 +565,7 @@ export class Store {
       assets.set(name, bytes);
     const state = {
       ...api.describeShape(shape),
-      geometryIds: await this.dispatch("get_settings"),
+      geometryIds: defaultIdFormats,
       source,
       parameters,
       operations: operations || [],
@@ -681,15 +681,6 @@ export class Store {
     };
   }
   async dispatch(method, args = {}) {
-    if (method === "get_settings")
-      return fs.existsSync(join(this.root, "settings.json"))
-        ? readJson(join(this.root, "settings.json"))
-        : { ...defaultIdFormats };
-    if (method === "update_settings") {
-      const settings = validateIdFormats(args);
-      this.write(join(this.root, "settings.json"), jsonBytes(settings));
-      return settings;
-    }
     if (method === "api") return readApi(args);
     if (method === "health")
       return {

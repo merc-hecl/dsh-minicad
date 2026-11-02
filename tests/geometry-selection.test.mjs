@@ -84,13 +84,12 @@ test("preview owners match exact faces and all BREP edges, including appended se
 });
 
 test(
-  "preview IDs, scoped queries and naming formats survive restart and preserve historical revisions",
+  "preview IDs and scoped queries survive restart and restore saved geometry",
   { timeout: 60000 },
   async () => {
     const root = await mkdtemp(join(tmpdir(), "minicad-selection-"));
     let worker = createWorker({ dataDir: root });
     try {
-      assert.deepEqual(await worker.call("get_settings"), defaultIdFormats);
       const task = await worker.call("create");
       const args = { projectId: task.id, sourceFile: "model.js" };
       const source =
@@ -147,33 +146,14 @@ test(
         }
         assert.equal(items[0].displayId, kind === "faces" ? "F-1" : "E-1");
       }
-      const oldSolid = await readFile(join(task.directory, "model.smb"));
-      const custom = { faceFormat: "Face-{n}", edgeFormat: "边{n}" };
-      await worker.call("update_settings", custom);
-      assert.equal((await worker.call("get", args)).head, 1);
-      assert.deepEqual(
-        await readFile(join(task.directory, "model.smb")),
-        oldSolid,
-      );
-      assert.equal(
-        (
-          await worker.call("query", {
-            ...args,
-            expectedRevision: 1,
-            kind: "faces",
-          })
-        ).items[0].displayId,
-        "F-1",
-      );
       await worker.dispose();
       worker = createWorker({ dataDir: root });
-      assert.deepEqual(await worker.call("get_settings"), custom);
       const second = await worker.call("build", {
         ...args,
         expectedRevision: 1,
         parameters: { width: 40 },
       });
-      assert.deepEqual(second.design.geometryIds, custom);
+      assert.deepEqual(second.design.geometryIds, defaultIdFormats);
       assert.equal(
         (
           await worker.call("query", {
@@ -182,7 +162,7 @@ test(
             kind: "faces",
           })
         ).items[0].displayId,
-        "Face-1",
+        "F-1",
       );
       assert.equal(
         (
@@ -192,7 +172,7 @@ test(
             kind: "edges",
           })
         ).items[9].displayId,
-        "边10",
+        "E-10",
       );
       const restored = await worker.call("restore", {
         ...args,

@@ -32,11 +32,6 @@ export const zh = {
   radius: "半径",
   distance: "距离",
 
-  idSettings: "几何编号设置",
-  saveSettings: "保存设置",
-  faceFormat: "面编号格式",
-  edgeFormat: "边编号格式",
-  invalidIdFormat: "格式必须包含一个 {n}",
   faces: "面",
   edges: "边",
   selectGeometry: "选择目标",
@@ -177,11 +172,6 @@ export const en = {
   radius: "Radius",
   distance: "Distance",
 
-  idSettings: "Geometry ID settings",
-  saveSettings: "Save settings",
-  faceFormat: "Face ID format",
-  edgeFormat: "Edge ID format",
-  invalidIdFormat: "Include exactly one {n}",
   faces: "Face",
   edges: "Edge",
   selectGeometry: "Select targets",

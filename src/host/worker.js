@@ -8,7 +8,6 @@ import { Store, KernelRequired } from "../kernel/store.js";
 import { ProcessJournal } from "../kernel/process.js";
 
 const localMethods = new Set([
-  "get_settings", "update_settings",
   "list",
   "get",
   "preview_file",

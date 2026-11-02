@@ -18,10 +18,7 @@ import {
   IconDownloadOutlineRegular,
   IconClockOutlineRegular,
   IconRefreshOutlineRegular,
-  IconSettingsOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
-import { IdSettingsDialog } from "./id-settings-dialog.jsx";
-import { defaultIdFormats } from "../shared/geometry-ids.js";
 import { Viewport } from "./viewport.jsx";
 import { errorKey } from "./locale.js";
 import { PluginIcon } from "./plugin-icon.jsx";
@@ -81,7 +78,6 @@ export function Workbench({
   const [selectionInstant, setSelectionInstant] = useState(false);
   const [measurementResult, setMeasurementResult] = useState(null);
   const measurementKey = JSON.stringify([project?.id, project?.sourceFile, project?.head]);
-  const [idSettings, setIdSettings] = useState(defaultIdFormats);
   const [wire, setWire] = useState(false),
     [resetView, setResetView] = useState(0);
   const [modal, setModal] = useState(null),
@@ -458,7 +454,6 @@ export function Workbench({
           )}
         </div>
         <div className="mc-header-actions">
-          <Btn icon={IconSettingsOutlineRegular} label={t("idSettings")} onClick={() => action(async () => { setIdSettings(await api("get_settings")); setError(null); setModal("idSettings"); })} />
           <Btn icon={IconClockOutlineRegular} label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen} onClick={() => setHistoryOpen(value => !value)}>
             <span className="mc-header-action-label">{t("makingRecord")}</span>
           </Btn>
@@ -551,9 +546,7 @@ export function Workbench({
       </ConversationDock>
       {renderSlot("minicad.session.renameDialog", { renameTarget, onSettleRename: () => setRenameTarget(null),
         onRenameSession: renameConversation })}
-      {modal === "idSettings" && <IdSettingsDialog settings={idSettings} busy={busy} error={error} onClose={() => setModal(null)} t={t}
-        onSave={formats => action(async () => { setIdSettings(await api("update_settings", formats)); setModal(null); })} />}
-      {modal && modal !== "idSettings" && (
+      {modal && (
         <WorkbenchDialog
           key={modal}
           title={t(modal === "reference" ? "pdfPreview" : modal === "rename" ? "renameDesign" : modal)}

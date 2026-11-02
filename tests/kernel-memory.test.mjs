@@ -88,7 +88,6 @@ test(
         try {
           for (let i = 0; i < 10; i++) {
             await worker.call("list");
-            await worker.call("get_settings");
             const state = await worker.call("get", target);
             near(state.design.metrics.volume, 6000);
             assert.equal(state.design.mesh, undefined);

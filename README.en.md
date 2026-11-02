@@ -87,7 +87,7 @@ Use **Select targets** in the right toolbar as the single entry for selection. F
 
 To change a model, select relevant targets and use **Reference** to give the agent the location, dimensions or constraints. Describe overall requirements directly in the conversation. The agent modifies geometry, parameters or source through modeling tools, checks solid validity and dimensions, and saves revisions. Use previews, measurements, the making record and version comparisons to assess results, provide feedback or restore history. Failures preserve the saved model.
 
-The settings icon in the header edits face and edge ID formats. Defaults are `F-{n}` and `E-{n}`, shown as `F-1`, `E-1`, etc.; `{n}` starts at 1 without zero padding. Formats are stored in `settings.json` in the plugin data directory and saved with future successful modeling revisions. Existing revisions retain their formats; older models use the defaults. Short IDs apply within one model revision; use full references across models or revisions. Restoring a historical revision preserves its formats.
+Faces and edges use default IDs such as `F-1` and `E-1`, starting at 1 without zero padding. Existing revisions retain their saved formats. Short IDs apply within one model revision; use full references across models or revisions. Restoring a historical revision preserves its formats.
 
 ## Storage and runtime boundaries
 
