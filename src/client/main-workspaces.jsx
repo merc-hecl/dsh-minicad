@@ -96,7 +96,7 @@ function MainWorkspaces({ NativeBrowser, catalog, request, minicadT, ...props })
   </>;
 }
 
-export function mirrorNativeSlot(ctx, target, source, select = () => true, adapt = () => ({})) {
+export function mirrorNativeSlot(ctx, target, source, select = () => true, adapt = () => ({}), component) {
   return ctx.slots.inject(target, () => {
     let entries = [], disposers = [];
     const sync = () => {
@@ -105,7 +105,7 @@ export function mirrorNativeSlot(ctx, target, source, select = () => true, adapt
       disposers.forEach(dispose => dispose());
       entries = next;
       disposers = next.map((entry, index) => {
-        const Component = entry.component;
+        const Component = component || entry.component;
         return ctx.slots.register({ name: target, id: `action-${index}`, order: index,
           inject: entry.inject, locale: entry.locale, store: entry.store }, props => <Component {...props} {...adapt(props)} />);
       });

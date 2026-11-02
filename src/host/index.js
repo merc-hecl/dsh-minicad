@@ -5,16 +5,19 @@ import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { basename } from "node:path";
+import { createModelOpener } from "./model-open.js";
 export const inject = [
   "connection",
   "sessionController",
   "agents",
   "sessionProjections",
   "workingDirectory",
+  "subprocess",
 ];
 export const Config = z.object({
   dataDir: z.string().default(""),
   timeout: z.number().min(10000).max(600000).default(120000),
+  freecadExecutable: z.string().default(""),
 });
 const json = (value, status = 200) =>
   new Response(JSON.stringify(value), {
@@ -33,7 +36,6 @@ const clientMethods = new Set([
   "attach",
   "reference_file",
   "restore",
-  "export",
   "health",
   "open_design",
   "close_design",
@@ -67,6 +69,7 @@ export async function apply(ctx, config = {}) {
       signal?.removeEventListener("abort", abort);
     }
   };
+  const modelOpener = createModelOpener(ctx, config, call);
   const projectForSession = async (sessionId) => {
     const p = await call("by_session", { sessionId });
     bySession.set(sessionId, p.id);
@@ -211,6 +214,8 @@ export async function apply(ctx, config = {}) {
   }
   async function rpc(method, args, signal) {
     await startup;
+    if (method === "model_apps") return modelOpener.applications();
+    if (method === "open_model") return modelOpener.open(args, signal);
     if (method === "create" || method === "open_design") return ensureSession(await call(method, args));
     if (method === "new_session") {
       const project = await call("get", { projectId: args.projectId, geometry: false });

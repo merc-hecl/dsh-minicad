@@ -441,11 +441,6 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.mc-export-options {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-}
 .mc-history-row {
   display: flex;
   align-items: center;

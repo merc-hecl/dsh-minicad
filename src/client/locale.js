@@ -1,4 +1,7 @@
 export const zh = {
+  modelAppUnavailable: "{app}（未检测到）",
+  freecadUnavailable: "未检测到 FreeCAD，请安装或在插件配置中设置应用路径",
+  modelAppLaunchFailed: "FreeCAD 启动失败",
   measureGeometry: "测量", measuring: "正在测量", measurementAccuracy: "数值精度 {accuracy} mm",
   minimumDistance: "最小距离", maximumDistance: "最大距离", projectionDistance: "投影",
   geometryParameters: "几何参数", measureDistance: "测量距离", length: "长度", area: "面积",
@@ -91,7 +94,6 @@ export const zh = {
 
   references: "参考图纸",
   history: "版本历史",
-  export: "导出",
   restore: "恢复此版本",
   restored: "已恢复版本",
   current: "当前",
@@ -118,7 +120,6 @@ export const zh = {
   solids: "实体",
 
   restoredSummary: "恢复历史版本",
-  editable: "可编辑项目",
   previous: "上一页",
   next: "下一页",
   page: "第 {page} / {total} 页",
@@ -139,6 +140,9 @@ export const zh = {
   copied: "已复制",
 };
 export const en = {
+  modelAppUnavailable: "{app} (not found)",
+  freecadUnavailable: "FreeCAD not found. Install it or set its executable in the plugin configuration.",
+  modelAppLaunchFailed: "Could not launch FreeCAD",
   measureGeometry: "Measure", measuring: "Measuring", measurementAccuracy: "Numerical accuracy: {accuracy} mm",
   minimumDistance: "Minimum distance", maximumDistance: "Maximum distance", projectionDistance: "Projection",
   geometryParameters: "Geometry parameters", measureDistance: "Measure distance", length: "Length", area: "Area",
@@ -232,7 +236,6 @@ export const en = {
 
   references: "References",
   history: "Version history",
-  export: "Export",
   restore: "Restore version",
   restored: "Version restored",
   current: "Current",
@@ -259,7 +262,6 @@ export const en = {
   solids: "Solids",
 
   restoredSummary: "Restored a previous version",
-  editable: "Editable project",
   previous: "Previous page",
   next: "Next page",
   page: "Page {page} / {total}",

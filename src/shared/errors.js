@@ -1,5 +1,7 @@
 // Stable translation keys for authored errors. Kernel diagnostics remain details.
 const rules = [
+  ["freecadUnavailable", /未检测到 FreeCAD/],
+  ["modelAppLaunchFailed", /FreeCAD 启动失败/],
   ["revisionConflict", /设计已更新/],
   ["workingFilesChanged", /源码或参数已修改/],
   ["geometryReferenceInvalid", /几何引用已过期|几何引用不存在/],

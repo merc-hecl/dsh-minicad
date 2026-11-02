@@ -49,6 +49,34 @@ test("design folders own shared model history across conversations; save as is i
   near(cad.fromStep(await readFile(exported.path,"utf8")).volume,1000);
 }));
 
+test("current STEP models preserve exact geometry and file scope with unsaved working files", { timeout: 90000 }, () => setup(async (worker, root) => {
+  const directory = join(root, "revision handoff"); await mkdir(directory);
+  const task = await worker.call("open_design", { path: directory });
+  const target = { projectId: task.id, sourceFile: "models/plate.js" };
+  await worker.call("build", { ...target, expectedRevision: 0, source: box, parameters: { width: 8 } });
+  await worker.call("build", { ...target, expectedRevision: 1, parameters: { width: 16 } });
+  await worker.call("build", { projectId: task.id, sourceFile: "other.js", expectedRevision: 0,
+    source: box, parameters: { width: 24 } });
+  await worker.call("select_model", { projectId: task.id, sourceFile: "other.js" });
+  const dirtySource = 'throw new Error("unsaved source must not be used for a saved revision");';
+  await writeFile(join(directory, target.sourceFile), dirtySource);
+  const before = await worker.call("get", { projectId: task.id, geometry: false });
+  for (const [sourceFile, volume] of [[target.sourceFile, 800], ["other.js", 1200]]) {
+    const current = await worker.call("get", { projectId: task.id, sourceFile, geometry: false });
+    const exported = await worker.call("export", { projectId: task.id, sourceFile, revision: current.head, format: "step" });
+    assert.equal(exported.sourceFile, sourceFile);
+    assert.equal(exported.revision, current.head);
+    const shape = cad.fromStep(await readFile(exported.path, "utf8"));
+    try { assert.ok(shape.isValid()); near(shape.volume, volume); }
+    finally { shape.dispose(); }
+  }
+  const after = await worker.call("get", { projectId: task.id, geometry: false });
+  assert.equal(after.sourceFile, before.sourceFile);
+  assert.equal(after.head, before.head);
+  assert.deepEqual(after.revisions, before.revisions);
+  assert.equal(await readFile(join(directory, target.sourceFile), "utf8"), dirtySource);
+}));
+
 test("workspace rename preserves all sessions and geometry; metadata failures and interrupted moves roll back",{timeout:90000},()=>setup(async(worker,root,settings)=>{
   const task=await worker.call("create",{title:"original"});
   await worker.call("bind",{projectId:task.id,sessionId:"chat-a"}); await worker.call("bind",{projectId:task.id,sessionId:"chat-b"});

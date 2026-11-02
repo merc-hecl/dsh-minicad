@@ -2,6 +2,7 @@ import React from "react";
 import { registerGeometryReferences } from "./geometry-reference.jsx";
 import { Composer } from "./composer.jsx";
 import { createDesignCatalog, registerMainWorkspaces, mirrorNativeSlot } from "./main-workspaces.jsx";
+import { DirectoryOpenAction } from "./directory-open-action.jsx";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 import { decodePreview } from "../shared/preview.js";
 const Workbench = React.lazy(() => import(__MINICAD_WORKBENCH_URL__).then((asset) => ({ default: asset.createModule(__MINICAD_REQUIRE__).Workbench })));
@@ -10,6 +11,7 @@ import { zh, en } from "./locale.js";
 import workbenchCss from "./workbench.css";
 import workbenchPanelsCss from "./workbench-panels.css";
 import designNavigatorCss from "./design-navigator.css";
+import directoryOpenCss from "./directory-open-action.css";
 export const inject = [
   "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts", "inputTriggers", "uiConversation",
 ];
@@ -21,7 +23,7 @@ export function apply(ctx) {
   ctx.effect(() => {
     const style = document.createElement("style");
     style.dataset.plugin = "dsh-minicad";
-    style.textContent = `${designNavigatorCss}\n${workbenchCss}\n${workbenchPanelsCss}`;
+    style.textContent = `${designNavigatorCss}\n${workbenchCss}\n${workbenchPanelsCss}\n${directoryOpenCss}`;
     document.head.append(style);
     return () => style.remove();
   }, "minicad: styles");
@@ -75,6 +77,7 @@ export function apply(ctx) {
         children: {
           "minicad.composer": { kind: "single", scope: "session" },
           "minicad.directoryFlow": { kind: "single", scope: "root" },
+          "minicad.directoryActions": { kind: "list", scope: "root" },
           "minicad.session.menu": { kind: "list", scope: "root", inject: { hooks: {
             menuOpenState: (_standard, state) => () => state,
             shortcuts: ctx.shortcuts.catalog,
@@ -117,6 +120,10 @@ export function apply(ctx) {
   // Native session actions keep their own pin/archive behavior and dialogs.
   // MiniCAD redirects only rename requests and fork placement into this workspace.
   const mirror = (...args) => mirrorNativeSlot(ctx, ...args);
+  // This is the same directory control used by the Session header, with an
+  // explicit design path so renamed workspaces never use an old Session cwd.
+  mirror("minicad.directoryActions", "sidebar.right.tab.files.actions", entry => entry.options.id === "open-in-app",
+    () => ({ request, minicadT: t }), DirectoryOpenAction);
   mirror("minicad.session.menu", "sidebar.workspaces.session.menu.item", undefined, props => ({
     requestSessionRename: props.onRenameSession, forkSession: props.onForkSession,
   }));

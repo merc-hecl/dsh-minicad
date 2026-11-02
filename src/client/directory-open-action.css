@@ -1,0 +1,36 @@
+/* DSH 0.2.1-rc.5 OpenTargetButton compact-directory styles, scoped to MiniCAD. */
+.mc-open-in-app-menuAnchor { flex: none; align-self: center; display: inline-flex; }
+.mc-open-in-app-split {
+  box-sizing: border-box;
+  border: .5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-sm);
+  height: 24px;
+  font-family: var(--dsw-font-family);
+  align-items: stretch;
+  display: inline-flex;
+  overflow: hidden;
+}
+.mc-open-in-app-main, .mc-open-in-app-chevron {
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  justify-content: center;
+  align-items: center;
+  font-size: 11px;
+  line-height: 16px;
+  display: inline-flex;
+}
+.mc-open-in-app-main { gap: 4px; padding: 3px 5px; }
+.mc-open-in-app-chevron {
+  border-left: .5px solid var(--dsw-alias-border-l4);
+  color: var(--dsw-alias-label-secondary);
+  padding: 3px 4px 3px 3px;
+}
+.mc-open-in-app-main:hover:not(:disabled), .mc-open-in-app-main:focus-visible,
+.mc-open-in-app-chevron:hover:not(:disabled), .mc-open-in-app-chevron:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.mc-open-in-app-main:disabled, .mc-open-in-app-chevron:disabled { cursor: default; }
+.mc-open-in-app-appIcon { object-fit: contain; }

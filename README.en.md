@@ -14,6 +14,7 @@ An agent-first parametric CAD workbench for DSH. Natural-language requests and r
 - Making record: review modeling steps, compare saved versions, and read the complete native conversation and tool records.
 - Designs and conversations: each design has its own workspace, with multiple conversations sharing modeling resources and revision history.
 - Export: STEP, STL, and editable project ZIP files.
+- Open the model's current saved revision in FreeCAD.
 
 ## Local installation
 
@@ -61,7 +62,11 @@ npm pack --pack-destination dist
 2. Select a model already configured in DSH. MiniCAD does not store separate model credentials.
 3. The sidebar follows Folder → Conversation, with each folder representing one design workspace. Use the new-conversation button beside a folder to start another modification, and click its conversation rows to switch. Conversations in the same design share its workspace, models, parameters and revision history; each has its own chat context. The agent reads design files and the current revision, then calls modeling tools. The canvas updates from valid geometry checkpoints during construction and displays the saved model after a successful build.
 4. Use the agent to adjust model parameters or modify modeling source code. Saving rebuilds the model and validates solid geometry.
-5. Export the current revision or restore a previous one. Restoring creates a new revision with an increasing number, preventing stale requests from overwriting newer state.
+5. After the agent exports files through the modeling tools, use the native directory button at the top right of the workbench to open the current design folder in a file manager, editor or terminal. You can also restore a previous revision. Restoring creates a new revision with an increasing number, preventing stale requests from overwriting newer state.
+
+**FreeCAD** in the native navigation menu at the top right exports the revision marked **Current** as STEP and opens it in FreeCAD, without asking you to choose a revision. The host reads the current revision when clicked. This does not change the current model, and changes in FreeCAD are not automatically written back to MiniCAD. Existing directory-opening applications remain in the same menu, with FreeCAD added as a model-opening action. Launching uses [FreeCAD's command-line file arguments](https://github.com/FreeCAD/FreeCAD-documentation/blob/main/wiki/Start_up_and_Configuration.md).
+
+The plugin discovers FreeCAD through PATH, Windows application registration or the macOS application index; no machine-specific installation path is built in. The menu indicates when FreeCAD is unavailable. Set `freecadExecutable` on the `minicad` row in your DSH configuration to an absolute executable path or a PATH command name. An empty string enables automatic discovery. The path stays in your own configuration. This setting also supports non-PATH Linux installations such as AppImages.
 
 When idle, the input folds below the canvas with half the official plugin icon visible. Click it or press Enter on the canvas to expand; Escape folds it while preserving the draft. Sending folds it automatically. Clicking the canvas also folds the input when it contains no text, attachments or geometry references. The state island uses purple for understanding/planning, blue for modeling and teal for checking/saving. Green briefly settles after saving, amber indicates input needed or failure, and slate stays still after stopping. Hover or click it to inspect the step, add input or stop work. Theme, language and reduced motion follow the host or system.
 
@@ -118,6 +123,7 @@ Override settings through a profile patch:
   config:
     dataDir: F:/CAD/MiniCAD
     timeout: 120000
+    freecadExecutable: "" # Auto-detect; optionally set your executable path or PATH command name
 ```
 
 Configuration overrides replace the entire configuration row. Do not let multiple DSH processes write to the same MiniCAD data directory.

@@ -15,7 +15,6 @@ import {
   IconChevronLeftOutlineRegular,
   IconCloseOutlineRegular,
   IconPanelLeftOutlineRegular,
-  IconDownloadOutlineRegular,
   IconClockOutlineRegular,
   IconRefreshOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
@@ -457,15 +456,8 @@ export function Workbench({
           <Btn icon={IconClockOutlineRegular} label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen} onClick={() => setHistoryOpen(value => !value)}>
             <span className="mc-header-action-label">{t("makingRecord")}</span>
           </Btn>
-          <Btn
-            icon={IconDownloadOutlineRegular}
-            label={t("export")}
-            variant="outline"
-            disabled={!design}
-            onClick={() => open("export")}
-          >
-            <span className="mc-header-action-label">{t("export")}</span>
-          </Btn>
+          {project && renderSlot("minicad.directoryActions", { absolutePath: project.workspaceDirectory,
+            projectId: project.id, sourceFile: project.sourceFile, hasModel: project.head > 0 })}
         </div>
       </header>
       <aside className={`mc-sidebar ${panelCollapsed ? "" : "mc-panel"}`} aria-label={t("projects")}>
@@ -618,43 +610,6 @@ export function Workbench({
               </div>
             ))}
           {modal === "history" && !project.revisions.length && <p>{t("noHistory")}</p>}
-          {modal === "export" && (
-            <div className="mc-export-options">
-              {["step", "stl", "zip"].map((format) => (
-                <Button
-                  key={format}
-                  variant="outline"
-                  icon={<IconDownloadOutlineRegular size={16} />}
-                  disabled={busy}
-                  onClick={() =>
-                    action(async () => {
-                      const result = await api("export", {
-                        projectId: selected,
-                        revision: project.head,
-                        format,
-                      });
-                      const bytes = Uint8Array.from(
-                        atob(result.data),
-                        (c) => c.charCodeAt(0),
-                      );
-                      const url = URL.createObjectURL(
-                        new Blob([bytes], { type: result.mediaType }),
-                      );
-                      const anchor = document.createElement("a");
-                      anchor.href = url;
-                      anchor.download = result.name;
-                      anchor.click();
-                      setTimeout(() => URL.revokeObjectURL(url), 1000);
-                    })
-                  }
-                >
-                  {format === "zip"
-                    ? t("editable")
-                    : format.toUpperCase()}
-                </Button>
-              ))}
-            </div>
-          )}
           {modal === "reference" &&
             (reference ? (
               <iframe className="mc-reference" title={reference.name} src={reference.url} />
