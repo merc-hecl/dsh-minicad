@@ -26,7 +26,7 @@ const json = (value, status = 200) =>
   });
 const clientMethods = new Set([
   "process_state", "process_history",
-  "geometry_annotation",
+  "geometry_annotation", "measure",
   "get_settings", "update_settings",
   "list",
   "get",

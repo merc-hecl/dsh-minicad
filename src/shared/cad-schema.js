@@ -197,6 +197,8 @@ const measure = (kind, fields = {}, optional = {}) =>
 export const measurementSchema = {
   anyOf: [
     measure("distance", { from: endpoint, to: endpoint }),
+    measure("max_distance", { from: endpoint, to: endpoint }),
+    measure("projected_distance", { from: endpoint, to: endpoint, axis: choices(["x", "y", "z"]) }),
     measure("center_distance", { from: endpoint, to: endpoint }),
     measure("axis_distance", { from: { anyOf: [text, entity] }, to: { anyOf: [text, entity] } }),
     measure("coordinate", { entity, axis: choices(["x", "y", "z"]) }),
@@ -258,7 +260,7 @@ export function toDshSchema(rule) {
     properties.kind = choices(rule.anyOf.map(option => option.properties.kind.const));
     properties.from = properties.to = { anyOf: [text, entity, object({ point: vector }), object({ direction: vector })] };
     rule = { ...object(properties, ["kind"]),
-      description: `Required fields by kind (kernel enforced): ${rule.anyOf.map(option => `${option.properties.kind.const}(${option.required.filter(key => key !== "kind").join(",")})`).join("; ")}. distance means minimum surface gap; center_distance uses geometric centers; axis_distance uses infinite axes. count counts matching items, including cylindrical bore segments for holes.`,
+      description: `Required fields by kind (kernel enforced): ${rule.anyOf.map(option => `${option.properties.kind.const}(${option.required.filter(key => key !== "kind").join(",")})`).join("; ")}. distance means minimum surface gap and returns point, otherPoint and projections:{x,y,z} for one shared nearest-point pair; max_distance is the farthest pair on the bounded geometry (curved geometry uses numerical approximation, see result method/accuracy); projected_distance is the absolute world-axis component of one minimum-distance pair (nonunique pairs can give different components; a batch shares the same pair as distance); Numerical accuracy is in mm and differs from check acceptance tolerance; center_distance uses geometric centers; axis_distance uses infinite axes. count counts matching items, including cylindrical bore segments for holes.`,
     };
   } else if (rule === selector) {
     const coordinates = {

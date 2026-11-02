@@ -807,23 +807,14 @@ export class Store {
       const revision = candidate ? candidate.run.baseRevision + 1 : row.head;
       const result = { sourceFile, revision, ...(candidate ? { runId: args.runId, committed: false } : {}) };
       if (method === "geometry_annotation") {
-        const { kind, geometry: item } = api.describeReference(
-          shape,
-          args.reference,
-          scope,
-          row.head,
-          saved.state.geometryIds || defaultIdFormats,
-        );
-        return {
-          projectId: key,
-          sourceFile,
-          expectedRevision: row.head,
-          reference: item.id,
-          kind,
-          label: item.displayId,
-          note: String(args.note || ""),
-          geometry: item,
+        const describe = reference => {
+          const { kind, geometry: item } = api.describeReference(
+            shape, reference, scope, row.head, saved.state.geometryIds || defaultIdFormats,
+          );
+          return { projectId: key, sourceFile, expectedRevision: row.head,
+            reference: item.id, kind, label: item.displayId, note: String(args.note || ""), geometry: item };
         };
+        return args.references ? { ...result, items: args.references.map(describe) } : describe(args.reference);
       }
       if (method === "measure")
         return {

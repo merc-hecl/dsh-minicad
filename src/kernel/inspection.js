@@ -12,6 +12,8 @@ import {
   selector as selectorSchema,
 } from "../shared/cad-schema.js";
 
+import { nearestPair, farthestPair } from "./distances.js";
+
 export const vector = (v) => [v.x, v.y, v.z];
 // Keep existing edge indices stable; seam edges are appended to the query list.
 export function topologyItems(shape, kind) {
@@ -351,57 +353,26 @@ function thickness(shape, request) {
     "方向与表面相切或未找到有效壁厚 / tangent direction or no material segment",
   );
 }
-function distance(a, b) {
-  if (Array.isArray(a))
-    return Array.isArray(b)
-      ? Math.hypot(...a.map((v, i) => v - b[i]))
-      : b.distanceTo(a);
-  if (Array.isArray(b)) return a.distanceTo(b);
-  if (a instanceof cad.Face) {
-    const surface = a.toShell();
-    try {
-      return surface.distanceTo(b);
-    } finally {
-      surface.dispose();
-    }
-  }
-  if (b instanceof cad.Face) return distance(b, a);
-  if (a instanceof cad.Part || a instanceof cad.Shell) return a.distanceTo(b);
-  if (b instanceof cad.Part || b instanceof cad.Shell) return b.distanceTo(a);
-  if (a.geomType === "line" && b.geomType === "line") {
-    // Exact segment/segment minimum: endpoints plus the interior stationary point.
-    const u = a.end.sub(a.start),
-      v = b.end.sub(b.start),
-      w = a.start.sub(b.start);
-    const aa = u.dot(u),
-      bb = u.dot(v),
-      cc = v.dot(v),
-      dd = u.dot(w),
-      ee = v.dot(w),
-      det = aa * cc - bb * bb;
-    let best = Math.min(
-      a.distanceTo(b.start),
-      a.distanceTo(b.end),
-      b.distanceTo(a.start),
-      b.distanceTo(a.end),
-    );
-    if (det > 1e-14 * aa * cc) {
-      const s = (bb * ee - cc * dd) / det,
-        t = (aa * ee - bb * dd) / det;
-      if (s >= 0 && s <= 1 && t >= 0 && t <= 1)
-        best = Math.min(
-          best,
-          a.start.add(u.mul(s)).distanceTo(b.start.add(v.mul(t))),
-        );
-    }
-    return best;
-  }
-  throw new Error(
-    "当前内核 API 不支持两条曲边之间的精确距离；请选面或点 / curved edge pairs require a face or point endpoint",
-  );
-}
 export function measureShape(shape, requests, scope, revision) {
   validate(requests, measurementsSchema, "measurements");
+  // Share the same nearest-point pair across distance and XYZ requests. Apart
+  // from avoiding repeated geometry searches, this keeps nonunique minima
+  // consistent within one batch for both the workbench and agent tools.
+  const minimumPairs = new Map(), maximumPairs = new Map();
+  function distancePair(request) {
+    const maximum = request.kind === "max_distance";
+    const pairs = maximum ? maximumPairs : minimumPairs;
+    const key = JSON.stringify([request.from, request.to]);
+    if (!pairs.has(key)) {
+      const endpoint = input => input.point || entity(shape, input, scope, revision);
+      const a = endpoint(request.from), b = endpoint(request.to);
+      const pair = maximum ? farthestPair(a, b) : nearestPair(a, b);
+      pairs.set(key, maximum ? pair : { ...pair, projections: Object.fromEntries(
+        ["x", "y", "z"].map((axis, i) => [axis, Math.abs(pair.point[i] - pair.otherPoint[i])]),
+      ) });
+    }
+    return pairs.get(key);
+  }
   return requests.map((request) => {
     let value, unit;
     switch (request.kind) {
@@ -437,14 +408,14 @@ export function measureShape(shape, requests, scope, revision) {
         value = vector(entity(shape, request.entity, scope, revision).bbox().size)[["x", "y", "z"].indexOf(request.axis)];
         unit = "mm";
         break;
-      case "distance": {
-        const endpoint = (input) =>
-          input.point ? input.point : entity(shape, input, scope, revision);
-        const a = endpoint(request.from),
-          b = endpoint(request.to);
-        value = distance(a, b);
-        unit = "mm";
-        break;
+      case "distance":
+      case "max_distance":
+      case "projected_distance": {
+        const pair = distancePair(request);
+        const projected = request.kind === "projected_distance";
+        value = projected ? pair.projections[request.axis] : pair.value;
+        if (!Number.isFinite(value)) throw new Error("当前几何不支持此测量 / unsupported measurement");
+        return { kind: request.kind, ...pair, value, unit: "mm", ...(projected ? { axis: request.axis } : {}) };
       }
       case "angle": {
         const a = orientation(shape, request.from, scope, revision),

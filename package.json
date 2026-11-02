@@ -42,7 +42,7 @@
     "prepack": "npm run build",
     "setup": "npm run build",
     "dev": "node scripts/dev.mjs",
-    "check": "node --check src/host/index.js && node --check src/host/tools.js && node --check src/host/worker.js && node --check src/kernel/store.js && node --check src/kernel/process.js && node --check src/kernel/files.js && node --check src/kernel/model.js && node --check src/kernel/api.js && node --check src/kernel/inspection.js && node --check src/shared/cad-schema.js && node --check src/shared/preview.js && node --check src/shared/geometry-ids.js && node --check src/shared/geometry-annotations.js && node --check scripts/build.mjs && npm run build && node --check lib/client.js && node --check lib/workbench.mjs",
+    "check": "node --check src/host/index.js && node --check src/host/tools.js && node --check src/host/worker.js && node --check src/kernel/store.js && node --check src/kernel/process.js && node --check src/kernel/files.js && node --check src/kernel/model.js && node --check src/kernel/api.js && node --check src/kernel/inspection.js && node --check src/kernel/distances.js && node --check src/shared/cad-schema.js && node --check src/shared/preview.js && node --check src/shared/geometry-ids.js && node --check src/shared/geometry-annotations.js && node --check scripts/build.mjs && npm run build && node --check lib/client.js && node --check lib/workbench.mjs",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs"
   },
   "dsh": {

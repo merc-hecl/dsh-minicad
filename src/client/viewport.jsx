@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { ArcballControls } from "three/addons/controls/ArcballControls.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
-import { Button, DisclosureRow, IconContextInjectionOutlineRegular, IconEditOutlineRegular, SegmentedTabs, Tag } from "@deepseek-ai/dsh-client-ui-primitives";
+import { pointerModality } from "@deepseek-ai/dsh-client-ui-primitives";
 import { defaultIdFormats, geometryLabel, geometryReference } from "../shared/geometry-ids.js";
 import { ViewCube } from "./view-cube.jsx";
 
@@ -19,15 +19,14 @@ function millimetres(value) {
   return String(Number(value.toPrecision(6)));
 }
 
-export function Viewport({ id, active = true, presentation = "workbench", design, comparison, wire, resetToken, selectionMode, onSelectionModeChange, onReference, onEdit, referenceDisabled, editingDisabled, onError, t }) {
+export function Viewport({ id, active = true, presentation = "workbench", design, comparison, wire, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
   const [scale, setScale] = useState(null);
-  const [picked, setPicked] = useState(null);
-  const [referenceExpanded, setReferenceExpanded] = useState(false);
-  const selectionProps = useRef({ design, selectionMode, onSelectionModeChange });
-  selectionProps.current = { design, selectionMode, onSelectionModeChange };
+  const floating = useRef(null);
+  const selectionProps = useRef(null);
+  selectionProps.current = { design, selecting, targets, onPick, pickingDisabled };
   useEffect(() => {
     const el = mount.current;
     const contained = presentation === "record";
@@ -72,6 +71,8 @@ export function Viewport({ id, active = true, presentation = "workbench", design
     scene.add(model);
     const selectionOverlay = new THREE.Group();
     scene.add(selectionOverlay);
+    const measurementOverlay = new THREE.Group();
+    scene.add(measurementOverlay);
     scene.add(new THREE.AmbientLight(0xffffff, 2.1));
     for (const [position, power] of [
       [[100, -150, 250], 3],
@@ -123,73 +124,124 @@ export function Viewport({ id, active = true, presentation = "workbench", design
         if (item.userData.sharedPosition) item.geometry.deleteAttribute("position");
         item.geometry.dispose(); item.material.dispose(); selectionOverlay.remove(item);
       }
-      setPicked(null);
       invalidate();
     };
     const raycaster = new THREE.Raycaster();
     let clickStart = null;
     const startPick = (event) => {
-      if (event.button === 0 && selectionProps.current.selectionMode)
-        clickStart = { x: event.clientX, y: event.clientY, id: event.pointerId };
+      if (event.button === 0 && selectionProps.current.selecting && !selectionProps.current.pickingDisabled)
+        clickStart = { x: event.clientX, y: event.clientY, id: event.pointerId, extend: event.ctrlKey };
     };
     const endPick = (event) => {
       const start = clickStart;
       clickStart = null;
-      const { design, selectionMode } = selectionProps.current;
-      if (!selectionMode || !start || start.id !== event.pointerId || Math.hypot(event.clientX-start.x,event.clientY-start.y) > 4) return;
+      const { design, selecting, pickingDisabled, onPick } = selectionProps.current;
+      if (!selecting || pickingDisabled || !start || start.id !== event.pointerId || Math.hypot(event.clientX-start.x,event.clientY-start.y) > 4) return;
       const preview = design?.previewData;
       if (!preview || !state.surface) return;
       const rect = renderer.domElement.getBoundingClientRect();
       raycaster.setFromCamera(new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1, 1-(event.clientY-rect.top)/rect.height*2), camera);
       const surfaceHit = raycaster.intersectObject(state.surface, false)[0];
-      let index, kind;
-      if (selectionMode !== "edges" && surfaceHit) { index = preview.faceIndices[surfaceHit.faceIndex]; kind = "faces"; }
-      if (selectionMode !== "faces" && state.edgePicker) {
+      let index, kind, point;
+      if (surfaceHit) { index = preview.faceIndices[surfaceHit.faceIndex]; kind = "faces"; point = surfaceHit.point; }
+      if (state.edgePicker) {
         const mmPerPixel = (camera.top-camera.bottom)/camera.zoom/rect.height;
         raycaster.params.Line.threshold = mmPerPixel * 6;
         const hit = raycaster.intersectObject(state.edgePicker, false).find(hit => state.wire || !surfaceHit || hit.distance <= surfaceHit.distance + mmPerPixel * 6);
-        if (hit) { index = preview.edgeIndices[Math.floor(hit.index / 2)]; kind = "edges"; }
+        if (hit) { index = preview.edgeIndices[Math.floor(hit.index / 2)]; kind = "edges"; point = hit.point; }
       }
+      onPick(index === undefined ? null : {
+        kind, index, point: point.toArray(),
+        label: geometryLabel(kind, index, design.geometryIds || defaultIdFormats),
+        reference: geometryReference(design.geometryScope, design.revision, kind, index),
+      }, start.extend);
+    };
+    state.highlightPicks = targets => {
       state.clearPick();
-      if (index === undefined) return;
-      let highlight;
-      if (kind === "faces") {
-        let count = 0;
-        for (const owner of preview.faceIndices) if (owner === index) count++;
-        const triangles = new Uint32Array(count * 3);
-        let offset = 0;
-        for (let i=0; i<preview.faceIndices.length; i++) if (preview.faceIndices[i] === index) {
-          triangles.set(preview.indices.subarray(i*3, i*3+3), offset); offset += 3;
+      const preview = selectionProps.current.design?.previewData;
+      if (!preview || !state.surface) return;
+      for (const { kind, index } of targets) {
+        let highlight;
+        if (kind === "faces") {
+          let count = 0;
+          for (const owner of preview.faceIndices) if (owner === index) count++;
+          const triangles = new Uint32Array(count * 3);
+          let offset = 0;
+          for (let i=0; i<preview.faceIndices.length; i++) if (preview.faceIndices[i] === index) {
+            triangles.set(preview.indices.subarray(i*3, i*3+3), offset); offset += 3;
+          }
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", state.surface.geometry.getAttribute("position"));
+          geometry.setIndex(new THREE.BufferAttribute(triangles, 1));
+          highlight = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: state.dark ? 0x8fb8ff : 0x2456a6, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+          highlight.userData.sharedPosition = true;
+        } else {
+          const lines = [];
+          for (let i=0; i<preview.edgeIndices.length; i++) if (preview.edgeIndices[i] === index)
+            for (let j=0;j<6;j++) lines.push(preview.edges[i*6+j]);
+          const geometry = new LineSegmentsGeometry();
+          geometry.setPositions(lines);
+          highlight = new LineSegments2(geometry, new LineMaterial({ color: state.dark ? 0x8fb8ff : 0x2456a6, linewidth: 3, depthWrite: false }));
         }
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute("position", state.surface.geometry.getAttribute("position"));
-        geometry.setIndex(new THREE.BufferAttribute(triangles, 1));
-        highlight = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: state.dark ? 0x8fb8ff : 0x2456a6, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
-        highlight.userData.sharedPosition = true;
-      } else {
-        const lines = [];
-        for (let i=0; i<preview.edgeIndices.length; i++) if (preview.edgeIndices[i] === index)
-          for (let j=0;j<6;j++) lines.push(preview.edges[i*6+j]);
-        const geometry = new LineSegmentsGeometry();
-        geometry.setPositions(lines);
-        highlight = new LineSegments2(geometry, new LineMaterial({ color: state.dark ? 0x8fb8ff : 0x2456a6, linewidth: 3, depthWrite: false }));
+        selectionOverlay.add(highlight);
       }
-      selectionOverlay.add(highlight);
-      setPicked({ kind, index, label: geometryLabel(kind, index, design.geometryIds || defaultIdFormats), reference: geometryReference(design.geometryScope, design.revision, kind, index) });
       invalidate();
+    };
+    state.showMeasurement = items => {
+      for (const item of [...measurementOverlay.children]) {
+        item.geometry.dispose(); item.material.dispose(); measurementOverlay.remove(item);
+      }
+      for (const [index, item] of (items || []).entries()) {
+        const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...item.point), new THREE.Vector3(...item.otherPoint)]);
+        const color = index ? 0xd49423 : 0x357aea;
+        const line = new THREE.Line(geometry, new THREE.LineDashedMaterial({ color, depthTest: false, transparent: true, opacity: .95,
+          dashSize: index ? Math.max(item.value / 35, .05) : 1e10, gapSize: index ? Math.max(item.value / 60, .03) : 0 }));
+        line.computeLineDistances(); line.renderOrder = 10; measurementOverlay.add(line);
+        const dots = new THREE.Points(geometry.clone(), new THREE.PointsMaterial({ color, size: 7, depthTest: false }));
+        dots.renderOrder = 11; measurementOverlay.add(dots);
+      }
+      invalidate();
+    };
+    const anchorPoint = new THREE.Vector3();
+    state.positionSelection = () => {
+      const panel = floating.current;
+      const { targets, selecting } = selectionProps.current;
+      const target = targets.at(-1);
+      if (!panel || !selecting || !target) return;
+      const viewport = el.getBoundingClientRect();
+      const owner = el.closest(".mc-workbench");
+      const box = selector => owner?.querySelector(selector)?.getBoundingClientRect();
+      const sidebar = box(".mc-sidebar"), tools = box(".mc-tools"), header = box(".mc-header");
+      const left = Math.min(Math.max(12, sidebar?.width ? sidebar.right - viewport.left + 12 : 12), Math.max(12, viewport.width - 160));
+      const right = Math.max(left + 120, (tools?.width ? tools.left - viewport.left : viewport.width) - 12);
+      const top = Math.max(12, (header?.bottom || viewport.top) - viewport.top + 12);
+      panel.style.maxWidth = `${Math.max(120, right - left)}px`;
+      anchorPoint.fromArray(target.point).project(camera);
+      const x = (anchorPoint.x + 1) * viewport.width / 2;
+      const y = (1 - anchorPoint.y) * viewport.height / 2;
+      const width = panel.offsetWidth;
+      const px = Math.max(left, Math.min(x + 12 + width <= right ? x + 12 : x - 12 - width, right - width));
+      let bottom = viewport.height - 20;
+      const navigation = box(".mc-navigation");
+      if (navigation && px + width > navigation.left - viewport.left && px < navigation.right - viewport.left)
+        bottom = Math.max(top + 44, Math.min(bottom, navigation.top - viewport.top - 12));
+      panel.style.maxHeight = `${Math.max(44, bottom - top)}px`;
+      const height = panel.offsetHeight;
+      const above = y + 12 + height > bottom && y - top > bottom - y;
+      panel.dataset.panelSide = above ? "top" : "bottom";
+      const py = Math.max(top, Math.min(above ? y - 12 - height : y + 12, bottom - height));
+      panel.style.transform = `translate3d(${px}px, ${py}px, 0)`;
+      panel.style.setProperty("--mc-bar-origin", `${Math.max(0, Math.min(width, x - px))}px ${above ? 44 : 0}px`);
+      panel.dataset.placed = "true";
     };
     const cancelPick = () => { clickStart = null; };
     const movePick = event => {
       if (clickStart && Math.hypot(event.clientX-clickStart.x,event.clientY-clickStart.y) > 4) cancelPick();
     };
-    const escapeSelection = event => {
-      if (event.key === "Escape" && selectionProps.current.selectionMode) selectionProps.current.onSelectionModeChange(null);
-    };
     renderer.domElement.addEventListener("pointerdown", startPick);
     renderer.domElement.addEventListener("pointerup", endPick);
     renderer.domElement.addEventListener("pointermove", movePick);
     renderer.domElement.addEventListener("pointercancel", cancelPick);
-    document.addEventListener("keydown", escapeSelection);
     state.setActive = (value) => {
       state.active = value;
       controls.enabled = canRender() && !turn && !cubeDrag;
@@ -468,6 +520,10 @@ export function Viewport({ id, active = true, presentation = "workbench", design
       if (state.defaultView) state.scheduleFit();
     });
     observer.observe(el);
+    const selectionObserver = new ResizeObserver(() => state.positionSelection());
+    if (floating.current) selectionObserver.observe(floating.current);
+    const sidebarElement = el.closest(".mc-workbench")?.querySelector(".mc-sidebar");
+    if (sidebarElement) selectionObserver.observe(sidebarElement);
     function theme() {
       state.dark = document.body.hasAttribute("data-ds-dark-theme");
       model.traverse((o) => {
@@ -505,6 +561,7 @@ export function Viewport({ id, active = true, presentation = "workbench", design
         if (amount === 1) finishTurn();
       }
       cube.current?.sync(camera, controls);
+      state.positionSelection();
       renderer.clear();
       if (!contained) {
         updateGrid();
@@ -530,6 +587,7 @@ export function Viewport({ id, active = true, presentation = "workbench", design
       intersection.disconnect();
       document.removeEventListener("visibilitychange", visibility);
       observer.disconnect();
+      selectionObserver.disconnect();
       themeObserver.disconnect();
       renderer.domElement.removeEventListener("pointerdown", beginNavigation, true);
       renderer.domElement.removeEventListener("wheel", beginNavigation, true);
@@ -538,7 +596,6 @@ export function Viewport({ id, active = true, presentation = "workbench", design
       renderer.domElement.removeEventListener("pointerup", endPick);
       renderer.domElement.removeEventListener("pointermove", movePick);
       renderer.domElement.removeEventListener("pointercancel", cancelPick);
-      document.removeEventListener("keydown", escapeSelection);
       for (const root of [scene, gridScene]) {
         root.traverse((o) => {
           if (o.userData.sharedPosition) o.geometry.deleteAttribute("position");
@@ -633,7 +690,13 @@ export function Viewport({ id, active = true, presentation = "workbench", design
     s.scheduleFit();
     return () => { s.scene.remove(lines); s.comparisonBounds = null; geometry.dispose(); lines.material.dispose(); s.invalidate(); };
   }, [comparison?.previewData]);
-  useEffect(() => { runtime.current?.clearPick(); }, [selectionMode, design?.geometryScope, design?.revision]);
+  useLayoutEffect(() => {
+    const state = runtime.current;
+    if (!state) return;
+    state.highlightPicks(selecting ? targets : []);
+    state.positionSelection();
+  }, [targets, selecting, design?.previewData]);
+  useEffect(() => { runtime.current?.showMeasurement(measurementResult); }, [measurementResult]);
   useEffect(() => {
     if (resetToken > 0) runtime.current?.resetView();
   }, [resetToken]);
@@ -649,14 +712,11 @@ export function Viewport({ id, active = true, presentation = "workbench", design
     s.theme();
   }, [wire, design?.previewData]);
   return (
-    <div id={id} ref={mount} aria-hidden={!active} className={`mc-viewport ${selectionMode ? "mc-selecting" : ""}`} aria-label="3D">
-      {selectionMode && <div className="mc-selection mc-panel" aria-live="polite">
-        <SegmentedTabs label={t("selectGeometry")} items={["both", "faces", "edges"].map(value => ({ value, label: t(value) }))} value={selectionMode} onChange={onSelectionModeChange} />
-        {picked && <Tag tone="neutral">{t(picked.kind)}</Tag>}
-        {picked ? <><strong>{picked.label}</strong><DisclosureRow title={t("geometryReference")} open={referenceExpanded} expandable expandOnRowClick onToggle={() => setReferenceExpanded(value => !value)}><code>{picked.reference}</code></DisclosureRow></> : <span>{t("selectionHint")}</span>}
-        {picked && <><Button variant="outline" size="sm" icon={<IconContextInjectionOutlineRegular size={16} />} disabled={referenceDisabled} onClick={() => onReference(picked)}>{t("referenceGeometry")}</Button><Button variant="outline" size="sm" icon={<IconEditOutlineRegular size={16} />} disabled={editingDisabled} onClick={() => onEdit(picked)}>{t("editGeometry")}</Button></>}
-        <Button variant="ghost" size="sm" onClick={() => onSelectionModeChange(null)}>{t("close")}</Button>
-      </div>}
+    <div id={id} ref={mount} aria-hidden={!active} className={`mc-viewport ${selecting ? "mc-selecting" : ""}`} aria-label="3D">
+      <div ref={floating} className="mc-selection-context" data-open={selecting && targets.length > 0 || undefined}
+        data-instant={selectionInstant || !pointerModality() || undefined} aria-hidden={!selecting || !targets.length} inert={!selecting || !targets.length ? "" : undefined}>
+        {selectionTools}
+      </div>
       {presentation === "workbench" && <div className="mc-navigation">
       <ViewCube
         ref={cube}

@@ -107,6 +107,12 @@ test(
       });
       assert.equal(edgeAnnotation.kind, "edges");
       near(edgeAnnotation.geometry.length, edge.length);
+      const batch = await worker.call("geometry_annotation", {
+        ...args, expectedRevision: 1, references: [top.id, edge.id], note: "检查加工余量",
+      });
+      assert.deepEqual(batch.items.map(item => item.reference), [top.id, edge.id]);
+      assert.deepEqual(batch.items.map(item => item.geometry), [top, edge]);
+      assert.ok(batch.items.every(item => item.note === "检查加工余量" && item.expectedRevision === 1));
       const message = `修改 ${serializeGeometryAnnotation(annotation)} 和 ${serializeGeometryAnnotation(edgeAnnotation)}`;
       const first = nextGeometryAnnotation(message);
       const second = nextGeometryAnnotation(message, first.end);
@@ -246,3 +252,38 @@ test(
     }
   },
 );
+
+test("selected face and edge batches measure and edit the same saved geometry in one revision", { timeout: 90000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "minicad-multi-selection-"));
+  let worker = createWorker({ dataDir: root });
+  try {
+    const task = await worker.call("create");
+    const args = { projectId: task.id, sourceFile: "model.js", geometry: false };
+    const built = await worker.call("build", { ...args, expectedRevision: 0, source: "function build(p,cad){return cad.Box(20,10,4);}" });
+    const faces = (await worker.call("query", { ...args, expectedRevision: 1, kind: "faces" })).items;
+    const top = faces.find(face => face.normal[2] > .9), bottom = faces.find(face => face.normal[2] < -.9);
+    const edge = (await worker.call("query", { ...args, expectedRevision: 1, kind: "edges", selector: { parallelTo: [1, 0, 0] } })).items[0];
+    const measured = await worker.call("measure", { ...args, expectedRevision: 1, measurements: [
+      { kind: "length", entity: { kind: "edges", selector: edge.id } },
+      { kind: "area", entity: { kind: "faces", selector: top.id } },
+    ] });
+    near(measured.items[0].value, 20); assert.equal(measured.items[0].unit, "mm");
+    near(measured.items[1].value, 200); assert.equal(measured.items[1].unit, "mm2");
+    const offset = await worker.call("edit", { ...args, expectedRevision: 1, operations: [{ op: "offset_faces", faces: [top.id, bottom.id], distance: 1 }] });
+    assert.equal(offset.head, 2); near(offset.design.metrics.volume, 1200);
+    const edges = (await worker.call("query", { ...args, expectedRevision: 2, kind: "edges", selector: { parallelTo: [0, 0, 1] } })).items;
+    assert.equal(edges.length, 4);
+    const rounded = await worker.call("edit", { ...args, expectedRevision: 2, operations: [{ op: "fillet", edges: edges.map(item => item.id), radius: 1 }] });
+    assert.equal(rounded.head, 3); near(rounded.design.metrics.volume, 1200 - (4 - Math.PI) * 6);
+    const solidFile = join(built.workspaceDirectory, "model.smb"), before = await readFile(solidFile);
+    await assert.rejects(worker.call("geometry_annotation", { ...args, expectedRevision: 3, references: [edges[0].id, top.id] }), /stale/);
+    await assert.rejects(worker.call("edit", { ...args, expectedRevision: 3, operations: [{ op: "fillet", edges: edges.map(item => item.id), radius: 1 }] }), /stale/);
+    assert.deepEqual(await readFile(solidFile), before); assert.equal((await worker.call("get", args)).head, 3);
+    await worker.dispose(); worker = createWorker({ dataDir: root });
+    const resumed = await worker.call("get", args);
+    assert.equal(resumed.head, 3); near(resumed.design.metrics.volume, rounded.design.metrics.volume);
+    const exported = await worker.call("export", { ...args, revision: 3, format: "smb" });
+    const readback = cad.fromSmb(await readFile(exported.path));
+    try { near(readback.volume, rounded.design.metrics.volume); } finally { readback.dispose(); }
+  } finally { await worker.dispose(); await rm(root, { recursive: true, force: true }); }
+});

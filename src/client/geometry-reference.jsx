@@ -57,18 +57,20 @@ export function registerGeometryReferences(ctx, request) {
     ),
   );
 
-  return (sessionId, annotation) => {
+  return (sessionId, annotations) => {
     const shell = ctx.conversation.input.shell(sessionId);
-    const inserted = shell.insertReference(
-      {
-        source: sourceName,
-        ref: JSON.stringify(annotation),
-        label: `${annotation.label} · v${annotation.expectedRevision}${annotation.note ? ` — ${annotation.note}` : ""}`,
-        clipboardText: serializeGeometryAnnotation(annotation),
-      },
-      shell.actions.captureInsertion(),
-    );
-    if (inserted) shell.actions.persistDraft();
-    return inserted;
+    // Each synchronous insertion takes the updated draft revision and caret;
+    // all geometry was validated together before reaching the native composer.
+    for (const annotation of annotations) {
+      const inserted = shell.insertReference(
+        { source: sourceName, ref: JSON.stringify(annotation),
+          label: `${annotation.label} · v${annotation.expectedRevision}${annotation.note ? ` — ${annotation.note}` : ""}`,
+          clipboardText: serializeGeometryAnnotation(annotation) },
+        shell.actions.captureInsertion(),
+      );
+      if (!inserted) return false;
+    }
+    shell.actions.persistDraft();
+    return true;
   };
 }
