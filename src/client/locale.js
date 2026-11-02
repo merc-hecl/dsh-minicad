@@ -35,7 +35,6 @@ export const zh = {
   edges: "边",
   selectGeometry: "选择面和边",
   both: "面和边",
-  selectionControls: "点击选择 · 点击空白清除 · Esc 退出选择 · 拖动旋转 · 右键平移",
   selectionHint: "点击模型选择面或边",
   geometryReference: "完整引用",
 
@@ -115,7 +114,6 @@ export const zh = {
   left: "左视",
   solid: "实体",
   wire: "线框",
-  controls: "拖动自由旋转 · 右键平移 · 滚轮以鼠标位置缩放",
   version: "版本 {n}",
   noModel: "完成建模后即可查看",
   noParameters: "当前模型没有公开参数",
@@ -183,7 +181,6 @@ export const en = {
   edges: "Edge",
   selectGeometry: "Select faces and edges",
   both: "Faces and edges",
-  selectionControls: "Click to select · Click empty space to clear · Esc to exit selection · Drag to rotate · Right-drag to pan",
   selectionHint: "Click the model to select a face or edge",
   geometryReference: "Full reference",
 
@@ -264,7 +261,6 @@ export const en = {
   left: "Left",
   solid: "Solid",
   wire: "Wireframe",
-  controls: "Drag to rotate freely · Right-drag to pan · Scroll to zoom at cursor",
   version: "Version {n}",
   noModel: "Available after a model is built",
   noParameters: "This model has no exposed parameters",

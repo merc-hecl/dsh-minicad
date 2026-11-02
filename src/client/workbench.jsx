@@ -2,7 +2,6 @@ import React, {
   useState,
   useEffect,
   useLayoutEffect,
-  useCallback,
   useRef,
   useSyncExternalStore,
 } from "react";
@@ -76,7 +75,6 @@ export function Workbench({
   useLayoutEffect(() => {
     enter(workbench.current);
   }, []);
-  const dockHeight = useCallback(height => workbench.current?.style.setProperty("--mc-composer-height", `${height}px`), []);
   const language = useSyncExternalStore(
     locale.subscribe,
     locale.getSnapshot,
@@ -454,31 +452,38 @@ export function Workbench({
         onError={() => setError({ key: "webglError" })}
       />
       <header className="mc-header">
-        <Btn
-          icon={IconChevronLeftOutlineRegular}
-          label={t("back")}
-          onClick={() => back(workbench.current)}
-        />
-        <strong>MiniCAD</strong>
-        <Btn icon={IconSettingsOutlineRegular} label={t("idSettings")} onClick={() => action(async () => { setIdSettings(await api("get_settings")); setError(null); setModal("idSettings"); })} />
-        <span className="mc-crumb">
-          {project?.title || t("app")}
-        </span>
+        <div className="mc-header-app">
+          <Btn
+            icon={IconChevronLeftOutlineRegular}
+            label={t("back")}
+            onClick={() => back(workbench.current)}
+          />
+          <strong>MiniCAD</strong>
+        </div>
+        <div className="mc-header-document">
+          <span className="mc-crumb" title={project?.title || t("app")}>
+            {project?.title || t("app")}
+          </span>
+          {project?.head > 0 && (
+            <Btn className="mc-header-version" icon={IconClockOutlineRegular} onClick={() => open("history")}>
+              {`v${project.head}`}
+            </Btn>
+          )}
+        </div>
         <div className="mc-header-actions">
-        <Btn icon={IconClockOutlineRegular} disabled={!project} aria-pressed={historyOpen} onClick={() => setHistoryOpen(value => !value)}>{t("makingRecord")}</Btn>
-        {project?.head > 0 && (
-          <Btn icon={IconClockOutlineRegular} onClick={() => open("history")}>
-            {`v${project.head}`}
+          <Btn icon={IconSettingsOutlineRegular} label={t("idSettings")} onClick={() => action(async () => { setIdSettings(await api("get_settings")); setError(null); setModal("idSettings"); })} />
+          <Btn icon={IconClockOutlineRegular} label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen} onClick={() => setHistoryOpen(value => !value)}>
+            <span className="mc-header-action-label">{t("makingRecord")}</span>
           </Btn>
-        )}
-        <Btn
-          icon={IconDownloadOutlineRegular}
-          variant="outline"
-          disabled={!design}
-          onClick={() => open("export")}
-        >
-          {t("export")}
-        </Btn>
+          <Btn
+            icon={IconDownloadOutlineRegular}
+            label={t("export")}
+            variant="outline"
+            disabled={!design}
+            onClick={() => open("export")}
+          >
+            <span className="mc-header-action-label">{t("export")}</span>
+          </Btn>
         </div>
       </header>
       <aside className={`mc-sidebar ${panelCollapsed ? "" : "mc-panel"}`} aria-label={t("projects")}>
@@ -550,7 +555,7 @@ export function Workbench({
       <ConversationDock ref={dock} sourceKey={project?.activeSessionId} t={t} hidden={historyOpen}
         running={running} progress={progress} error={error} onHistory={() => setHistoryOpen(true)}
         onStart={() => setError(null)}
-        onCancel={() => action(() => api("cancel", { projectId: selected }))} onRunning={setNativeRunning} onHeight={dockHeight}>
+        onCancel={() => action(() => api("cancel", { projectId: selected }))} onRunning={setNativeRunning}>
         {callbacks => <>
         {sessionReference && project && sessionReference.sessionId === project.activeSessionId ? (
           <SessionProvider session={sessionReference}>
@@ -559,7 +564,6 @@ export function Workbench({
         ) : selected || loading ? <span role="status" className="mc-loading mc-muted"><StateDot state="ongoing" />{t("loading")}</span> : (
           <Btn icon={IconPlusOutlineRegular} onClick={() => setPicker({ type: "open" })}>{t("openDesignFolder")}</Btn>
         )}
-        <div className="mc-help">{t(selectionMode ? "selectionControls" : "controls")}</div>
         </>}
       </ConversationDock>
       {renderSlot("minicad.session.renameDialog", { renameTarget, onSettleRename: () => setRenameTarget(null),

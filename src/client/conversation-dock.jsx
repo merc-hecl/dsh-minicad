@@ -4,7 +4,7 @@ import { Button, IconChevronDownOutlineRegular, IconCloseOutlineRegular,
 import { PluginIcon } from "./plugin-icon.jsx";
 
 export const ConversationDock = forwardRef(function ConversationDock({ children, running, progress, error,
-  hidden, t, sourceKey, onHistory, onCancel, onRunning, onHeight, onStart }, ref) {
+  hidden, t, sourceKey, onHistory, onCancel, onRunning, onStart }, ref) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [native, setNative] = useState({ running: false, waiting: false, pending: false, inputEmpty: false });
@@ -57,16 +57,9 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
   }, [phase, expanded]);
   useEffect(() => {
     if (!open || hidden) return;
-    const timer = setTimeout(() => input.current?.querySelector('[contenteditable="true"]')?.focus(), 0);
+    const timer = setTimeout(() => input.current?.querySelector('[contenteditable="true"]')?.focus({ preventScroll: true }), 0);
     return () => clearTimeout(timer);
   }, [open, hidden]);
-  useEffect(() => {
-    const resize = () => onHeight(open && !hidden ? input.current?.offsetHeight || 0 : phase && !hidden ? 50 : 0);
-    const observer = new ResizeObserver(resize);
-    if (input.current) observer.observe(input.current);
-    resize();
-    return () => observer.disconnect();
-  }, [open, hidden, phase, onHeight]);
   const last = progress?.steps.at(-1);
   const label = phase === "working" && last
     ? last.label || t(last.operation || "modeling")

@@ -55,7 +55,20 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
   const [compareVersion, setCompareVersion] = useState(null), [compareOpen, setCompareOpen] = useState(false);
   const [loading, setLoading] = useState(true), [error, setError] = useState(null);
   const [mode, setMode] = useState("model"), [reset, setReset] = useState(0);
+  const frames = useRef(null);
   const controller = useRef(new AbortController()), cache = useRef(new Map());
+  useEffect(() => {
+    const reel = frames.current;
+    const scrollFrames = event => {
+      if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY) || reel.scrollWidth <= reel.clientWidth) return;
+      const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? parseFloat(getComputedStyle(reel).lineHeight)
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? reel.clientWidth : 1;
+      event.preventDefault();
+      reel.scrollLeft += event.deltaY * unit;
+    };
+    reel.addEventListener("wheel", scrollFrames, { passive: false });
+    return () => reel.removeEventListener("wheel", scrollFrames);
+  }, []);
   useEffect(() => {
     request("process_history", { projectId: project.id, sourceFile: project.sourceFile }, controller.current.signal)
       .then(setRuns).catch(error => { if (error.name !== "AbortError") setError(error.message); });
@@ -148,7 +161,7 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
             <Button variant="ghost" size="sm" icon={<IconChevronLeftOutlineRegular size={14} />} aria-label={t("previousStep")} disabled={index <= 0} onClick={() => setSelected(entries[index - 1].key)} />
             <Button variant="ghost" size="sm" icon={<IconChevronRightOutlineRegular size={14} />} aria-label={t("nextStep")} disabled={index < 0 || index >= entries.length - 1} onClick={() => setSelected(entries[index + 1].key)} />
           </div>
-          <ol className="mc-record-frames" aria-label={t("recordFrames")}>
+          <ol ref={frames} className="mc-record-frames" aria-label={t("recordFrames")}>
             {entries.map(entry => <FrameThumbnail key={entry.key} entry={entry} load={load} selected={entry.key === focus?.key} onSelect={setSelected} />)}
           </ol>
         </footer>

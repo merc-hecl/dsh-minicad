@@ -92,30 +92,41 @@ html[data-platform="darwin"] .mc-workbench {
   right: var(--mc-gutter);
   top: calc(10px + var(--mc-top-inset));
   height: 36px;
+  display: grid;
+  grid-template-columns: var(--mc-sidebar-width) minmax(0, 1fr) max-content;
+  align-items: center;
+  column-gap: var(--mc-panel-gap);
+}
+.mc-header-app,
+.mc-header-document {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  min-width: 0;
 }
-.mc-header strong {
+.mc-header-app strong {
   flex: none;
   font-weight: 600;
   letter-spacing: -0.3px;
 }
 .mc-header .mc-crumb {
-  flex: 1;
   min-width: 0;
-  margin-left: var(--mc-panel-gap);
-  color: var(--mc-muted);
+  color: var(--mc-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.mc-header-version {
+  flex: none;
+  color: var(--mc-muted);
+}
 .mc-header-actions {
   display: flex;
-  flex: none;
   align-items: center;
-  gap: 12px;
-  margin-left: auto;
+  gap: 8px;
+}
+.mc-workbench[data-project-panel-collapsed] .mc-header {
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
 }
 .mc-spacer {
   flex: 1;
@@ -289,11 +300,6 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="y"] {
 body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
   color: #8fb8ff;
 }
-@media (max-width: 1100px) {
-  .mc-navigation {
-    bottom: calc(var(--mc-composer-height, 0px) + 34px);
-  }
-}
 .mc-tools {
   position: absolute;
   right: var(--mc-gutter);
@@ -349,15 +355,6 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
    behind the native status row. Keep the input card's own surface intact. */
 .mc-workbench .mc-bottom [data-conversation-content] [data-composer-seat] {
   background: transparent;
-}
-.mc-help {
-  position: absolute;
-  bottom: -31px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  color: var(--mc-muted);
-  pointer-events: none;
 }
 .mc-dialog.mc-wide {
   width: min(920px, 100%);
@@ -464,7 +461,6 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
 .mc-secondary,
 .mc-header .mc-crumb,
 .mc-empty p,
-.mc-help,
 .mc-history-row small {
   font-size: var(--dsh-content-font-size-secondary, 13px);
   line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
@@ -482,14 +478,16 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
   .mc-sidebar {
     bottom: 240px;
   }
-  .mc-header .mc-crumb {
+  .mc-header {
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    column-gap: 12px;
+  }
+  .mc-header-app strong,
+  .mc-header-action-label {
     display: none;
   }
   .mc-bottom {
     bottom: 35px;
-  }
-  .mc-help {
-    bottom: -25px;
   }
   .mc-tools {
     top: 205px;

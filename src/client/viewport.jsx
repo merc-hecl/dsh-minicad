@@ -53,6 +53,16 @@ export function Viewport({ id, active = true, presentation = "workbench", design
     camera.up.set(0, 0, 1);
     camera.position.set(100, -140, 110);
     let controls = new ArcballControls(camera, renderer.domElement);
+    const trackballRadiusFactor = controls.radiusFactor;
+    const navigationArea = el.closest(".mc-workbench") || el;
+    function updateTrackballRadius() {
+      const viewportSize = Math.min(el.clientWidth, el.clientHeight);
+      if (!viewportSize) return;
+      // Use the same sphere size in screen pixels in the workbench and record.
+      // A smaller preview must not amplify rotation or move drags onto its rim.
+      const referenceSize = Math.min(navigationArea.clientWidth, navigationArea.clientHeight);
+      controls.setTbRadius(trackballRadiusFactor * referenceSize / viewportSize);
+    }
     controls.cursorZoom = true;
     controls.enableGizmos = false;
     controls.setGizmosVisible(false);
@@ -224,6 +234,7 @@ export function Viewport({ id, active = true, presentation = "workbench", design
       // before binding the actual (possibly panned) viewing center.
       camera.quaternion.copy(rotation);
       controls.setCamera(camera);
+      updateTrackballRadius();
       controls.update();
       controls.saveState();
       controls.setGizmosVisible(false);
@@ -306,12 +317,12 @@ export function Viewport({ id, active = true, presentation = "workbench", design
         const viewport = el.getBoundingClientRect();
         const area = { left: 24, right: w - 24, top: 24, bottom: h - 24 };
         // A contained record stage has no workbench chrome inside its viewport.
-        // External sidebar/composer rectangles otherwise move the model offscreen.
+        // External workbench rectangles otherwise move the model offscreen.
         const owner = contained ? null : el.closest(".mc-workbench");
         const rect = (selector) => owner?.querySelector(selector)?.getBoundingClientRect();
-        const sidebar = rect(".mc-sidebar"), composer = rect(".mc-bottom");
+        const sidebar = rect(".mc-sidebar");
         if (sidebar?.width) area.left = sidebar.right - viewport.left + 24;
-        if (composer?.height) area.bottom = composer.top - viewport.top - 24;
+        // The composer overlays the canvas; opening it must not change framing.
         for (const selector of [".mc-header", ".mc-view-tabs"]) {
           const box = rect(selector);
           if (box?.height) area.top = Math.max(area.top, box.bottom - viewport.top + 16);
@@ -444,7 +455,7 @@ export function Viewport({ id, active = true, presentation = "workbench", design
       camera.top = state.span / 2;
       camera.bottom = -camera.top;
       camera.updateProjectionMatrix();
-      if (controls.enabled) controls.setTbRadius(controls.radiusFactor);
+      if (controls.enabled) updateTrackballRadius();
       // The projection span can change when a different model is fitted.
       scaleHeight = 0;
       if (!contained) updateGrid();
@@ -453,13 +464,10 @@ export function Viewport({ id, active = true, presentation = "workbench", design
     state.resize = resize;
     const observer = new ResizeObserver(() => {
       resize();
-      // The native composer may finish mounting after the model arrives.
-      // Keep default framing aligned with Reset until the user navigates.
+      // Keep default framing aligned with actual viewport size changes.
       if (state.defaultView) state.scheduleFit();
     });
     observer.observe(el);
-    const composer = !contained && el.closest(".mc-workbench")?.querySelector(".mc-bottom");
-    if (composer) observer.observe(composer);
     function theme() {
       state.dark = document.body.hasAttribute("data-ds-dark-theme");
       model.traverse((o) => {
