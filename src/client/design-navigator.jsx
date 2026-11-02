@@ -100,7 +100,7 @@ export function DesignNavigator({ projects, selected, currentSessionId, language
         </div>;
       })}
     </div>
-    <Modal open={removeTarget !== null} onClose={() => { if (!removing) setRemoveTarget(null); }} closeLabel={t("close")} title={t("removeDesign")}
+    <Modal className="mc-dialog" open={removeTarget !== null} onClose={() => { if (!removing) setRemoveTarget(null); }} closeLabel={t("close")} title={t("removeDesign")}
       description={removeTarget ? t("removeDesignDescription", { name: removeTarget.title }) : undefined}
       footer={<><Button variant="outline" disabled={removing} onClick={() => setRemoveTarget(null)}>{t("cancel")}</Button>
         <Button variant="outline" className={c.deleteAction} disabled={removing} onClick={async () => {

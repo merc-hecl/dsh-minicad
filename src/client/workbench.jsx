@@ -398,6 +398,7 @@ export function Workbench({
       className="mc-workbench"
       data-project-panel-collapsed={panelCollapsed || undefined}
       data-record-open={historyOpen || undefined}
+      data-native-dialog-open={!!renameTarget || !!picker || undefined}
       lang={language === "zh" ? "zh" : "en"}
       tabIndex={-1}
       onPointerDown={event => {
@@ -438,7 +439,8 @@ export function Workbench({
           <Btn
             icon={IconChevronLeftOutlineRegular}
             label={t("back")}
-            onClick={() => back(workbench.current)}
+            disabled={busy}
+            onClick={() => action(() => back(workbench.current))}
           />
           <strong>MiniCAD</strong>
         </div>

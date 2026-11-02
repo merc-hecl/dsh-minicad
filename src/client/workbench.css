@@ -189,20 +189,56 @@ html[data-platform="darwin"] .mc-workbench {
   align-items: center;
   gap: 8px;
 }
-.mc-workbench[data-project-panel-collapsed] .mc-header {
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
-}
 .mc-spacer {
   flex: 1;
 }
 .mc-muted {
   color: var(--mc-muted);
 }
+:where(.mc-panel, .mc-open-in-app-split) {
+  position: relative;
+}
+.mc-panel,
+.mc-open-in-app-split,
+.mc-dialog[role="dialog"],
+body:has(.mc-workbench[data-native-dialog-open]) [role="dialog"] {
+  isolation: isolate;
+  background: transparent;
+}
 .mc-panel {
-  background: var(--mc-panel);
   border: 0;
   border-radius: var(--dsw-radius-panel);
   box-shadow: var(--dsw-elevation-panel);
+}
+/* Share native MenuSurface material across floating surfaces and portals.
+   Scope unclassified native dialogs to an active workbench dialog request;
+   keep the composer and editable controls on their native solid surfaces. */
+.mc-panel::before,
+.mc-open-in-app-split::before,
+.mc-dialog[role="dialog"]::before,
+body:has(.mc-workbench[data-native-dialog-open]) [role="dialog"]::before,
+.mc-task-status-details::before,
+.mc-task-status::after,
+.mc-input-peek::after,
+.mc-record-error::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--mc-material-fill, var(--dsw-menu-surface-fill));
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  pointer-events: none;
+}
+/* Keep the native dismissal hit area, but do not darken or blur the canvas.
+   Modal renders this mask beside its dialog in a body portal. */
+[role="presentation"]:has(> .mc-dialog[role="dialog"]) > [aria-hidden="true"],
+body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [role="dialog"]) > [aria-hidden="true"] {
+  backdrop-filter: none;
+}
+[role="presentation"]:has(> .mc-dialog[role="dialog"]) > [aria-hidden="true"]::after,
+body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [role="dialog"]) > [aria-hidden="true"]::after {
+  background: transparent;
 }
 .mc-tools,
 .mc-scale {

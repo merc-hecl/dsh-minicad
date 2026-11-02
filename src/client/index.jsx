@@ -68,6 +68,37 @@ export function apply(ctx) {
     const current = workbench.closest("[data-sidebar-collapsed]") !== null;
     if (current !== collapsed) ctx.layout.toggleSidebar();
   };
+  let returnContext;
+  const enterWorkbench = element => {
+    const selection = { ...ctx.uiWorkspace.selection.getSnapshot() };
+    const workspace = ctx.workspaces.list.getSnapshot().items.find(item => item.sessionIds.includes(selection.sessionId));
+    const design = designCatalog.getSnapshot().find(item => item.sessions.includes(selection.sessionId)
+      || item.directory === workspace?.path);
+    returnContext = { selection, workspaceId: workspace?.workspaceId, designId: design?.id };
+    setSidebarCollapsed(element, true);
+  };
+  const leaveWorkbench = async element => {
+    setSidebarCollapsed(element, false);
+    const { selection = {}, workspaceId, designId } = returnContext || {};
+    const workspaces = ctx.workspaces.list.getSnapshot();
+    if (ctx.sessions.list.getSnapshot().byId[selection.sessionId] && !workspaces.archivedSessionIds.includes(selection.sessionId)) {
+      ctx.uiWorkspace.openSession(selection.subagentAddress ?? selection.sessionId);
+      return;
+    }
+    // Design folders use the same new-conversation route as the main sidebar.
+    if (designId && designCatalog.getSnapshot().some(item => item.id === designId)) {
+      const project = await request("new_session", { projectId: designId });
+      ctx.uiWorkspace.openSession(project.activeSessionId);
+      return;
+    }
+    if (workspaceId && workspaces.items.some(item => item.workspaceId === workspaceId)) {
+      await ctx.uiWorkspace.openWorkspace(workspaceId);
+      return;
+    }
+    const workspace = await ctx.workspaces.initializeDefault(controller.signal);
+    if (workspace) await ctx.uiWorkspace.openWorkspace(workspace.workspaceId);
+    else ctx.uiWorkspace.clearMain(); // Respect DSH's policy when its default workspace is unavailable.
+  };
   ctx.slots.inject("main", () =>
     ctx.slots.register(
       {
@@ -93,11 +124,8 @@ export function apply(ctx) {
         <Workbench
           t={t}
           locale={locale}
-          enter={(element) => setSidebarCollapsed(element, true)}
-          back={(element) => {
-            setSidebarCollapsed(element, false);
-            ctx.uiWorkspace.startSession();
-          }}
+          enter={enterWorkbench}
+          back={leaveWorkbench}
           request={request}
           addGeometryReference={addGeometryReference}
           SessionProvider={SessionProvider}

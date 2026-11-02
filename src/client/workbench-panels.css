@@ -6,7 +6,7 @@
 .mc-bottom.mc-native-input[data-open] { transform: translateX(-50%); opacity: 1; visibility: visible; pointer-events: auto; transition-duration: var(--mc-motion-panel), var(--mc-motion-fast), 0s; transition-delay: 0s; }
 .mc-input-peek, .mc-task-status-anchor { position: absolute; left: var(--mc-canvas-center); transform: translateX(-50%); z-index: 5; }
 .mc-input-peek { bottom: -24px; width: 48px; height: 48px; display: grid; place-items: center;
-  border: 1px solid var(--mc-border); border-radius: 50%; background: var(--mc-panel); color: var(--mc-text);
+  border: 1px solid var(--mc-border); border-radius: 50%; isolation: isolate; background: transparent; color: var(--mc-text);
   box-shadow: var(--dsw-elevation-panel); cursor: pointer; transition: transform var(--mc-motion-fast) var(--mc-ease-out); }
 @media (hover: hover) and (pointer: fine) {
   .mc-input-peek:hover { transform: translate(-50%, -8px); }
@@ -16,7 +16,8 @@
 .mc-task-status {
   width: 100%; max-width: 100%; margin-inline: auto; position: relative; isolation: isolate;
   border: 1px solid var(--task-status-border); border-radius: 25px;
-  color: var(--task-status-ink); background: linear-gradient(115deg, var(--task-status-surface), var(--task-status-end));
+  --mc-material-fill: linear-gradient(115deg, color-mix(in srgb, var(--task-status-surface) 60%, transparent), color-mix(in srgb, var(--task-status-end) 60%, transparent)), var(--dsw-menu-surface-fill);
+  color: var(--task-status-ink); background: transparent;
   box-shadow: 0 4px 18px color-mix(in srgb, var(--task-status-accent) 20%, transparent);
   transition: border-color var(--mc-motion-fast) ease, color var(--mc-motion-fast) ease;
 }
@@ -34,8 +35,9 @@
 .mc-task-status-mark { display: flex; flex: none; animation: mc-task-status-mark var(--task-status-period, 3s) ease-in-out infinite; }
 .mc-task-status[data-state="done"] .mc-task-status-mark, .mc-task-status[data-state="stopped"] .mc-task-status-mark { animation: none; }
 .mc-task-status-details {
+  --mc-material-fill: var(--dsw-menu-surface-fill);
   position: absolute; bottom: calc(100% + 8px); inset-inline: 0; padding: 12px;
-  background: var(--mc-panel); color: var(--mc-text); border-radius: var(--dsw-radius-panel);
+  isolation: isolate; background: transparent; color: var(--mc-text); border-radius: var(--dsw-radius-panel);
   box-shadow: var(--dsw-elevation-panel); transform-origin: center bottom;
   transition: opacity var(--mc-motion-fast) ease, transform var(--mc-motion-fast) var(--mc-ease-out);
 }
@@ -88,13 +90,13 @@ body[data-ds-dark-theme] .mc-task-status[data-state="stopped"] { --task-status-s
 .mc-record-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .mc-record-stage .mc-viewport { inset: 8px 12px; }
 .mc-record-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--mc-muted); font-size: 12px; pointer-events: none; }
-.mc-record-error { position: absolute; inset: 16px; display: flex; flex-direction: column; justify-content: center; gap: 8px; overflow: auto; background: var(--mc-bg); font-size: 13px; }
+.mc-record-error { position: absolute; inset: 16px; display: flex; flex-direction: column; justify-content: center; gap: 8px; overflow: auto; isolation: isolate; background: transparent; font-size: 13px; }
 .mc-record-compare-legend { position: absolute; left: 20px; bottom: 8px; display: flex; align-items: center; gap: 6px; color: var(--mc-muted); font-size: 11px; pointer-events: none; }
 .mc-record-compare-legend i { width: 16px; border-top: 1px dashed currentColor; }
 .mc-record-detail { flex: none; display: flex; flex-direction: column; gap: 2px; min-height: 48px; padding: 4px 20px 10px; }
 .mc-record-detail p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; }
 .mc-record-detail > span { color: var(--mc-muted); font-size: 11px; line-height: 16px; }
-.mc-record-reel { flex: none; min-width: 0; padding: 8px 12px 10px; border-top: 1px solid var(--mc-border); background: var(--mc-panel); }
+.mc-record-reel { flex: none; min-width: 0; padding: 8px 12px 10px; border-top: 1px solid var(--mc-border); }
 .mc-record-reel-heading { display: flex; align-items: center; gap: 6px; padding: 0 4px 4px; color: var(--mc-muted); font-size: 11px; line-height: 18px; }
 .mc-record-reel-heading > span:first-child { flex: 1; }
 .mc-record-frames { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 0 4px; margin: 0; list-style: none; }

@@ -17,7 +17,7 @@ export function ErrorDetails({ detail, t }) {
 }
 
 // DSH 0.2.1-rc.5 owns modal chrome, focus, dismissal and animation.
-// Local classes only constrain content size and scrolling.
+// Local classes supply the workbench glass material, size and scrolling.
 export function WorkbenchDialog({ busy, error, onClose, t, children, className = "", ...props }) {
   return (
     <Modal

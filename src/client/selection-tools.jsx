@@ -29,10 +29,11 @@ export function SelectionTools({ targets, tool, onToolChange, onClear, onRemove,
     }}>
       <span className="mc-selection-summary" title={lastTargets.current.map(target => `${target.label}\n${target.reference}`).join("\n")}>{summary}</span>
       <span className="mc-selection-divider" aria-hidden="true" />
-      {actions.map(({ key, label, Icon, disabled, hint }) => <Tooltip key={key} label={t(disabled && hint ? hint : label)} portal>
-        <span className="mc-selection-action"><Button type="button" variant="ghost" size="sm" icon={<Icon size={16} />} aria-pressed={tool === key} disabled={busy || disabled}
-          onClick={() => onToolChange(tool === key ? null : key)}>{t(label)}</Button></span>
-      </Tooltip>)}
+      {actions.map(({ key, label, Icon, disabled, hint }) => {
+        const action = <span key={key} className="mc-selection-action"><Button type="button" variant="ghost" size="sm" icon={<Icon size={16} />} aria-label={t(label)} aria-pressed={tool === key} disabled={busy || disabled}
+          onClick={() => onToolChange(tool === key ? null : key)}>{t(label)}</Button></span>;
+        return disabled && hint ? <Tooltip key={key} label={t(hint)} portal>{action}</Tooltip> : action;
+      })}
       <Button variant="ghost" size="sm" className="mc-selection-clear" icon={<IconCloseOutlineRegular size={14} />} aria-label={t("clearSelection")} disabled={busy} onClick={onClear} />
     </div>
     {targets.length > 0 && tool && <div className="mc-selection-body">

@@ -64,6 +64,8 @@ npm pack --pack-destination dist
 4. 通过 agent 调整模型参数或修改建模源码。保存时重新构建并验证实体有效性。
 5. agent 通过建模工具导出文件后，可用工作台右上角的原生目录按钮，在文件资源管理器、编辑器或终端中打开当前设计目录。也可从版本历史恢复；恢复会生成递增的新版本，避免旧请求覆盖新状态。
 
+左上角返回按钮优先回到进入工作台前打开的会话；该会话已不存在或已归档时，回到原工作区的新会话；原工作区也已不存在时，使用 DSH 默认工作区的新会话。已有草稿保持不变；默认工作区不可用时显示原生工作区选择状态。
+
 右上角原生导航菜单中的「FreeCAD」直接将版本库中标记为「当前」的模型导出为 STEP，并在 FreeCAD 中打开，无需选择版本。后端在点击时读取当前版本；操作不会改变当前模型，FreeCAD 中的修改也不会自动写回 MiniCAD。菜单保留原有的目录打开选项，FreeCAD 作为模型打开选项加入同一菜单。启动方式遵循 [FreeCAD 的命令行文件参数](https://github.com/FreeCAD/FreeCAD-documentation/blob/main/wiki/Start_up_and_Configuration.md)。
 
 插件通过 PATH、Windows 应用注册信息或 macOS 应用索引查找 FreeCAD，不内置本机安装路径。未检测到时菜单会提示；可在 DSH 配置中为 `minicad` 行设置 `freecadExecutable`，填写可执行文件的绝对路径或 PATH 中的命令名。空字符串使用自动检测，路径只保存在用户自己的配置中。Linux 的非 PATH 安装（如 AppImage）也可使用此设置。
