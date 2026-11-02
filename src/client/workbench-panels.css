@@ -82,7 +82,7 @@ body[data-ds-dark-theme] .mc-task-status[data-state="stopped"] { --task-status-s
 .mc-record-switch { display: none; flex: none; }
 .mc-record-body { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr); }
 .mc-record-model { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
-.mc-record-toolbar { display: flex; align-items: center; flex: none; gap: 8px; min-height: 44px; padding: 8px 12px 4px 20px; }
+.mc-record-toolbar { display: flex; flex-wrap: wrap; align-items: center; flex: none; gap: 8px; min-height: 44px; padding: 8px 12px 4px 20px; }
 .mc-record-kind { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mc-muted); font-size: 12px; }
 .mc-record-compare-options { display: flex; gap: 4px; flex: none; overflow-x: auto; padding: 0 12px 4px 20px; }
 .mc-record-compare-options button { flex: none; }
@@ -97,8 +97,13 @@ body[data-ds-dark-theme] .mc-task-status[data-state="stopped"] { --task-status-s
 .mc-record-detail p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; }
 .mc-record-detail > span { color: var(--mc-muted); font-size: 11px; line-height: 16px; }
 .mc-record-reel { flex: none; min-width: 0; padding: 8px 12px 10px; border-top: 1px solid var(--mc-border); }
-.mc-record-reel-heading { display: flex; align-items: center; gap: 6px; padding: 0 4px 4px; color: var(--mc-muted); font-size: 11px; line-height: 18px; }
-.mc-record-reel-heading > span:first-child { flex: 1; }
+.mc-record-reel-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 4px 8px; color: var(--mc-muted); font-size: 11px; line-height: 18px; }
+.mc-record-scope { flex: 1; min-width: 0; }
+.mc-record-count { flex: none; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mc-record-runs { display: flex; gap: 4px; overflow-x: auto; padding: 0 4px 8px; scrollbar-width: thin; }
+.mc-record-runs button { flex: none; gap: 6px; }
+.mc-record-runs [aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
+.mc-record-runs > span { font-size: 12px; }
 .mc-record-frames { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 0 4px; margin: 0; list-style: none; }
 .mc-record-frames > li { flex: 0 0 104px; min-width: 0; }
 .mc-record-frames .mc-record-frame { width: 100%; height: auto; padding: 6px; border: 1px solid transparent; border-radius: 8px; }
@@ -108,6 +113,14 @@ body[data-ds-dark-theme] .mc-task-status[data-state="stopped"] { --task-status-s
 .mc-record-frame-content > span { display: flex; gap: 5px; align-items: baseline; min-width: 0; font-size: 11px; line-height: 18px; }
 .mc-record-frame-content strong { flex: none; font-size: inherit; font-weight: 500; }
 .mc-record-frame-content > span > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mc-muted); }
+.mc-record-frames > li[data-version] { flex-basis: 164px; }
+.mc-record-frames li[data-version] .mc-record-frame { padding: 8px; }
+.mc-record-frames li[data-version] .mc-record-frame-content { width: 146px; gap: 4px; }
+.mc-record-frames li[data-version] canvas { width: 146px; height: 80px; }
+.mc-record-frames li[data-version] .mc-record-frame-content > span { flex-direction: column; align-items: stretch; gap: 2px; text-align: left; font-size: 12px; }
+.mc-record-frames li[data-version] strong { color: var(--mc-text); }
+.mc-record-frames li[data-version] .mc-record-frame-content > span > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; height: 36px; white-space: normal; overflow-wrap: anywhere; }
+.mc-record-frame-content small { display: block; text-align: left; font-size: 10px; line-height: 16px; color: var(--mc-muted); }
 .mc-record-conversation { display: flex; flex-direction: column; min-height: 0; min-width: 0; border-left: 1px solid var(--mc-border); }
 .mc-record-conversation-heading { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 10px; font-size: 13px; line-height: 20px; }
 .mc-record-conversation-heading > span + span { color: var(--mc-muted); font-size: 11px; }

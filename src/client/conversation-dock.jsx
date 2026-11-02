@@ -4,7 +4,7 @@ import { Button, IconChevronDownOutlineRegular, IconCloseOutlineRegular,
 import { PluginIcon } from "./plugin-icon.jsx";
 
 export const ConversationDock = forwardRef(function ConversationDock({ children, running, progress, error,
-  hidden, t, sourceKey, onHistory, onCancel, onRunning, onStart }, ref) {
+  hidden, t, sourceKey, onCancel, onRunning, onStart }, ref) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [native, setNative] = useState({ running: false, waiting: false, pending: false, inputEmpty: false });
@@ -87,7 +87,7 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
         {expanded && <div className="mc-task-status-details">
           {last && <span className="mc-muted">{t("checkpoint")} {last.sequence}</span>}
           {progress?.error && <p className="mc-task-status-error">{progress.error}</p>}
-          <div className="mc-task-status-actions"><Button variant="ghost" size="sm" onClick={onHistory}>{t("makingRecord")}</Button>
+          <div className="mc-task-status-actions">
             <Button variant="ghost" size="sm" onClick={reveal}>{t(phase === "waiting" ? "answer" : "openInput")}</Button>
             {alive && <Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={14} />} onClick={() => { stopped.current = true; setFeedback("stopped"); onCancel(); }}>{t("stop")}</Button>}
           </div>

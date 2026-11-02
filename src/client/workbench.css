@@ -189,9 +189,6 @@ html[data-platform="darwin"] .mc-workbench {
   align-items: center;
   gap: 8px;
 }
-.mc-spacer {
-  flex: 1;
-}
 .mc-muted {
   color: var(--mc-muted);
 }
@@ -459,9 +456,6 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
 .mc-dialog.mc-wide {
   width: min(920px, 100%);
 }
-.mc-dialog.mc-history-dialog {
-  width: min(660px, 100%);
-}
 .mc-name-field {
   display: flex;
   flex-direction: column;
@@ -476,24 +470,6 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-.mc-history-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid var(--mc-border);
-  padding: 14px 0;
-}
-.mc-history-row small {
-  display: block;
-  color: var(--mc-muted);
-}
-.mc-history-row .mc-spacer {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.mc-history-row > button {
-  flex: none;
 }
 .mc-reference {
   display: block;
@@ -528,8 +504,7 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
 }
 .mc-secondary,
 .mc-header .mc-crumb,
-.mc-empty p,
-.mc-history-row small {
+.mc-empty p {
   font-size: var(--dsh-content-font-size-secondary, 13px);
   line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
 }

@@ -15,7 +15,7 @@ import {
   IconChevronLeftOutlineRegular,
   IconCloseOutlineRegular,
   IconPanelLeftOutlineRegular,
-  IconClockOutlineRegular,
+  IconFlatListOutlineRegular,
   IconRefreshOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { Viewport } from "./viewport.jsx";
@@ -365,12 +365,6 @@ export function Workbench({
       setActiveTool(null);
     });
   }
-  function open(kind) {
-    setError(null);
-    setRenameDesignId("");
-    setModal(kind);
-    setValue(kind === "rename" ? project.title : "");
-  }
   function openReference(id, projectId = selected) {
     if (selection.current !== projectId) return;
     setReference({ name: project?.attachments.find((item) => item.id === id)?.name || t("pdfPreview"), url: "/api/minicad/reference?" + new URLSearchParams({ projectId, attachmentId: id }) });
@@ -387,11 +381,6 @@ export function Workbench({
   }
   const design = project?.design;
   const displayedDesign = processDesign || design;
-  const date = (timestamp) =>
-    new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(timestamp * 1000);
   return (
     <div
       ref={workbench}
@@ -449,13 +438,13 @@ export function Workbench({
             {project?.title || t("app")}
           </span>
           {project?.head > 0 && (
-            <Btn className="mc-header-version" icon={IconClockOutlineRegular} onClick={() => open("history")}>
+            <Tag className="mc-header-version" tone="neutral" aria-label={`${t("current")} · v${project.head}`}>
               {`v${project.head}`}
-            </Btn>
+            </Tag>
           )}
         </div>
         <div className="mc-header-actions">
-          <Btn icon={IconClockOutlineRegular} label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen} onClick={() => setHistoryOpen(value => !value)}>
+          <Btn icon={IconFlatListOutlineRegular} aria-label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen} onClick={() => setHistoryOpen(value => !value)}>
             <span className="mc-header-action-label">{t("makingRecord")}</span>
           </Btn>
           {project && renderSlot("minicad.directoryActions", { absolutePath: project.workspaceDirectory,
@@ -523,9 +512,20 @@ export function Workbench({
         </div>
       )}
       {historyOpen && project && <MakingRecord key={`${project.id}:${project.sourceFile}`} project={project} progress={progress}
-        request={request} t={t} language={language} onClose={() => setHistoryOpen(false)} onTranscriptTarget={setTranscriptTarget} />}
+        request={request} t={t} language={language} busy={busy || running || nativeRunning}
+        onRestore={revision => action(async () => {
+          const captured = project;
+          const restored = await api("restore", {
+            projectId: captured.id, sourceFile: captured.sourceFile,
+            revision, expectedRevision: captured.head,
+          });
+          if (selection.current === captured.id && projectRef.current?.sourceFile === captured.sourceFile) {
+            setProject(restored); setHistoryOpen(false);
+          }
+        })}
+        onClose={() => setHistoryOpen(false)} onTranscriptTarget={setTranscriptTarget} />}
       <ConversationDock ref={dock} sourceKey={project?.activeSessionId} t={t} hidden={historyOpen}
-        running={running} progress={progress} error={error} onHistory={() => setHistoryOpen(true)}
+        running={running} progress={progress} error={error}
         onStart={() => setError(null)}
         onCancel={() => action(() => api("cancel", { projectId: selected }))} onRunning={setNativeRunning}>
         {callbacks => <>
@@ -544,7 +544,7 @@ export function Workbench({
         <WorkbenchDialog
           key={modal}
           title={t(modal === "reference" ? "pdfPreview" : modal === "rename" ? "renameDesign" : modal)}
-          className={modal === "reference" ? "mc-wide" : modal === "history" ? "mc-history-dialog" : ""}
+          className={modal === "reference" ? "mc-wide" : ""}
           busy={busy}
           error={error}
           onClose={() => setModal(null)}
@@ -583,35 +583,6 @@ export function Workbench({
               />
             </label>
           )}
-          {modal === "history" &&
-            project.revisions.map((r) => (
-              <div key={r.revision} className="mc-history-row">
-                <div className="mc-spacer">
-                  <strong>v{r.revision}</strong> · {r.summary}
-                  <small>{date(r.created)}</small>
-                </div>
-                {r.revision === project.head ? (
-                  <Tag tone="neutral">{t("current")}</Tag>
-                ) : (
-                  <Btn
-                    disabled={busy || running}
-                    onClick={() =>
-                      action(async () => {
-                        const p = await api("restore", {
-                          projectId: selected,
-                          revision: r.revision,
-                          expectedRevision: project.head,
-                        });
-                        if (selection.current === selected) { setProject(p); setModal(null); }
-                      })
-                    }
-                  >
-                    {t("restore")}
-                  </Btn>
-                )}
-              </div>
-            ))}
-          {modal === "history" && !project.revisions.length && <p>{t("noHistory")}</p>}
           {modal === "reference" &&
             (reference ? (
               <iframe className="mc-reference" title={reference.name} src={reference.url} />

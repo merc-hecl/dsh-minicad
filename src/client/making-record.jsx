@@ -5,7 +5,7 @@ import { Button, SegmentedTabs, StateDot, Tag, IconCloseOutlineRegular,
 import { Viewport } from "./viewport.jsx";
 import { ErrorDetails } from "./workbench-dialog.jsx";
 
-function FrameThumbnail({ entry, load, selected, onSelect }) {
+function FrameThumbnail({ entry, load, selected, onSelect, date }) {
   const mount = useRef(null), canvas = useRef(null);
   useEffect(() => {
     let disposed = false;
@@ -40,17 +40,20 @@ function FrameThumbnail({ entry, load, selected, onSelect }) {
   useEffect(() => {
     if (selected) mount.current.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [selected]);
-  return <li ref={mount}>
+  return <li ref={mount} data-version={!!entry.revision || undefined}>
     <Button className="mc-record-frame" variant="ghost" aria-current={selected ? "step" : undefined}
       aria-label={`${entry.label} · ${entry.title}`} title={entry.title} onClick={() => onSelect(entry.key)}>
       <span className="mc-record-frame-content"><canvas ref={canvas} width={192} height={112} aria-hidden="true" />
-        <span><strong>{entry.label}</strong><span>{entry.title}</span></span></span>
+        <span><strong>{entry.label}</strong><span>{entry.title}</span></span>
+        {date && <small>{date}</small>}</span>
     </Button>
   </li>;
 }
 
-export function MakingRecord({ project, progress, request, t, language, onClose, onTranscriptTarget }) {
-  const [runs, setRuns] = useState([]), [selected, setSelected] = useState(null);
+export function MakingRecord({ project, progress, request, t, language, busy, onRestore, onClose, onTranscriptTarget }) {
+  const [runs, setRuns] = useState([]);
+  const [scope, setScope] = useState("versions"), [selectedVersion, setSelectedVersion] = useState(project.head);
+  const [selectedRun, setSelectedRun] = useState(null), [selectedStep, setSelectedStep] = useState(null);
   const [design, setDesign] = useState(null), [comparison, setComparison] = useState(null);
   const [compareVersion, setCompareVersion] = useState(null), [compareOpen, setCompareOpen] = useState(false);
   const [loading, setLoading] = useState(true), [error, setError] = useState(null);
@@ -79,15 +82,33 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
     if (progress?.sourceFile === project.sourceFile) items.set(progress.id, progress);
     return [...items.values()];
   }, [runs, progress, project.sourceFile]);
-  const entries = useMemo(() => [
-    ...project.revisions.map(revision => ({ key: `v${revision.revision}`, label: `v${revision.revision}`,
-      revision: revision.revision, created: revision.created, title: revision.summary || t("savedVersion") })),
-    ...allRuns.flatMap(run => run.steps.map(step => ({ key: `${run.id}:${step.sequence}`,
-      label: `${t("checkpoint")} ${step.sequence}`, runId: run.id, sequence: step.sequence,
-      metrics: step.metrics, geometryIds: run.geometryIds, phase: run.phase, created: step.created,
-      title: step.label || t(step.operation || "modeling"), summary: run.summary, baseRevision: run.baseRevision }))),
-  ].sort((a, b) => a.created - b.created), [allRuns, project.revisions, t]);
-  const focus = entries.find(entry => entry.key === selected) || entries.at(-1);
+  const versions = useMemo(() => project.revisions.map(revision => ({ key: `v${revision.revision}`,
+      label: `v${revision.revision}${revision.revision === project.head ? ` · ${t("current")}` : ""}`,
+      revision: revision.revision, created: revision.created, title: revision.summary || t("savedVersion") }))
+    .sort((a, b) => a.revision - b.revision), [project.revisions, project.head, t]);
+  const versionFocus = versions.find(entry => entry.revision === selectedVersion)
+    || versions.find(entry => entry.revision === project.head) || versions.at(-1);
+  const processRuns = useMemo(() => allRuns.filter(run => run.steps.length)
+    .sort((a, b) => b.created - a.created), [allRuns]);
+  const activeRun = processRuns.find(run => run.id === selectedRun)
+    || processRuns.find(run => run.committedRevision === versionFocus?.revision) || processRuns[0];
+  const steps = useMemo(() => activeRun ? activeRun.steps.map(step => ({ key: `${activeRun.id}:${step.sequence}`,
+    label: `${t("checkpoint")} ${step.sequence}`, runId: activeRun.id, sequence: step.sequence,
+    metrics: step.metrics, geometryIds: activeRun.geometryIds, created: step.created,
+    title: step.label || t(step.operation || "modeling"), baseRevision: activeRun.baseRevision })) : [], [activeRun, t]);
+  const entries = scope === "versions" ? versions : steps;
+  const focus = scope === "versions" ? versionFocus : steps.find(entry => entry.key === selectedStep) || steps.at(-1);
+  const selectEntry = key => {
+    if (scope === "versions") setSelectedVersion(versions.find(entry => entry.key === key).revision);
+    else setSelectedStep(key);
+  };
+  const changeScope = value => {
+    if (value === "process") {
+      const related = processRuns.find(run => run.committedRevision === versionFocus?.revision);
+      setSelectedRun(related?.id || null); setSelectedStep(null);
+    }
+    setScope(value);
+  };
   const index = entries.indexOf(focus);
   const load = useCallback(async (entry) => {
     let promise = cache.current.get(entry.key);
@@ -104,8 +125,7 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
     return promise;
   }, [project.id, project.sourceFile, request]);
   useEffect(() => {
-    if (!focus) { setLoading(false); return; }
-    if (!selected) setSelected(focus.key);
+    if (!focus) { setLoading(false); setDesign(null); return; }
     let disposed = false;
     setLoading(true); setDesign(null); setError(null);
     load(focus).then(value => { if (!disposed) setDesign(value); })
@@ -113,7 +133,7 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
   }, [focus?.key, load]);
-  const oldVersions = project.revisions.filter(version => version.revision < (focus?.revision || (focus?.baseRevision ?? project.head) + 1));
+  const oldVersions = focus ? project.revisions.filter(version => version.revision < (focus.revision || focus.baseRevision + 1)) : [];
   const comparedRevision = compareOpen && oldVersions.some(version => version.revision === compareVersion) ? compareVersion : null;
   useEffect(() => {
     setComparison(null);
@@ -123,9 +143,10 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
       .catch(error => { if (!disposed && error.name !== "AbortError") setError(error.message); });
     return () => { disposed = true; };
   }, [comparedRevision, load]);
-  const date = focus && new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
+  const dateFormatter = new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
     month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  }).format(focus.created * 1000);
+  });
+  const date = focus && dateFormatter.format(focus.created * 1000);
   return <section className="mc-making-record mc-panel" aria-label={t("makingRecord")} data-mode={mode} data-instant={!pointerModality() || undefined}>
     <header className="mc-record-bar">
       <h1>{t("makingRecord")}</h1><span className="mc-record-project" title={project.title}>{project.title}</span>
@@ -138,6 +159,8 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
         <div className="mc-record-toolbar">
           {focus && <Tag tone="neutral">{focus.label}</Tag>}
           <span className="mc-record-kind">{focus ? t(focus.runId ? "checkpointPreview" : "savedVersion") : project.sourceFile}</span>
+          {focus?.revision && focus.revision !== project.head && <Button variant="ghost" size="sm"
+            disabled={busy} onClick={() => onRestore(focus.revision)}>{t("restore")}</Button>}
           <Button variant="ghost" size="sm" aria-pressed={compareOpen} disabled={!oldVersions.length}
             onClick={() => { setCompareOpen(value => !value); if (!compareOpen) setCompareVersion(oldVersions[0]?.revision); }}>{t("compareVersion")}</Button>
           <Button variant="ghost" size="sm" icon={<IconRefreshOutlineRegular size={16} />} aria-label={t("resetView")} onClick={() => setReset(value => value + 1)} />
@@ -149,7 +172,7 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
         <div className="mc-record-stage">
           <Viewport presentation="record" design={design} comparison={comparison} resetToken={reset} t={t} onError={() => setError(t("webglError"))} />
           {loading && <div className="mc-record-placeholder" role="status"><StateDot state="ongoing" />{t("loading")}</div>}
-          {!focus && !loading && <div className="mc-record-placeholder">{t("noProcessSteps")}</div>}
+          {!focus && !loading && <div className="mc-record-placeholder">{t(scope === "versions" ? "noSavedVersions" : "noProcessSteps")}</div>}
           {error && <div className="mc-record-error" role="alert"><span>{t("previewUnavailable")}</span><ErrorDetails detail={error} t={t} /></div>}
           {comparison && <span className="mc-record-compare-legend"><i aria-hidden="true" />v{comparedRevision} · {t("compareOutline")}</span>}
         </div>
@@ -157,12 +180,28 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
           {focus && <><p title={focus.title}>{focus.title}</p><span>{date}</span></>}
         </div>
         <footer className="mc-record-reel">
-          <div className="mc-record-reel-heading"><span>{t("recordFrames")}</span><span>{index >= 0 ? index + 1 : 0} / {entries.length}</span>
-            <Button variant="ghost" size="sm" icon={<IconChevronLeftOutlineRegular size={14} />} aria-label={t("previousStep")} disabled={index <= 0} onClick={() => setSelected(entries[index - 1].key)} />
-            <Button variant="ghost" size="sm" icon={<IconChevronRightOutlineRegular size={14} />} aria-label={t("nextStep")} disabled={index < 0 || index >= entries.length - 1} onClick={() => setSelected(entries[index + 1].key)} />
+          <div className="mc-record-reel-heading">
+            <div className="mc-record-scope"><SegmentedTabs label={t("recordContent")} value={scope} onChange={changeScope}
+              items={[{ value: "versions", label: `${t("savedVersions")} (${versions.length})` },
+                { value: "process", label: t("modelingProcess") }]} /></div>
+            <span className="mc-record-count" style={{ width: `${String(entries.length).length * 2 + 3}ch` }}>
+              {index >= 0 ? index + 1 : 0} / {entries.length}
+            </span>
+            <Button variant="ghost" size="sm" icon={<IconChevronLeftOutlineRegular size={14} />} aria-label={t(scope === "versions" ? "previousVersion" : "previousStep")} disabled={index <= 0} onClick={() => selectEntry(entries[index - 1].key)} />
+            <Button variant="ghost" size="sm" icon={<IconChevronRightOutlineRegular size={14} />} aria-label={t(scope === "versions" ? "nextVersion" : "nextStep")} disabled={index < 0 || index >= entries.length - 1} onClick={() => selectEntry(entries[index + 1].key)} />
           </div>
-          <ol ref={frames} className="mc-record-frames" aria-label={t("recordFrames")}>
-            {entries.map(entry => <FrameThumbnail key={entry.key} entry={entry} load={load} selected={entry.key === focus?.key} onSelect={setSelected} />)}
+          {scope === "process" && <div className="mc-record-runs" aria-label={t("modelingRuns")}>
+            {processRuns.map(run => <Button key={run.id} variant="ghost" size="sm" aria-pressed={run.id === activeRun?.id}
+              title={`${run.summary || t("modeling")} · ${dateFormatter.format(run.created * 1000)}`}
+              onClick={() => { setSelectedRun(run.id); setSelectedStep(null); }}>
+              {run.committedRevision ? `v${run.committedRevision}` : `${t(run.phase === "preview" ? "unsavedTrial" : `taskStatus.${run.phase}`)} · ${dateFormatter.format(run.created * 1000)}`}
+              <span className="mc-muted">{t("stepCount", { count: run.steps.length })}</span>
+            </Button>)}
+            {!processRuns.length && <span className="mc-muted">{t("noProcessSteps")}</span>}
+          </div>}
+          <ol ref={frames} className="mc-record-frames" aria-label={t(scope === "versions" ? "savedVersions" : "modelingProcess")}>
+            {entries.map(entry => <FrameThumbnail key={entry.key} entry={entry} load={load} selected={entry.key === focus?.key} onSelect={selectEntry}
+              date={scope === "versions" ? dateFormatter.format(entry.created * 1000) : null} />)}
           </ol>
         </footer>
       </section>
