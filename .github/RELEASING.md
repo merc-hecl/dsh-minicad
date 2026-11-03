@@ -57,7 +57,7 @@ git push origin v0.1.1
 
 在 GitHub Actions 查看 **Publish plugin**：
 
-1. 核对标签与包版本，使用 Node.js 24 和支持 OIDC 的 npm。
+1. 核对标签与包版本，使用 Node.js 24 和支持 OIDC 的 npm 11。固定 npm 主版本，避免自动升级引入安装策略变更。
 2. `npm ci`、`npm run check`、独立执行 `npm test`。`check` 本身不含内核测试。
 3. 新版本本地打包；已发布的同版本复用 npm 原始安装包。
 4. 生成发布说明，创建或更新 GitHub Release 并上传 `.tgz`。
@@ -85,6 +85,7 @@ node scripts/release-notes.mjs v0.1.0 .local/release-notes-v0.1.0.md
 - npm：`npm view dsh-minicad@版本号 version --registry=https://registry.npmjs.org/` 返回对应版本。
 - GitHub 附件先于 npm 发布；npm 授权失败时附件仍可下载。修正授权后重跑失败工作流。
 - 若 npm 已发布同版本，重跑会复用 npm 安装包并跳过发布；已发布内容不可覆盖，修正源码应发新版本，不移动已有发布标签。
+- 若需要用修正后的工作流恢复已有标签，在 Actions 的 **Publish plugin → Run workflow** 选择 `main`，填写原标签；或执行 `gh workflow run publish.yml --ref main -f tag=v0.1.0`。工作流仍检出原标签的源码，并校验包版本。
 - 此工作流使用 GitHub 托管 runner；Trusted Publisher 的仓库与工作流文件名必须精确匹配。
 - 工作流的本地检查不能证明 GitHub 权限、npm 授权或真实安装交互已通过；首次远端执行及用户验收仍需完成。
 

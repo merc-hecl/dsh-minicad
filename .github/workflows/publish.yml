@@ -4,9 +4,15 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (e.g. v0.1.0)
+        required: true
+        type: string
 
 concurrency:
-  group: publish-${{ github.ref }}
+  group: publish-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -15,10 +21,12 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v6
@@ -28,8 +36,6 @@ jobs:
           package-manager-cache: false
 
       - name: Check release version
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
@@ -43,7 +49,7 @@ jobs:
           NODE
 
       - name: Update npm for trusted publishing
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
 
       - run: npm ci
       - run: npm run check
@@ -81,14 +87,11 @@ jobs:
           npm pack "$PACKAGE_SPEC" --ignore-scripts --pack-destination dist --registry=https://registry.npmjs.org/
 
       - name: Generate release notes
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
         run: node scripts/release-notes.mjs "$RELEASE_TAG" dist/release-notes.md
 
       - name: Create release and upload asset
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" --notes-file dist/release-notes.md
