@@ -1,0 +1,102 @@
+# 使用指南
+
+[返回首页](../README.md) · [English](guide.en.md) · [建模接口](modeling-api.md)
+
+## 安装与更新
+
+兼容目标：DSH **0.2.1-rc.5**。预构建包包含客户端、SMLib WebAssembly 内核与运行依赖，不需要手动安装依赖或构建，也不需要 Python。
+
+桌面版：在 DSH「插件」页安装解压后的 `package` 目录（例如 `link:C:/MiniCAD/package`），查看安装预览并启用，按提示重启。桌面配置由应用管理，不通过 CLI 修改。
+
+### Web 安装
+
+需要 Node.js 22.19+ 和 pnpm。没有 pnpm 时先执行：
+
+```sh
+npm install -g pnpm
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add link:C:/MiniCAD/package -w
+```
+
+路径须替换为自己的安装目录；macOS/Linux 使用 `link:/absolute/path/to/package`。已有全局 dsh 时，可用 `dsh` 替代 `npx @deepseek-ai/dsh@0.2.1-rc.5`。安装后重启 Web 宿主。
+
+没有 pnpm 的 Web 配置也可手动安装：把解压后的 `package` 目录放到目标 profile 的 `node_modules/dsh-minicad`，将 [cordis.patch.yml](../cordis.patch.yml) 的完整条目合并到该 profile 的补丁数组。不要在已有 `[]` 后直接追加 YAML；此方式不适用于桌面版。
+
+更新本地安装包时，解压到独立目录，在插件管理中切换到新目录并重启；不要覆盖自己的设计文件夹。当前尚未发布 npm 包。
+
+## 建模、核验与导出
+
+- 一个设计对应一个普通工作文件夹。同一设计的会话共享模型与历史，各自保留独立聊天上下文；「另存为」创建独立方案。
+- 用对话提出或修改需求。PDF 图纸需由 agent 实际读取页面；读取能力取决于宿主可用的 PDF 工具与支持图片的模型。尺寸或视图有歧义时先澄清。
+- 双击画布打开输入框；顶部把手可拖动或固定。主题与语言跟随 DSH。
+- 「选择目标」默认同时选面和边。单击替换，Ctrl+单击增减，空白或 Esc 清除。选择后可测量，或通过「引用」把目标与修改要求加入对话。
+- 单选边测长度、单选面测面积；双选测最小/最大距离及最近点连线在世界 X/Y/Z 轴的绝对分量。三个及以上目标不提供测量。带 `≈` 的数值是近似结果；长度单位 mm，面积单位 mm²。
+- 「制作记录」回看保存版本、过程步骤与完整会话。恢复历史版本会生成新版本；建模失败或停止仍保留已保存模型。
+- 「版本对比」展示基准版相对目标版的精确体积差异：绿为新增、红为删除、灰为共同部分。对比不修改模型，期间暂停选择与测量。
+- 需要文件时让 agent 导出 STEP、STL 或项目 ZIP。右上角原生导航菜单可打开设计目录，也可将当前保存版本交给 FreeCAD；外部修改不会自动写回。
+
+几何有效与尺寸检查不等于结构强度或加工可行性验证。
+
+### FreeCAD 路径
+
+插件自动通过 PATH、Windows 注册信息或 macOS 应用索引查找 FreeCAD。未检测到时，可在 DSH 的 `minicad` 配置中填写自己的路径：
+
+```yaml
+- id: minicad
+  config:
+    freecadExecutable: C:/Program Files/FreeCAD/bin/FreeCAD.exe
+```
+
+空字符串使用自动检测；Linux AppImage 等非 PATH 安装也可指定绝对路径。补丁会替换整行配置，已有其他配置时一并保留。
+
+## 数据与运行边界
+
+- 设计目录保存源码、参数、精确实体、`.cad-design.json` 和 `.cad-history/`；复制整个文件夹可带走模型与版本。聊天记录由 DSH 保存。
+- `.cad-process/` 保存建模过程，`references/` 保存参考图纸，`exports/` 保存导出结果。未提交试算不随「另存为」复制。
+- 已打开设计的索引位于 `$DSH_HOME/storages/minicad/designs.json`；默认 DSH_HOME 为 `~/.dsh`，`dataDir` 可覆盖索引目录。
+- 设计重命名会同步更改文件夹名称及关联会话的工作目录；「移除」只关闭列表登记，保留文件和会话。
+- 内核在独立 Node 进程中执行，默认任务超时 120 秒。停止会终止建模进程并保留已提交版本。进程隔离不是安全沙箱；只运行可信设计代码。
+- 不要让多个 DSH 进程同时写入同一 MiniCAD 数据目录。
+
+## 排障与移除
+
+| 问题 | 处理 |
+| --- | --- |
+| 没有 MiniCAD 入口 | 确认装在正确的 profile，启用后重启 DSH |
+| 预构建包无法启动内核 | 确认完整解压并保留了包内 `node_modules`；必要时重新解压 |
+| 源码安装无法启动 | 执行下方的依赖安装与构建命令 |
+| 模型认证失败 | 检查 DSH 中的模型配置或登录状态 |
+| 模型不显示 | 检查图形加速/WebGL，并确认已有成功保存的模型 |
+| 版本冲突 | 让 agent 重新读取当前版本后修改 |
+| HTTP 401 / 404 | 分别检查宿主登录状态、profile 与插件启用状态；401 不证明路由已注册 |
+
+桌面版通过「插件」页移除；Web 使用：
+
+```sh
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web remove dsh-minicad -w
+```
+
+重启后入口消失。卸载不删除设计数据。
+
+## 从源码运行
+
+在仓库目录使用 Node.js 22.19+：
+
+```sh
+npm ci
+npm run setup
+```
+
+在桌面插件页或 Web CLI 安装 `link:仓库的绝对路径`。客户端改动重新构建后支持 DSH HMR，主机改动需重启。
+
+```sh
+npm run dev
+npm run check
+npm test
+npm pack --pack-destination dist
+```
+
+打包前创建 `dist` 目录。`npm pack` 自动构建并包含运行依赖；GitHub 源码 ZIP 不包含这些预构建内容。
+
+`dev` 使用真实 DSH 的 `minicad-dev` profile（端口 3079、数据目录 `.local/designs`），沿用 DSH_HOME 中的设置与凭据。`PORT` 可覆盖端口；`DSH_ELECTRON` 与 `DSH_CLI` 可分别指定已安装桌面版可执行文件及其内置 CLI。
+
+`check` 只做语法与构建检查；`test` 串行运行建模内核测试。界面与真实 agent 交互由用户验收，约定见 [AGENTS.md](../AGENTS.md)。
