@@ -861,6 +861,7 @@ export class Store {
           api.values(args.selector, saved.state.parameters),
           scope,
           saved.state.geometryIds || defaultIdFormats,
+          args.edgeParameters,
         ),
       };
     }

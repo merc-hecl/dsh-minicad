@@ -9,7 +9,8 @@ import {
   validate,
   measurementsSchema,
   checksSchema,
-  selector as selectorSchema,
+  reference as querySelectorSchema,
+  edgeParameters as edgeParametersSchema,
 } from "../shared/cad-schema.js";
 
 import { nearestPair, farthestPair } from "./distances.js";
@@ -57,7 +58,7 @@ export function topology(shape) {
   return hash;
 }
 export function parseReference(id, kind, scope, revision) {
-  const match = /^m([a-f0-9]{24}):v(\d+):(faces|edges|solids):(\d+)$/.exec(id);
+  const match = /^m([a-f0-9]{24}):v(\d+):(faces|edges|solids|vertices):(\d+)$/.exec(id);
   if (
     !match ||
     match[1] !== scope ||
@@ -95,7 +96,7 @@ export function select(part, kind, selector = {}, base = part, items, allowEmpty
       throw new Error(
         "模型拓扑已变化，请重新查询 / model topology changed; query again",
       );
-    if (kind === "solids" && part === base)
+    if ((kind === "solids" || kind === "vertices") && part === base)
       return new cad.ShapeList(list[ref.index]);
     const original = topologyItems(base, kind)[ref.index];
     if (!original)
@@ -165,16 +166,23 @@ export function queryShape(
   selector = {},
   scope,
   idFormats = defaultIdFormats,
+  edgeParameters,
 ) {
-  if (!["faces", "edges", "solids", "holes"].includes(kind))
+  if (!["faces", "edges", "solids", "holes", "vertices"].includes(kind))
     throw new Error("不支持的几何查询类型 / unsupported query kind");
-  validate(selector, selectorSchema, "selector");
+  validate(selector, querySelectorSchema, "selector");
+  if (edgeParameters !== undefined) {
+    validate(edgeParameters, edgeParametersSchema, "edgeParameters");
+    if (kind !== "edges") throw new Error("曲线取点需查询边 / edgeParameters requires an edges query");
+  }
   const topologyKind = kind === "holes" ? "faces" : kind;
   const all = topologyItems(shape, topologyKind);
   const items = kind === "holes" ? all.filter(item => cylindricalHole(shape, item)) : all;
-  return select(shape, topologyKind, selector, shape, items, kind === "holes").map((item) => {
+  const resolved = typeof selector === "string" ? bindReference(selector, topologyKind, shape, scope, revision) : selector;
+  return select(shape, topologyKind, resolved, shape, items, kind === "holes").map((item) => {
     const index = all.findIndex((candidate) => candidate.equals(item));
     return { ...describeItem(item, index, topologyKind, scope, revision, idFormats),
+      ...(edgeParameters ? { samples: edgeParameters.map(t => ({ t, point: vector(item.pointAt(t)) })) } : {}),
       ...(kind === "holes" ? { hole: cylindricalHole(shape, item) } : {}) };
   });
 }
@@ -203,19 +211,22 @@ function describeItem(item, index, kind, scope, revision, idFormats) {
   const result = {
     id: geometryReference(scope, revision, kind, index),
     ...(kind !== "solids"
-      ? { displayId: geometryLabel(kind, index, idFormats) }
+      ? { displayId: kind === "vertices" ? `V-${index + 1}` : geometryLabel(kind, index, idFormats) }
       : {}),
-    type: item.geomType || "solid",
+    type: kind === "vertices" ? "vertex" : item.geomType || "solid",
     name: item.name || null,
     center: vector(item.center()),
-    centerMeaning: kind === "faces" ? "area_centroid" : kind === "edges" ? "curve_centroid" : "volume_centroid",
+    centerMeaning: kind === "vertices" ? "point" : kind === "faces" ? "area_centroid" : kind === "edges" ? "arc_length_midpoint" : "volume_centroid",
     bounds: { min: vector(box.min), max: vector(box.max) },
   };
   if (kind === "faces") {
     result.area = item.area;
     if (item.geomType === "plane") result.normal = vector(item.normalAt());
   }
-  if (kind === "edges") result.length = item.length;
+  if (kind === "vertices") result.point = vector(item.point);
+  if (kind === "edges") Object.assign(result, {
+    length: item.length, start: vector(item.start), end: vector(item.end), isClosed: item.isClosed,
+  });
   if (kind === "solids") result.volume = item.volume;
   if (["circle", "cylinder", "sphere", "torus", "cone"].includes(item.geomType))
     result.radius = item.radius;

@@ -46,7 +46,8 @@ export const selector = object(
   },
   [],
 );
-const reference = { anyOf: [text, selector] };
+export const reference = { anyOf: [text, selector] };
+export const edgeParameters = array({ type: "number", minimum: 0, maximum: 1 });
 const references = { anyOf: [text, selector, array(text)] };
 const profileShape = (shape, fields) =>
   object(

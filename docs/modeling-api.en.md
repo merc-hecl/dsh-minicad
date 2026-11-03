@@ -9,7 +9,7 @@ Agents are encouraged to use `cad_edit` first when existing operations express t
 | `cad_read_project` | Read source, parameters, models, revisions and geometry summaries; optional `sourceFile` does not change the UI selection |
 | `cad_build` | Execute custom source; omit `source` to rebuild working files from disk |
 | `cad_edit` | Create from an empty model or edit the saved solid incrementally; execute 1–100 sequential operations and commit one revision only if all succeed |
-| `cad_query` | Inspect faces, edges, solids or cylindrical bore segments (`kind: "holes"`), including axes and through clearance; supports trial candidates |
+| `cad_query` | Inspect faces, edges, solids, bore segments or vertex coordinates; edges include endpoints and optional arc-length samples, bores include axes and through clearance; supports trial candidates |
 | `cad_commit` | Atomically publish an evaluated candidate after checking its base revision, unchanged working files and supplied dimensions |
 | `cad_measure` | Measure geometry in batches without changing the model |
 | `cad_check` | Check measured values against targets and tolerances or limits without changing the model |
@@ -31,6 +31,20 @@ All modeling commits accept `checks`; failed checks preserve the previous revisi
 Use `cad.log(...)` or `console.log(...)` for diagnostics. Tool results include logs and checkpoint labels; failures include their phase, operation and source stack. Do not publish test boxes or deliberately throw exceptions to obtain diagnostics.
 
 ### Bores and dimensional inspection
+
+`cad_query(kind: "vertices")` returns actual topological vertices with `point: [x,y,z]` and revision-scoped IDs. Edge queries return `start`, `end` and `isClosed`; a closed edge can have coincident endpoints. All coordinates are world-space mm. Vertices are not bounding-box corners. An edge's `center` is its arc-length midpoint (`centerMeaning: "arc_length_midpoint"`), which need not be its curve centroid or circle center.
+
+For edges, optional `edgeParameters: [0,0.5,1]` adds `samples: [{t,point}]` to each result. Each `t` is a fraction of arc length in [0,1], not a raw curve parameter: 0 is the start, 1 the end and 0.5 halfway along the edge. `selector` accepts a filter object or a full current query ID from the same file and saved revision or specified candidate. Foreign, stale and other-candidate references are rejected. For example:
+
+```json
+{
+  "sourceFile": "model.js",
+  "expectedRevision": 1,
+  "kind": "edges",
+  "selector": { "geomType": "circle" },
+  "edgeParameters": [0, 0.25, 0.5, 0.75, 1]
+}
+```
 
 `cad_query(kind: "holes")` reports inward cylindrical bore wall segments with axis, diameter, axial span, `closedWall` and `through`. Through clearance requires a complete cylindrical wall and no material intersecting a slightly smaller cylinder along the entire model; `clearanceTolerance` records that margin. Counterbores and stepped bores can contain multiple segments, so segment count is not necessarily independent hole count. Open side cutouts are not complete walls.
 
