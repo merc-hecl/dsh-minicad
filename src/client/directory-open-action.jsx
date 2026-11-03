@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Menu, Tooltip, Toast, IconChevronDownOutlineRegular, IconRightUpOutlineRegular,
   IconWarningOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 import freecadIcon from "./assets/freecad.svg";
@@ -26,6 +26,16 @@ export function DirectoryOpenAction(props) {
   const [freecad, setFreecad] = useState(null), [menuOpen, setMenuOpen] = useState(false);
   const [pending, setPending] = useState(false), [banner, setBanner] = useState(null);
   const inFlight = useRef(false), sequence = useRef(0);
+  const menuAnchor = useRef(null);
+  const getMenuAnchorRect = useCallback(() => {
+    const anchor = menuAnchor.current;
+    if (!anchor) return null;
+    const rect = anchor.getBoundingClientRect();
+    const panel = anchor.closest(".mc-header-actions");
+    // Native Menu adds 4px; include the enclosing toolbar and another 4px.
+    const bottom = (panel?.getBoundingClientRect().bottom ?? rect.bottom) + 4;
+    return DOMRect.fromRect({ x: rect.left, y: rect.top, width: rect.width, height: bottom - rect.top });
+  }, []);
   const notify = text => setBanner({ text, sequence: ++sequence.current });
   const refresh = async signal => {
     try { setFreecad((await request("model_apps", {}, signal)).find(app => app.id === "freecad")); }
@@ -66,15 +76,16 @@ export function DirectoryOpenAction(props) {
   };
   return <>
     <Menu className="mc-open-in-app-menuAnchor" open={menuOpen && !busy} autoFocus portal dense align="end"
+      getAnchorRect={getMenuAnchorRect}
       onClose={() => setMenuOpen(false)} items={apps.map(app => ({ id: app.id,
         icon: <ApplicationIcon key={app.icon} source={app.icon} />, disabled: app.disabled,
         label: app.id === preferred.id ? t("path.appDefault", { app: app.name }) : app.name }))}
-      onSelect={act} anchor={<div className="mc-open-in-app-split" data-open-target="directory"
+      onSelect={act} anchor={<div ref={menuAnchor} className="mc-open-in-app-split" data-open-target="directory"
         data-size="compact" data-state={busy ? "busy" : "idle"}>
         <Tooltip portal label={primaryLabel} shortcutKeys={nativeShortcut?.keys} side="bottom" delayMs={500}>
           <button type="button" className="mc-open-in-app-main" disabled={busy || preferred.disabled}
             aria-label={primaryLabel} aria-keyshortcuts={nativeShortcut?.aria} onClick={() => act(preferred.id)}>
-            <ApplicationIcon key={preferred.icon} source={preferred.icon} size={13} />
+            <ApplicationIcon key={preferred.icon} source={preferred.icon} size={16} />
           </button>
         </Tooltip>
         <button type="button" className="mc-open-in-app-chevron" disabled={busy} aria-haspopup="menu"

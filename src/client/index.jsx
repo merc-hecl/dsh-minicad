@@ -1,6 +1,7 @@
 import React from "react";
 import { registerGeometryReferences } from "./geometry-reference.jsx";
 import { Composer } from "./composer.jsx";
+import { registerCompactComposer } from "./compact-composer.jsx";
 import { createDesignCatalog, registerMainWorkspaces, mirrorNativeSlot } from "./main-workspaces.jsx";
 import { DirectoryOpenAction } from "./directory-open-action.jsx";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
@@ -12,6 +13,7 @@ import workbenchCss from "./workbench.css";
 import workbenchPanelsCss from "./workbench-panels.css";
 import designNavigatorCss from "./design-navigator.css";
 import directoryOpenCss from "./directory-open-action.css";
+import conversationDockCss from "./conversation-dock.css";
 export const inject = [
   "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts", "inputTriggers", "uiConversation",
 ];
@@ -23,11 +25,13 @@ export function apply(ctx) {
   ctx.effect(() => {
     const style = document.createElement("style");
     style.dataset.plugin = "dsh-minicad";
-    style.textContent = `${designNavigatorCss}\n${workbenchCss}\n${workbenchPanelsCss}\n${directoryOpenCss}`;
+    style.textContent = `${designNavigatorCss}\n${workbenchCss}\n${workbenchPanelsCss}\n${directoryOpenCss}\n${conversationDockCss}`;
     document.head.append(style);
     return () => style.remove();
   }, "minicad: styles");
   const t = ctx.locale.bind("minicad");
+  const chatT = ctx.locale.bind("chat");
+  registerCompactComposer(ctx);
   const locale = {
     subscribe: (fn) => ctx.locale.subscribe(fn),
     getSnapshot: () => ctx.locale.getSnapshot(),
@@ -151,7 +155,7 @@ export function apply(ctx) {
     ),
   );
   ctx.slots.inject("minicad.composer", () =>
-    ctx.slots.register({ name: "minicad.composer" }, Composer),
+    ctx.slots.register({ name: "minicad.composer" }, props => <Composer {...props} minicadT={t} chatT={chatT} />),
   );
   // Native session actions keep their own pin/archive behavior and dialogs.
   // MiniCAD redirects only rename requests and fork placement into this workspace.

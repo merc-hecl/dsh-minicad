@@ -23,6 +23,7 @@
   --mc-motion-panel: 220ms;
   position: relative;
   isolation: isolate;
+  container: mc-workbench / inline-size;
   width: 100%;
   height: 100%;
   min-height: 480px;
@@ -32,6 +33,8 @@
   /* DSH theme-presenter updates these typography tokens with Appearance settings. */
   font: var(--dsw-font-markdown-base, 14px/24px sans-serif);
 }
+/* The canvas receives focus for shortcuts, but is not an outlined control. */
+.mc-workbench:focus { outline: none; }
 /* Windows AppFrame already reserves its caption height above the content.
    macOS draws its chrome over the content and still needs this clearance. */
 html[data-platform="darwin"] .mc-workbench {
@@ -134,7 +137,7 @@ html[data-platform="darwin"] .mc-workbench {
 .mc-measurement-values dt { color: var(--mc-muted); }
 .mc-measurement-values dd { margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; user-select: text; }
 .mc-measurement-divider { grid-column: 1 / -1; height: 1px; background: var(--mc-border); }
-.mc-tools button[aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
+.mc-header-actions button[aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
 .mc-scale {
   display: flex;
   align-items: center;
@@ -155,11 +158,12 @@ html[data-platform="darwin"] .mc-workbench {
   left: var(--mc-gutter);
   right: var(--mc-gutter);
   top: calc(10px + var(--mc-top-inset));
-  height: 36px;
+  height: 40px;
   display: grid;
-  grid-template-columns: var(--mc-sidebar-width) minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  column-gap: var(--mc-panel-gap);
+  column-gap: 12px;
+  container: mc-header / inline-size;
 }
 .mc-header-app,
 .mc-header-document {
@@ -168,11 +172,10 @@ html[data-platform="darwin"] .mc-workbench {
   gap: 8px;
   min-width: 0;
 }
-.mc-header-app strong {
-  flex: none;
-  font-weight: 600;
-  letter-spacing: -0.3px;
-}
+.mc-header-app.mc-panel { justify-self: start; width: max-content; max-width: 100%; gap: 4px; padding: 4px; border-radius: var(--dsw-radius-lg); }
+.mc-header-document { flex: 0 1 auto; max-width: 240px; padding-inline: 8px; }
+.mc-header .mc-icon-button { flex: none; width: 32px; height: 32px; min-height: 0; padding: 0; }
+.mc-header-app .mc-library-toggle[aria-expanded="true"] { color: var(--mc-accent); background: var(--mc-selected); }
 .mc-header .mc-crumb {
   min-width: 0;
   color: var(--mc-text);
@@ -185,9 +188,22 @@ html[data-platform="darwin"] .mc-workbench {
   color: var(--mc-muted);
 }
 .mc-header-actions {
+  justify-self: end;
+  width: max-content;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  padding: 4px;
+}
+.mc-header-actions.mc-panel { border-radius: var(--dsw-radius-lg); }
+.mc-header-action-group { display: flex; align-items: center; flex: none; gap: 4px; }
+.mc-header-status {
+  justify-self: center; width: max-content; min-width: 40px;
+  max-width: min(360px, max(40px, calc(100cqw - 560px))); position: relative;
+}
+.mc-header-status:has(.mc-status-stop) { min-width: 72px; }
+@container mc-workbench (max-width: 600px) {
+  .mc-header { grid-template-columns: minmax(0, 1fr) auto max-content; column-gap: 8px; }
 }
 .mc-muted {
   color: var(--mc-muted);
@@ -249,14 +265,14 @@ body:has(.mc-workbench[data-native-dialog-open]) [role="dialog"] {
 }
 /* Share native MenuSurface material across floating surfaces and portals.
    Scope unclassified native dialogs to an active workbench dialog request;
-   keep the composer and editable controls on their native solid surfaces. */
+   keep other editable controls on their native solid surfaces. */
 .mc-panel::before,
 .mc-open-in-app-split::before,
 .mc-dialog[role="dialog"]::before,
 body:has(.mc-workbench[data-native-dialog-open]) [role="dialog"]::before,
 .mc-task-status-details::before,
 .mc-task-status::after,
-.mc-input-peek::after,
+.mc-compact-composer [data-composer-card]::before,
 .mc-record-error::before {
   content: "";
   position: absolute;
@@ -277,7 +293,6 @@ body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [ro
 body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [role="dialog"]) > [aria-hidden="true"]::after {
   background: transparent;
 }
-.mc-tools,
 .mc-scale {
   border-radius: var(--dsw-radius-lg);
 }
@@ -292,6 +307,11 @@ body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [ro
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transform-origin: 56px -50px;
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  transition: transform var(--mc-motion-panel) var(--mc-ease-out), opacity var(--mc-motion-fast) ease, visibility 0s;
 }
 .mc-design-navigator {
   --dsh-sidebar-inline-padding: 8px;
@@ -299,15 +319,18 @@ body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [ro
   overflow: hidden;
 }
 .mc-workbench[data-project-panel-collapsed] .mc-sidebar {
-  bottom: auto;
-  width: auto;
-  padding: 0;
+  opacity: 0;
+  transform: translateY(-10px) scale(.97);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform var(--mc-motion-panel) var(--mc-ease-out), opacity var(--mc-motion-fast) ease, visibility 0s linear var(--mc-motion-panel);
 }
 .mc-workbench[data-project-panel-collapsed] {
-  --mc-sidebar-rail: 44px;
+  --mc-sidebar-rail: 0px;
   --mc-canvas-left: var(--mc-gutter);
+  --mc-panel-left: var(--mc-gutter);
 }
-.mc-workbench[data-record-open]:not([data-project-panel-collapsed]) .mc-sidebar {
+.mc-workbench[data-record-open] .mc-sidebar {
   bottom: var(--mc-gutter);
 }
 .mc-navigation {
@@ -437,15 +460,6 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="y"] {
 body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
   color: #8fb8ff;
 }
-.mc-tools {
-  position: absolute;
-  right: var(--mc-gutter);
-  top: 36%;
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
 .mc-empty {
   position: absolute;
   left: var(--mc-canvas-left);
@@ -561,18 +575,7 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
   .mc-sidebar {
     bottom: 240px;
   }
-  .mc-header {
-    grid-template-columns: max-content minmax(0, 1fr) max-content;
-    column-gap: 12px;
-  }
-  .mc-header-app strong,
-  .mc-header-action-label {
-    display: none;
-  }
   .mc-bottom {
     bottom: 35px;
-  }
-  .mc-tools {
-    top: 205px;
   }
 }

@@ -18,6 +18,7 @@ import {
   IconFlatListOutlineRegular,
   IconCompareSplitOutlineRegular,
   IconRefreshOutlineRegular,
+  pointerModality,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { Viewport } from "./viewport.jsx";
 import { errorKey } from "./locale.js";
@@ -36,7 +37,7 @@ const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
       variant="ghost"
       size="md"
       icon={Icon && <Icon size={16} />}
-      className={className}
+      className={`mc-icon-button ${className}`}
       aria-label={label}
       {...props}
     >
@@ -53,6 +54,8 @@ export function Workbench({
 }) {
   const workbench = useRef(null);
   const dock = useRef(null);
+  const canvasPress = useRef(null);
+  const [statusTarget, setStatusTarget] = useState(null);
   useLayoutEffect(() => {
     enter(workbench.current);
   }, []);
@@ -395,23 +398,45 @@ export function Workbench({
       data-native-dialog-open={!!renameTarget || !!picker || undefined}
       lang={language === "zh" ? "zh" : "en"}
       tabIndex={-1}
+      onPointerDownCapture={event => {
+        canvasPress.current = event.isPrimary && event.button === 0 && event.target.matches("#mc-view-model-panel > canvas")
+          ? { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false } : null;
+      }}
+      onPointerMoveCapture={event => {
+        const press = canvasPress.current;
+        if (press?.id === event.pointerId && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 4) press.moved = true;
+      }}
+      onPointerCancelCapture={() => { canvasPress.current = null; }}
       onPointerDown={event => {
         if (event.target.matches("#mc-view-model-panel > canvas")) {
-          dock.current?.dismissEmpty();
           workbench.current?.focus({ preventScroll: true });
         }
       }}
+      onClick={event => {
+        const press = canvasPress.current;
+        if (!event.defaultPrevented && event.detail === 1 && press && !press.moved
+          && Math.hypot(event.clientX - press.x, event.clientY - press.y) <= 4
+          && event.target.matches("#mc-view-model-panel > canvas")) dock.current?.dismiss();
+      }}
+      onDoubleClick={event => {
+        if (!historyOpen && event.target.matches("#mc-view-model-panel > canvas")) {
+          event.preventDefault(); dock.current?.reveal({ x: event.clientX, y: event.clientY });
+        }
+      }}
       onKeyDown={event => {
+        dock.current?.keyDown(event);
+        if (event.defaultPrevented) return;
         if (historyOpen && event.key === "Escape" && !event.defaultPrevented && !event.target.closest('[role="dialog"],[role="menu"]')) { event.preventDefault(); setHistoryOpen(false); }
         else if (diffOpen && event.key === "Escape" && !event.defaultPrevented && !event.target.closest('[role="dialog"],[role="menu"]')) { event.preventDefault(); setDiffOpen(false); }
         else if (event.key === "Escape" && selecting && !busy && !event.defaultPrevented && !event.isComposing && !event.target.closest('[role="dialog"],[role="menu"]')) {
           event.preventDefault(); setSelectionInstant(true); clearGeometrySelection(); setSelecting(false);
-        } else dock.current?.keyDown(event);
+        }
       }}
     >
       <Viewport
         id="mc-view-model-panel"
         active={!historyOpen}
+        sidebarCollapsed={panelCollapsed}
         design={displayedDesign}
         diff={displayedDiff}
         wire={wire}
@@ -431,46 +456,54 @@ export function Workbench({
         onError={() => setError({ key: "webglError" })}
       />
       <header className="mc-header">
-        <div className="mc-header-app">
+        <div className="mc-header-app mc-panel">
           <Btn
             icon={IconChevronLeftOutlineRegular}
             label={t("back")}
             disabled={busy}
             onClick={() => action(() => back(workbench.current))}
           />
-          <strong>MiniCAD</strong>
+          <Btn className="mc-library-toggle" icon={IconPanelLeftOutlineRegular}
+            label={t(panelCollapsed ? "expandProjects" : "collapseProjects")}
+            aria-expanded={!panelCollapsed} aria-controls="mc-design-library"
+            onClick={() => setPanelCollapsed(value => !value)} />
+          <div className="mc-header-document">
+            <span className="mc-crumb" title={project?.title || t("app")}>
+              {project?.title || t("app")}
+            </span>
+            {project?.head > 0 && (
+              <Tag className="mc-header-version" tone="neutral" aria-label={`${t("current")} · v${project.head}`}>
+                {`v${project.head}`}
+              </Tag>
+            )}
+          </div>
         </div>
-        <div className="mc-header-document">
-          <span className="mc-crumb" title={project?.title || t("app")}>
-            {project?.title || t("app")}
-          </span>
-          {project?.head > 0 && (
-            <Tag className="mc-header-version" tone="neutral" aria-label={`${t("current")} · v${project.head}`}>
-              {`v${project.head}`}
-            </Tag>
-          )}
-        </div>
-        <div className="mc-header-actions">
-          <Btn icon={IconCompareSplitOutlineRegular} aria-label={t("compareVersion")} disabled={!project || project.revisions.length < 2} aria-pressed={diffOpen}
-            onClick={() => { setHistoryOpen(false); setDiffOpen(value => !value); }}>
-            <span className="mc-header-action-label">{t("compareVersion")}</span>
-          </Btn>
-          <Btn icon={IconFlatListOutlineRegular} aria-label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen}
-            onClick={() => { setDiffOpen(false); setHistoryOpen(value => !value); }}>
-            <span className="mc-header-action-label">{t("makingRecord")}</span>
-          </Btn>
+        <div ref={setStatusTarget} className="mc-header-status" />
+        <nav className="mc-header-actions mc-panel" aria-label={t("workbenchTools")}>
+          <div className="mc-header-action-group">
+            <Btn icon={IconRefreshOutlineRegular} label={t("resetView")} disabled={historyOpen} onClick={() => setResetView(value => value + 1)} />
+            <Btn icon={wire ? WireframeViewIcon : SolidViewIcon} label={t(wire ? "solid" : "wire")}
+              disabled={historyOpen} aria-pressed={wire} onClick={() => setWire(value => !value)} />
+            <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selecting && !diffOpen && !historyOpen}
+              disabled={!design || !!processDesign || busy || diffOpen || historyOpen}
+              onClick={() => { clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
+          </div>
+          <div className="mc-header-action-group">
+            <Btn icon={IconCompareSplitOutlineRegular} label={t("compareVersion")} disabled={!project || project.revisions.length < 2} aria-pressed={diffOpen}
+              onClick={() => { setHistoryOpen(false); setDiffOpen(value => !value); }} />
+            <Btn icon={IconFlatListOutlineRegular} label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen}
+              onClick={() => { setDiffOpen(false); setHistoryOpen(value => !value); }} />
+          </div>
           {project && renderSlot("minicad.directoryActions", { absolutePath: project.workspaceDirectory,
             projectId: project.id, sourceFile: project.sourceFile, hasModel: project.head > 0 })}
-        </div>
+        </nav>
       </header>
-      <aside className={`mc-sidebar ${panelCollapsed ? "" : "mc-panel"}`} aria-label={t("projects")}>
-        {panelCollapsed ? (
-          <Btn icon={IconPanelLeftOutlineRegular} variant="outline" label={t("expandProjects")} onClick={() => setPanelCollapsed(false)} />
-        ) : (
+      <aside id="mc-design-library" className="mc-sidebar mc-panel" aria-label={t("projects")}
+        aria-hidden={panelCollapsed} inert={panelCollapsed ? "" : undefined} data-instant={!pointerModality() || undefined}>
           <DesignNavigator projects={projects} selected={selected} currentSessionId={project?.activeSessionId} language={language} t={t}
             sessionState={sessionState} workspaceState={workspaceState} renderTaskSlot={renderSlot}
             onRenameSession={(sessionId, currentTitle) => setRenameTarget({ sessionId, currentTitle })} onForkSession={forkConversation}
-            onCollapse={() => setPanelCollapsed(true)} pickerBusy={!!picker || busy}
+            pickerBusy={!!picker || busy}
             onCreate={() => { if (!busy) { setError(null); setPicker({ type: "open" }); } }}
             onRename={task => { setError(null); setRenameDesignId(task.id); setValue(task.title); setModal("rename"); }}
             onFork={task => { setError(null); setPicker({ type: "saveAs", project: task }); }}
@@ -481,7 +514,6 @@ export function Workbench({
               if (selection.current === task.id) { if (items[0]) await load(items[0].id); else clearSelection(); }
             }}
             onOpen={openConversation} attachments={project?.attachments || []} onReference={openReference} />
-        )}
       </aside>
       {renderSlot("minicad.directoryFlow", {
         open: !!picker, busy,
@@ -498,17 +530,6 @@ export function Workbench({
         onCancel: () => setPicker(null),
         onError: message => { setPicker(null); showError(new Error(message)); },
       })}
-          <div className="mc-tools mc-panel">
-            <Btn icon={IconRefreshOutlineRegular} label={t("resetView")} onClick={() => setResetView((value) => value + 1)} />
-            <Btn
-              icon={wire ? WireframeViewIcon : SolidViewIcon}
-              label={t(wire ? "solid" : "wire")}
-              aria-pressed={wire}
-              onClick={() => setWire((w) => !w)}
-            />
-            <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selecting && !diffOpen} disabled={!design || !!processDesign || busy || diffOpen}
-              onClick={() => { clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
-          </div>
       {!displayedDesign && !loading && !running && !nativeRunning && (
         <div className="mc-empty">
           <div className="mc-brand-icon">
@@ -538,8 +559,9 @@ export function Workbench({
           }
         })}
         onClose={() => setHistoryOpen(false)} onTranscriptTarget={setTranscriptTarget} />}
-      <ConversationDock ref={dock} sourceKey={project?.activeSessionId} t={t} hidden={historyOpen}
-        running={running} progress={progress} error={error}
+      <ConversationDock key={project?.activeSessionId || "none"} ref={dock} t={t} hidden={historyOpen}
+        running={running} statusTarget={statusTarget} revision={project?.head || 0}
+        onRecord={() => { setDiffOpen(false); setHistoryOpen(true); }}
         onStart={() => setError(null)}
         onCancel={() => action(() => api("cancel", { projectId: selected }))} onRunning={setNativeRunning}>
         {callbacks => <>

@@ -2,13 +2,13 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Button, Modal, Menu, Tooltip,
   IconProjectAddOutlineRegular, IconSearchOutlineRegular, IconSlidersTwoOutlineRegular,
-  IconCloseFillRegular, IconPanelLeftOutlineRegular, IconPaperclipOutlineRegular,
+  IconCloseFillRegular, IconPaperclipOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { DesignFolderRow, TaskRow, workspaceClasses as c, workspaceLocale } from "./design-navigation-rows.jsx";
 import { errorKey } from "../shared/errors.js";
 
 export function DesignNavigator({ projects, selected, currentSessionId, language, t, onOpen, onCreate,
-  onRename, onFork, onNewSession, onForkSession, onRenameSession, onRemove, onCollapse, onReference,
+  onRename, onFork, onNewSession, onForkSession, onRenameSession, onRemove, onReference,
   attachments, pickerBusy, sessionState, workspaceState, renderTaskSlot }) {
   const [expanded, setExpanded] = useState({});
   const [archivedFilter, setArchivedFilter] = useState("hide-archived");
@@ -43,7 +43,6 @@ export function DesignNavigator({ projects, selected, currentSessionId, language
   const folders = projects;
   return <div className={`${c.root} mc-design-navigator`}>
     <div className={c.sectionHeader}>
-      <Tooltip label={t("collapseProjects")} portal><button className={c.iconButton} aria-label={t("collapseProjects")} onClick={onCollapse}><IconPanelLeftOutlineRegular /></button></Tooltip>
       <span className={`${c.sectionLabel} ${c.wide} ${search ? c.sectionLabelHidden : ""}`}>{t("projects")}</span>
       <div className={`${c.searchSlot} ${search ? c.searchSlotExpanded : ""}`}><div className={`${c.search} ${search ? c.searchExpanded : ""}`}>
         <Tooltip label={t("searchTasks")} side="bottom" portal delayMs={500}><button className={c.searchButton} aria-label={t("searchTasks")} aria-expanded={search} onClick={() => setSearch(true)}><IconSearchOutlineRegular size={search ? 11 : 14} /></button></Tooltip>

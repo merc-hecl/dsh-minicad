@@ -31,7 +31,7 @@ const diffColors = {
   added: [0x16834a, 0x61d994], removed: [0xc33a48, 0xff7b86], unchanged: [0x94a0b0, 0x8f9caf],
 };
 
-export function Viewport({ id, active = true, presentation = "workbench", design, diff, wire, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, onError, t }) {
+export function Viewport({ id, active = true, presentation = "workbench", sidebarCollapsed = false, design, diff, wire, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
@@ -226,9 +226,9 @@ export function Viewport({ id, active = true, presentation = "workbench", design
       const viewport = el.getBoundingClientRect();
       const owner = el.closest(".mc-workbench");
       const box = selector => owner?.querySelector(selector)?.getBoundingClientRect();
-      const sidebar = box(".mc-sidebar"), tools = box(".mc-tools"), header = box(".mc-header");
+      const sidebar = owner?.hasAttribute("data-project-panel-collapsed") ? null : box(".mc-sidebar"), header = box(".mc-header");
       const left = Math.min(Math.max(12, sidebar?.width ? sidebar.right - viewport.left + 12 : 12), Math.max(12, viewport.width - 160));
-      const right = Math.max(left + 120, (tools?.width ? tools.left - viewport.left : viewport.width) - 12);
+      const right = Math.max(left + 120, viewport.width - 12);
       const top = Math.max(12, (header?.bottom || viewport.top) - viewport.top + 12);
       panel.style.maxWidth = `${Math.max(120, right - left)}px`;
       anchorPoint.fromArray(target.point).project(camera);
@@ -387,18 +387,16 @@ export function Viewport({ id, active = true, presentation = "workbench", design
         // External workbench rectangles otherwise move the model offscreen.
         const owner = contained ? null : el.closest(".mc-workbench");
         const rect = (selector) => owner?.querySelector(selector)?.getBoundingClientRect();
-        const sidebar = rect(".mc-sidebar");
+        const sidebar = owner?.hasAttribute("data-project-panel-collapsed") ? null : rect(".mc-sidebar");
         if (sidebar?.width) area.left = sidebar.right - viewport.left + 24;
         // The composer overlays the canvas; opening it must not change framing.
         for (const selector of [".mc-header", ".mc-version-diff"]) {
           const box = rect(selector);
           if (box?.height) area.top = Math.max(area.top, box.bottom - viewport.top + 16);
         }
-        for (const selector of [".mc-tools", ".mc-navigation"]) {
-          const box = rect(selector);
-          if (box?.width && box.top - viewport.top < area.bottom && box.bottom - viewport.top > area.top)
-            area.right = Math.min(area.right, box.left - viewport.left - 16);
-        }
+        const navigation = rect(".mc-navigation");
+        if (navigation?.width && navigation.top - viewport.top < area.bottom && navigation.bottom - viewport.top > area.top)
+          area.right = Math.min(area.right, navigation.left - viewport.left - 16);
         area.left = Math.min(area.left, w - 88);
         area.right = Math.max(area.right, area.left + 64);
         area.top = Math.min(area.top, h - 88);
@@ -684,6 +682,7 @@ export function Viewport({ id, active = true, presentation = "workbench", design
     runtime.current?.scheduleFit();
   }, [design?.previewData]);
   useEffect(() => { runtime.current?.setActive(active); }, [active]);
+  useLayoutEffect(() => { runtime.current?.positionSelection(); }, [sidebarCollapsed]);
   useEffect(() => {
     const s = runtime.current;
     if (!s) return;

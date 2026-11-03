@@ -1,10 +1,10 @@
-/* DSH 0.2.1-rc.5 OpenTargetButton compact-directory styles, scoped to MiniCAD. */
+/* DSH 0.2.1-rc.5 directory control, aligned to the workbench's 32px toolbar. */
 .mc-open-in-app-menuAnchor { flex: none; align-self: center; display: inline-flex; }
 .mc-open-in-app-split {
   box-sizing: border-box;
   border: .5px solid var(--dsw-alias-border-l4);
   border-radius: var(--dsw-radius-sm);
-  height: 24px;
+  height: 32px;
   font-family: var(--dsw-font-family);
   align-items: stretch;
   display: inline-flex;
@@ -22,7 +22,7 @@
   line-height: 16px;
   display: inline-flex;
 }
-.mc-open-in-app-main { gap: 4px; padding: 3px 5px; }
+.mc-open-in-app-main { width: 32px; gap: 4px; padding: 0; }
 .mc-open-in-app-chevron {
   border-left: .5px solid var(--dsw-alias-border-l4);
   color: var(--dsw-alias-label-secondary);

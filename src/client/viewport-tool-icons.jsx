@@ -1,7 +1,8 @@
 import React from "react";
+import { ICON_REGULAR_STROKE } from "@deepseek-ai/dsh-client-ui-primitives";
 
 function ViewportIcon({ size = 16, children, ...props }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>{children}</svg>;
+  return <svg width={size} height={size} viewBox="1 1 22 22" fill="none" stroke="currentColor" strokeWidth={ICON_REGULAR_STROKE * 22 / 16} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>{children}</svg>;
 }
 
 export function SolidViewIcon(props) {
