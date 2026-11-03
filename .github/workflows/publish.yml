@@ -1,0 +1,103 @@
+name: Publish plugin
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org/'
+          package-manager-cache: false
+
+      - name: Check release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) {
+            throw new Error('Only stable versions can be published by this workflow');
+          }
+          if (process.env.RELEASE_TAG !== `v${pkg.version}`) {
+            throw new Error('Release tag must match package.json version');
+          }
+          NODE
+
+      - name: Update npm for trusted publishing
+        run: npm install -g npm@latest
+
+      - run: npm ci
+      - run: npm run check
+      - name: Verify modeling kernel
+        run: npm test
+      - run: node --check scripts/release-notes.mjs
+
+      - name: Check published npm version
+        id: npm
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${pkg.version}`);
+          if (!response.ok && response.status !== 404) {
+            throw new Error(`npm registry returned HTTP ${response.status}`);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,
+            `published=${response.ok}\npackage=${pkg.name}@${pkg.version}\n`);
+          NODE
+
+      - name: Pack plugin
+        if: steps.npm.outputs.published == 'false'
+        run: |
+          mkdir -p dist
+          npm pack --pack-destination dist
+
+      # Bootstrap and retries reuse npm's original archive, keeping both downloads identical.
+      - name: Reuse published npm archive
+        if: steps.npm.outputs.published == 'true'
+        env:
+          PACKAGE_SPEC: ${{ steps.npm.outputs.package }}
+        run: |
+          mkdir -p dist
+          npm pack "$PACKAGE_SPEC" --ignore-scripts --pack-destination dist --registry=https://registry.npmjs.org/
+
+      - name: Generate release notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/release-notes.mjs "$RELEASE_TAG" dist/release-notes.md
+
+      - name: Create release and upload asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --notes-file dist/release-notes.md
+            gh release upload "$RELEASE_TAG" dist/*.tgz --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/*.tgz \
+              --verify-tag --notes-file dist/release-notes.md --title "$RELEASE_TAG"
+          fi
+
+      - name: Publish to npm
+        if: steps.npm.outputs.published == 'false'
+        run: npm publish ./dist/*.tgz --access public

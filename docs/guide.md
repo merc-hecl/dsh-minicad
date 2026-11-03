@@ -100,3 +100,5 @@ npm pack --pack-destination dist
 `dev` 使用真实 DSH 的 `minicad-dev` profile（端口 3079、数据目录 `.local/designs`），沿用 DSH_HOME 中的设置与凭据。`PORT` 可覆盖端口；`DSH_ELECTRON` 与 `DSH_CLI` 可分别指定已安装桌面版可执行文件及其内置 CLI。
 
 `check` 只做语法与构建检查；`test` 串行运行建模内核测试。界面与真实 agent 交互由用户验收，约定见 [AGENTS.md](../AGENTS.md)。
+
+维护者发布步骤见[发布手册](https://github.com/merc-hecl/dsh-minicad/blob/main/.github/RELEASING.md)。

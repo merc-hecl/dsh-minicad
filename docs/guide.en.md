@@ -100,3 +100,5 @@ Create `dist` before packing. `npm pack` builds automatically and includes runti
 `dev` uses the real DSH `minicad-dev` profile (port 3079, data in `.local/designs`), reusing DSH_HOME settings and credentials. `PORT` overrides the port. `DSH_ELECTRON` and `DSH_CLI` can point to the installed Desktop executable and its bundled CLI.
 
 `check` validates syntax and builds; `test` runs kernel tests serially. UI and live agent interactions are accepted by the user. See [AGENTS.md](../AGENTS.md).
+
+Maintainers: see the [release handbook](https://github.com/merc-hecl/dsh-minicad/blob/main/.github/RELEASING.md).

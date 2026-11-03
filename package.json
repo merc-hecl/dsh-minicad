@@ -2,9 +2,28 @@
   "name": "dsh-minicad",
   "version": "0.1.0",
   "license": "MIT",
-  "private": true,
   "type": "module",
-  "description": "面向 DSH agent 的参数化零件工作台",
+  "description": "Parametric CAD modeling, inspection and revision history for DeepSeek Harness agents.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cad",
+    "parametric-modeling",
+    "smlib"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/merc-hecl/dsh-minicad.git"
+  },
+  "homepage": "https://github.com/merc-hecl/dsh-minicad#readme",
+  "bugs": {
+    "url": "https://github.com/merc-hecl/dsh-minicad/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "main": "src/host/index.js",
   "exports": {
     ".": "./src/host/index.js",
@@ -71,6 +90,7 @@
     "three": "^0.186.1"
   },
   "devDependencies": {
+    "changelogen": "0.6.2",
     "esbuild": "^0.28.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
