@@ -16,7 +16,9 @@ export function GeometryReferencePanel({ targets, busy, error, onRemove, onClose
         {target.label}<IconCloseOutlineRegular size={10} />
       </Button>)}</div>
       <label className="mc-geometry-note-label" htmlFor={`${id}-note`}>{t("geometryComment")}
-        <textarea id={`${id}-note`} value={note} rows={3} disabled={busy} onChange={event => setNote(event.target.value)} />
+        <span className="mc-geometry-note-field">
+          <textarea id={`${id}-note`} value={note} rows={3} disabled={busy} onChange={event => setNote(event.target.value)} />
+        </span>
       </label>
       <footer className="mc-geometry-footer">
         <Button type="submit" variant="primary" size="sm" disabled={busy} icon={busy ? <StateDot state="ongoing" /> : <IconContextInjectionOutlineRegular size={16} />}>{t("addReference")}</Button>
