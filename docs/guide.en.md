@@ -6,7 +6,9 @@
 
 Compatibility target: DSH **0.2.1-rc.5**. Prebuilt packages include the client, SMLib WebAssembly kernel and runtime dependencies. No manual dependency installation, build or Python environment is needed.
 
-Desktop: in DSH **Plugins**, install the extracted `package` directory (for example, `link:C:/MiniCAD/package`), review the installation preview, enable it and restart if prompted. The application manages its own profile; do not modify it through the CLI.
+Desktop: open DSH **Plugins → Add plugin**, enter the npm package name `dsh-minicad`, click **Install**, enable it and restart if prompted. The application manages its own profile; do not modify it through the CLI.
+
+Local installation: extract the release package, keep its bundled `node_modules` and enter the extracted `package` directory in **Add plugin** (for example, `link:C:/MiniCAD/package`).
 
 ### Web installation
 
@@ -21,7 +23,7 @@ For a local package, replace `dsh-minicad` with its extracted directory, such as
 
 For a Web profile without pnpm, put the extracted `package` directory in the profile's `node_modules/dsh-minicad` and merge the complete entries from [cordis.patch.yml](../cordis.patch.yml) into its patch array. Do not append YAML after an existing `[]`. This method does not apply to Desktop.
 
-To update a local package, extract it into a separate directory, switch to that directory in plugin management and restart. Keep design folders separate from the installation. For an npm installation, run `npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web update dsh-minicad -w`, then restart.
+To update an npm installation on Desktop, uninstall it through **Plugins**, then install it again by package name. For Web, run `npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web update dsh-minicad -w`, then restart. To update a local package, extract it into a separate directory, switch to that directory in plugin management and restart. Keep design folders separate from the installation.
 
 ## Model, inspect and export
 

@@ -6,7 +6,9 @@
 
 兼容目标：DSH **0.2.1-rc.5**。预构建包包含客户端、SMLib WebAssembly 内核与运行依赖，不需要手动安装依赖或构建，也不需要 Python。
 
-桌面版：在 DSH「插件」页安装解压后的 `package` 目录（例如 `link:C:/MiniCAD/package`），查看安装预览并启用，按提示重启。桌面配置由应用管理，不通过 CLI 修改。
+桌面版：打开 DSH「插件」→「添加插件」，输入 npm 包名 `dsh-minicad`，点击「安装」并启用，按提示重启。桌面配置由应用管理，不通过 CLI 修改。
+
+本地安装：解压发布安装包，保留其中的 `node_modules`，在「添加插件」中输入解压后的 `package` 目录（例如 `link:C:/MiniCAD/package`）。
 
 ### Web 安装
 
@@ -21,7 +23,7 @@ npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add dsh-minicad -w
 
 没有 pnpm 的 Web 配置也可手动安装：把解压后的 `package` 目录放到目标 profile 的 `node_modules/dsh-minicad`，将 [cordis.patch.yml](../cordis.patch.yml) 的完整条目合并到该 profile 的补丁数组。不要在已有 `[]` 后直接追加 YAML；此方式不适用于桌面版。
 
-更新本地安装包时，解压到独立目录，在插件管理中切换到新目录并重启；不要覆盖自己的设计文件夹。npm 安装可通过 `npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web update dsh-minicad -w` 更新，随后重启。
+桌面版 npm 安装更新时，先在「插件」页卸载，再按包名重新安装。Web npm 安装通过 `npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web update dsh-minicad -w` 更新，随后重启。更新本地安装包时，解压到独立目录，在插件管理中切换到新目录并重启；不要覆盖自己的设计文件夹。
 
 ## 建模、核验与导出
 

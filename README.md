@@ -22,13 +22,13 @@
 
 适配 **DSH 0.2.1-rc.5**。使用 DSH 中已配置的模型，无需另配 API Key。
 
-下载 [v0.1.0 安装包](https://github.com/merc-hecl/dsh-minicad/releases/download/v0.1.0/dsh-minicad-0.1.0.tgz) · [发布说明](https://github.com/merc-hecl/dsh-minicad/releases/tag/v0.1.0)
-
 **桌面版**
 
-1. 解压安装包，保留其中的 `node_modules`。
-2. 在 DSH「插件」页安装解压后的 `package` 目录并启用。
+1. 在 DSH 中打开「插件」→「添加插件」。
+2. 输入 `dsh-minicad`，点击「安装」并启用。
 3. 按提示重启，从侧栏打开 **MiniCAD**。
+
+[离线安装包 v0.1.0](https://github.com/merc-hecl/dsh-minicad/releases/download/v0.1.0/dsh-minicad-0.1.0.tgz) · [发布说明](https://github.com/merc-hecl/dsh-minicad/releases/tag/v0.1.0)
 
 **Web**（Node.js 22.19+、[pnpm](docs/guide.md#web-安装)）
 
