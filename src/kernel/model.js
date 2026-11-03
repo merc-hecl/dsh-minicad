@@ -26,6 +26,12 @@ export function readShape(bytes, name) {
 }
 export const saveShape = (shape) =>
   Buffer.from(cad.toSmb(shape, { ascii: false }));
+export function readModel(root, name, assets, onRead) {
+  const bytes = assets[name] || readFileSync(inside(root, name));
+  onRead(name, bytes);
+  assets[name] = bytes;
+  return readShape(bytes, name);
+}
 export function buildShape(
   source,
   parameters,
@@ -45,12 +51,7 @@ export function buildShape(
     edit: (part, operations, parameters) =>
       editShape(part, operations, parameters, { readModel: api.readModel, checkpoint }),
     checkpoint: (part, label = "") => checkpoint ? checkpoint(part, label) : part,
-    readModel: (name) => {
-      const bytes = assets[name] || readFileSync(inside(root, name));
-      onRead(name, bytes);
-      assets[name] = bytes;
-      return readShape(bytes, name);
-    },
+    readModel: (name) => readModel(root, name, assets, onRead),
   };
   const fn = new Script(
     `(function(parameters,cad,require,__filename,__dirname,console){\n${source}\nif(typeof build !== 'function') throw new Error('建模源码必须定义 build(parameters, cad) 函数');\nreturn build(parameters,cad);\n})`,
@@ -364,7 +365,7 @@ export function editSource(source, operations, revision) {
   const prefix = `build_before_v${revision + 1}`;
   let name = prefix, index = 1;
   while (source?.includes(`const ${name} = build;`)) name = `${prefix}_${++index}`;
-  return `${source || "function build(parameters, cad) { return null; }"}\n\nconst ${name} = build;\nbuild = async function(parameters, cad) {\n  return cad.edit(await ${name}(parameters, cad), ${JSON.stringify(operations, null, 2)}, parameters);\n};\n`;
+  return `${source?.trim() ? source : "function build(parameters, cad) { return null; }"}\n\nconst ${name} = build;\nbuild = async function(parameters, cad) {\n  return cad.edit(await ${name}(parameters, cad), ${JSON.stringify(operations, null, 2)}, parameters);\n};\n`;
 }
 export function describeShape(shape) {
   if (

@@ -23,7 +23,7 @@ import {
 import { encodePreview, previewInfo } from "../shared/preview.js";
 import { ProcessJournal } from "./process.js";
 import { readApi } from "./api.js";
-import { format } from "node:util";
+import { format, isDeepStrictEqual } from "node:util";
 const kernel = () => import("./model.js");
 const now = () => Date.now() / 1000;
 const id = () => randomUUID().replaceAll("-", "");
@@ -526,7 +526,6 @@ export class Store {
         head,
         api.modelScope(key, sourceFile),
       );
-      source = api.editSource(source, operations, head);
     } else {
       if (!source.trim() || source.length > 2 * 1024 * 1024)
         throw new Error(
@@ -551,16 +550,21 @@ export class Store {
         throw new Error("模型资源不能引用当前建模输出文件");
       if (!inputs.has(path)) inputs.set(path, bytes);
     };
-    shape = await api.buildShape(
-      source,
-      parameters,
-      inside(directory, target),
-      resources,
-      resourceRead,
-      directory,
-      checkpoint,
-      (...args) => journal.log(run, format(...args)),
+    const build = (capture) => api.buildShape(
+      source, parameters, inside(directory, target), resources, resourceRead,
+      directory, capture, (...args) => journal.log(run, format(...args)),
     );
+    if (edit) {
+      // Parameter changes must regenerate existing features. Ordinary edits use
+      // the saved exact solid; replay remains available in the appended source.
+      if (saved ? !isDeepStrictEqual(parameters, saved.state.parameters) : source.trim())
+        shape = await build();
+      shape = api.editShape(shape, operations, parameters, {
+        readModel: name => api.readModel(directory, name, resources, resourceRead),
+        checkpoint,
+      });
+      source = api.editSource(source, operations, head);
+    } else shape = await build(checkpoint);
     for (const [name, bytes] of Object.entries(resources))
       assets.set(name, bytes);
     const state = {

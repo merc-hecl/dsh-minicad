@@ -8,7 +8,7 @@ Agents are encouraged to use `cad_edit` first when existing operations express t
 | --- | --- |
 | `cad_read_project` | Read source, parameters, models, revisions and geometry summaries; optional `sourceFile` does not change the UI selection |
 | `cad_build` | Execute custom source; omit `source` to rebuild working files from disk |
-| `cad_edit` | Execute 1–100 sequential operations and commit one revision only if all succeed |
+| `cad_edit` | Create from an empty model or edit the saved solid incrementally; execute 1–100 sequential operations and commit one revision only if all succeed |
 | `cad_query` | Inspect faces, edges, solids or cylindrical bore segments (`kind: "holes"`), including axes and through clearance; supports trial candidates |
 | `cad_commit` | Atomically publish an evaluated candidate after checking its base revision, unchanged working files and supplied dimensions |
 | `cad_measure` | Measure geometry in batches without changing the model |
@@ -60,6 +60,10 @@ The MiniCAD preset includes the standard DSH filesystem, search, shell, skill an
 | `import` | Read a task-relative `file`, such as `resources/input.step`, `.brep` or `.smb`; resources travel with snapshots and ZIP exports |
 
 A `profile` is a rectangle, circle or polygon on XY by default; use `plane: "XZ"` / `"YZ"`, `rotate` and `center` to place it. The generated solid also accepts `rotate` and `center`. Pattern `count` includes the original, from 2 to 100. With a `tool`, combine its copies using `mode: "fuse" | "cut" | "intersect"`; without one, copy the target body.
+
+Initial modeling starts without a solid: create or import one before applying cuts, chamfers or other modifications. Ordinary edits to an existing revision load its saved exact solid and execute only the new operations. Do not resubmit earlier operations; process checkpoints record only the current operations. If working source exists before the first saved revision, it is evaluated as the initial solid.
+
+Edits are also appended to source for full replay through `cad_update_parameters` or an explicit `cad_build`. When `cad_edit` supplies parameters that differ from the saved revision, existing features are rebuilt with those parameters before the new operations run; this base rebuild does not duplicate earlier process checkpoints. Unbuilt working-file changes to source, parameters or imported resources still require a build before local editing.
 
 For example, create a plate and cut three holes in one batch:
 
