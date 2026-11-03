@@ -633,7 +633,7 @@ export function Workbench({
             <span>{t(error.key)}</span>
             <Btn
               icon={IconCloseOutlineRegular}
-              label={t("close")}
+              aria-label={t("close")}
               onClick={() => setError(null)}
             />
           </div>
