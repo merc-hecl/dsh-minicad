@@ -22,7 +22,7 @@
 
 适配 **DSH 0.2.1-rc.5**。使用 DSH 中已配置的模型，无需另配 API Key。
 
-预构建包将随首个 [Release](https://github.com/merc-hecl/dsh-minicad/releases) 提供；当前可[从源码安装](docs/guide.md#从源码运行)。
+下载 [v0.1.0 安装包](https://github.com/merc-hecl/dsh-minicad/releases/download/v0.1.0/dsh-minicad-0.1.0.tgz) · [发布说明](https://github.com/merc-hecl/dsh-minicad/releases/tag/v0.1.0)
 
 **桌面版**
 
@@ -32,10 +32,10 @@
 
 **Web**（Node.js 22.19+、[pnpm](docs/guide.md#web-安装)）
 
-将下面路径换成解压后的 `package` 目录，安装后重启 DSH：
+从 npm 安装，完成后重启 DSH：
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add link:C:/MiniCAD/package -w
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add dsh-minicad -w
 ```
 
 ## 开始做一个零件

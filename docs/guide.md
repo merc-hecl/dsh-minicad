@@ -14,14 +14,14 @@
 
 ```sh
 npm install -g pnpm
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add link:C:/MiniCAD/package -w
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add dsh-minicad -w
 ```
 
-路径须替换为自己的安装目录；macOS/Linux 使用 `link:/absolute/path/to/package`。已有全局 dsh 时，可用 `dsh` 替代 `npx @deepseek-ai/dsh@0.2.1-rc.5`。安装后重启 Web 宿主。
+安装本地包时，将 `dsh-minicad` 换成解压目录，例如 `link:C:/MiniCAD/package`；macOS/Linux 使用 `link:/absolute/path/to/package`。已有全局 dsh 时，可用 `dsh` 替代 `npx @deepseek-ai/dsh@0.2.1-rc.5`。安装后重启 Web 宿主。
 
 没有 pnpm 的 Web 配置也可手动安装：把解压后的 `package` 目录放到目标 profile 的 `node_modules/dsh-minicad`，将 [cordis.patch.yml](../cordis.patch.yml) 的完整条目合并到该 profile 的补丁数组。不要在已有 `[]` 后直接追加 YAML；此方式不适用于桌面版。
 
-更新本地安装包时，解压到独立目录，在插件管理中切换到新目录并重启；不要覆盖自己的设计文件夹。当前尚未发布 npm 包。
+更新本地安装包时，解压到独立目录，在插件管理中切换到新目录并重启；不要覆盖自己的设计文件夹。npm 安装可通过 `npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web update dsh-minicad -w` 更新，随后重启。
 
 ## 建模、核验与导出
 

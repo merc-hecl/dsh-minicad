@@ -22,7 +22,7 @@ Give the DSH agent dimensions or a reference drawing. It builds, revises and exp
 
 Targets **DSH 0.2.1-rc.5**. Uses your existing DSH model configuration; no separate API key.
 
-Prebuilt packages will be available with the first [Release](https://github.com/merc-hecl/dsh-minicad/releases). Until then, [install from source](docs/guide.en.md#run-from-source).
+Download the [v0.1.0 package](https://github.com/merc-hecl/dsh-minicad/releases/download/v0.1.0/dsh-minicad-0.1.0.tgz) · [Release notes](https://github.com/merc-hecl/dsh-minicad/releases/tag/v0.1.0)
 
 **Desktop**
 
@@ -32,10 +32,10 @@ Prebuilt packages will be available with the first [Release](https://github.com/
 
 **Web** (Node.js 22.19+ and [pnpm](docs/guide.en.md#web-installation))
 
-Replace the path with your extracted `package` directory, then restart DSH after installation:
+Install from npm, then restart DSH:
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add link:C:/MiniCAD/package -w
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add dsh-minicad -w
 ```
 
 ## Make your first part

@@ -14,14 +14,14 @@ Requires Node.js 22.19+ and pnpm. If pnpm is missing, install it first:
 
 ```sh
 npm install -g pnpm
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add link:C:/MiniCAD/package -w
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add dsh-minicad -w
 ```
 
-Replace the path with your installation directory; use `link:/absolute/path/to/package` on macOS/Linux. If dsh is installed globally, `dsh` can replace `npx @deepseek-ai/dsh@0.2.1-rc.5`. Restart the Web host after installation.
+For a local package, replace `dsh-minicad` with its extracted directory, such as `link:C:/MiniCAD/package`; use `link:/absolute/path/to/package` on macOS/Linux. If dsh is installed globally, `dsh` can replace `npx @deepseek-ai/dsh@0.2.1-rc.5`. Restart the Web host after installation.
 
 For a Web profile without pnpm, put the extracted `package` directory in the profile's `node_modules/dsh-minicad` and merge the complete entries from [cordis.patch.yml](../cordis.patch.yml) into its patch array. Do not append YAML after an existing `[]`. This method does not apply to Desktop.
 
-To update a local package, extract it into a separate directory, switch to that directory in plugin management and restart. Keep design folders separate from the installation. An npm package has not been published yet.
+To update a local package, extract it into a separate directory, switch to that directory in plugin management and restart. Keep design folders separate from the installation. For an npm installation, run `npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web update dsh-minicad -w`, then restart.
 
 ## Model, inspect and export
 
