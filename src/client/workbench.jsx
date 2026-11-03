@@ -16,6 +16,7 @@ import {
   IconCloseOutlineRegular,
   IconPanelLeftOutlineRegular,
   IconFlatListOutlineRegular,
+  IconCompareSplitOutlineRegular,
   IconRefreshOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { Viewport } from "./viewport.jsx";
@@ -26,6 +27,7 @@ import { DesignNavigator } from "./design-navigator.jsx";
 import { ConversationDock } from "./conversation-dock.jsx";
 import { SelectionTools } from "./selection-tools.jsx";
 import { MakingRecord } from "./making-record.jsx";
+import { VersionDiff } from "./version-diff.jsx";
 import { SolidViewIcon, WireframeViewIcon, SelectGeometryIcon } from "./viewport-tool-icons.jsx";
 
 const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
@@ -84,9 +86,11 @@ export function Workbench({
   const [sessionReference, setSessionReference] = useState(null);
   const [reference, setReference] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false), [transcriptTarget, setTranscriptTarget] = useState(null);
+  const [diffOpen, setDiffOpen] = useState(false), [diff, setDiff] = useState(null);
   const [progress, setProgress] = useState(null), [processDesign, setProcessDesign] = useState(null);
   const [nativeRunning, setNativeRunning] = useState(false);
-  useLayoutEffect(() => { setSelectionTargets([]); setMeasurementResult(null); setActiveTool(null); }, [measurementKey, !!processDesign, historyOpen]);
+  useLayoutEffect(() => { setSelectionTargets([]); setMeasurementResult(null); setActiveTool(null); }, [measurementKey, !!processDesign, historyOpen, diffOpen]);
+  useEffect(() => { setDiffOpen(false); setDiff(null); }, [project?.id, project?.sourceFile]);
   useEffect(() => {
     if (!selectionTargets.length || (activeTool === "measure" && selectionTargets.length > 2)) setActiveTool(null);
     setMeasurementResult(null);
@@ -380,7 +384,8 @@ export function Workbench({
     });
   }
   const design = project?.design;
-  const displayedDesign = processDesign || design;
+  const displayedDesign = diffOpen ? design : processDesign || design;
+  const displayedDiff = diffOpen && diff?.projectId === project?.id && diff?.sourceFile === project?.sourceFile ? diff : null;
   return (
     <div
       ref={workbench}
@@ -398,6 +403,7 @@ export function Workbench({
       }}
       onKeyDown={event => {
         if (historyOpen && event.key === "Escape" && !event.defaultPrevented && !event.target.closest('[role="dialog"],[role="menu"]')) { event.preventDefault(); setHistoryOpen(false); }
+        else if (diffOpen && event.key === "Escape" && !event.defaultPrevented && !event.target.closest('[role="dialog"],[role="menu"]')) { event.preventDefault(); setDiffOpen(false); }
         else if (event.key === "Escape" && selecting && !busy && !event.defaultPrevented && !event.isComposing && !event.target.closest('[role="dialog"],[role="menu"]')) {
           event.preventDefault(); setSelectionInstant(true); clearGeometrySelection(); setSelecting(false);
         } else dock.current?.keyDown(event);
@@ -407,14 +413,15 @@ export function Workbench({
         id="mc-view-model-panel"
         active={!historyOpen}
         design={displayedDesign}
+        diff={displayedDiff}
         wire={wire}
-        selecting={!modal && !processDesign && !historyOpen && selecting}
+        selecting={!modal && !processDesign && !historyOpen && !diffOpen && selecting}
         targets={selectionTargets}
         selectionInstant={selectionInstant}
         pickingDisabled={busy}
-        measurementResult={!modal && !processDesign && !historyOpen && selecting && activeTool === "measure" && selectionTargets.length === 2 ? measurementResult : null}
+        measurementResult={!modal && !processDesign && !historyOpen && !diffOpen && selecting && activeTool === "measure" && selectionTargets.length === 2 ? measurementResult : null}
         onPick={pickGeometry}
-        selectionTools={project && <SelectionTools targets={selectionTargets} tool={!modal && !processDesign && !historyOpen && selecting ? activeTool : null}
+        selectionTools={project && <SelectionTools targets={selectionTargets} tool={!modal && !processDesign && !historyOpen && !diffOpen && selecting ? activeTool : null}
           onToolChange={selectTool} onClear={clearGeometrySelection}
           onRemove={reference => { if (!busy) setSelectionTargets(current => current.filter(target => target.reference !== reference)); }}
           referenceDisabled={busy || !sessionReference || sessionReference.sessionId !== project.activeSessionId}
@@ -444,7 +451,12 @@ export function Workbench({
           )}
         </div>
         <div className="mc-header-actions">
-          <Btn icon={IconFlatListOutlineRegular} aria-label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen} onClick={() => setHistoryOpen(value => !value)}>
+          <Btn icon={IconCompareSplitOutlineRegular} aria-label={t("compareVersion")} disabled={!project || project.revisions.length < 2} aria-pressed={diffOpen}
+            onClick={() => { setHistoryOpen(false); setDiffOpen(value => !value); }}>
+            <span className="mc-header-action-label">{t("compareVersion")}</span>
+          </Btn>
+          <Btn icon={IconFlatListOutlineRegular} aria-label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen}
+            onClick={() => { setDiffOpen(false); setHistoryOpen(value => !value); }}>
             <span className="mc-header-action-label">{t("makingRecord")}</span>
           </Btn>
           {project && renderSlot("minicad.directoryActions", { absolutePath: project.workspaceDirectory,
@@ -494,7 +506,7 @@ export function Workbench({
               aria-pressed={wire}
               onClick={() => setWire((w) => !w)}
             />
-            <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selecting} disabled={!design || !!processDesign || busy}
+            <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selecting && !diffOpen} disabled={!design || !!processDesign || busy || diffOpen}
               onClick={() => { clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
           </div>
       {!displayedDesign && !loading && !running && !nativeRunning && (
@@ -511,6 +523,8 @@ export function Workbench({
           <span role="status" className="mc-loading"><StateDot state="ongoing" />{t("loading")}</span>
         </div>
       )}
+      {diffOpen && project && <VersionDiff key={`${project.id}:${project.sourceFile}`} project={project} request={request}
+        onResult={setDiff} onClose={() => setDiffOpen(false)} t={t} language={language} />}
       {historyOpen && project && <MakingRecord key={`${project.id}:${project.sourceFile}`} project={project} progress={progress}
         request={request} t={t} language={language} busy={busy || running || nativeRunning}
         onRestore={revision => action(async () => {

@@ -19,7 +19,19 @@ function millimetres(value) {
   return String(Number(value.toPrecision(6)));
 }
 
-export function Viewport({ id, active = true, presentation = "workbench", design, comparison, wire, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, onError, t }) {
+function surfaceGeometry(preview) {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(preview.positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(preview.indices, 1));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(preview.normals, 3));
+  return geometry;
+}
+
+const diffColors = {
+  added: [0x16834a, 0x61d994], removed: [0xc33a48, 0xff7b86], unchanged: [0x94a0b0, 0x8f9caf],
+};
+
+export function Viewport({ id, active = true, presentation = "workbench", design, diff, wire, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
@@ -69,6 +81,8 @@ export function Viewport({ id, active = true, presentation = "workbench", design
     const initialRotation = camera.quaternion.clone();
     const model = new THREE.Group();
     scene.add(model);
+    const diffModel = new THREE.Group();
+    scene.add(diffModel);
     const selectionOverlay = new THREE.Group();
     scene.add(selectionOverlay);
     const measurementOverlay = new THREE.Group();
@@ -103,6 +117,7 @@ export function Viewport({ id, active = true, presentation = "workbench", design
       camera,
       controls,
       model,
+      diffModel,
       span: 180,
       center: new THREE.Vector3(),
       bounds: new THREE.Box3(),
@@ -357,7 +372,7 @@ export function Viewport({ id, active = true, presentation = "workbench", design
       cubeDrag = null;
       camera.zoom = 1;
       const bounds = state.bounds.clone();
-      if (state.comparisonBounds) bounds.union(state.comparisonBounds);
+      if (state.diffBounds) bounds.copy(state.diffBounds);
       const center = bounds.isEmpty() ? state.center : bounds.getCenter(new THREE.Vector3());
       const target = center.clone();
       if (!bounds.isEmpty()) {
@@ -375,7 +390,7 @@ export function Viewport({ id, active = true, presentation = "workbench", design
         const sidebar = rect(".mc-sidebar");
         if (sidebar?.width) area.left = sidebar.right - viewport.left + 24;
         // The composer overlays the canvas; opening it must not change framing.
-        for (const selector of [".mc-header", ".mc-view-tabs"]) {
+        for (const selector of [".mc-header", ".mc-version-diff"]) {
           const box = rect(selector);
           if (box?.height) area.top = Math.max(area.top, box.bottom - viewport.top + 16);
         }
@@ -538,6 +553,11 @@ export function Viewport({ id, active = true, presentation = "workbench", design
           o.material.color.set(state.dark ? 0xabb3c0 : 0xd8dee8);
         }
       });
+      diffModel.traverse(o => {
+        const kind = o.userData.diffKind;
+        if (kind) o.material.color.set(diffColors[kind][state.dark ? 1 : 0]);
+      });
+      model.visible = !state.diffActive;
       gridTheme();
       selectionOverlay.traverse(item => { if (item.material) item.material.color.set(state.dark ? 0x8fb8ff : 0x2456a6); });
       invalidate();
@@ -629,18 +649,7 @@ export function Viewport({ id, active = true, presentation = "workbench", design
       s.defaultView = true;
       return;
     }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(preview.positions, 3),
-    );
-    geometry.setIndex(new THREE.BufferAttribute(preview.indices, 1));
-    if (preview.normals) {
-      geometry.setAttribute(
-        "normal",
-        new THREE.BufferAttribute(preview.normals, 3),
-      );
-    } else geometry.computeVertexNormals();
+    const geometry = surfaceGeometry(preview);
     const mesh = new THREE.Mesh(
       geometry,
       new THREE.MeshStandardMaterial({
@@ -676,20 +685,50 @@ export function Viewport({ id, active = true, presentation = "workbench", design
   }, [design?.previewData]);
   useEffect(() => { runtime.current?.setActive(active); }, [active]);
   useEffect(() => {
-    const s = runtime.current, preview = comparison?.previewData;
-    if (!s || !preview) return;
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(preview.edges, 3));
-    const lines = new THREE.LineSegments(geometry, new THREE.LineDashedMaterial({
-      color: 0x919baa, transparent: true, opacity: .65, depthWrite: false,
-      dashSize: Math.max(s.span / 140, .05), gapSize: Math.max(s.span / 220, .03),
-    }));
-    lines.computeLineDistances();
-    s.scene.add(lines);
-    s.comparisonBounds = new THREE.Box3().setFromObject(lines);
+    const s = runtime.current;
+    if (!s) return;
+    s.diffActive = !!diff;
+    if (!diff) { s.theme(); return; }
+    for (const kind of ["unchanged", "added", "removed"]) {
+      const preview = diff[kind]?.previewData;
+      if (!preview) continue;
+      const removed = kind === "removed", unchanged = kind === "unchanged";
+      const surface = new THREE.Mesh(surfaceGeometry(preview), new THREE.MeshStandardMaterial({
+        metalness: 0, roughness: .8, transparent: true,
+        opacity: unchanged ? .18 : removed ? .38 : .9,
+        depthWrite: !unchanged && !removed, depthTest: !removed,
+        polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+        side: THREE.DoubleSide,
+      }));
+      surface.userData.diffKind = kind;
+      surface.renderOrder = unchanged ? 0 : removed ? 3 : 1;
+      surface.visible = !s.wire;
+      s.diffModel.add(surface);
+      if (preview.edges.length) {
+        const geometry = new LineSegmentsGeometry();
+        geometry.setPositions(preview.edges);
+        const lines = new LineSegments2(geometry, new LineMaterial({
+          linewidth: unchanged ? 1 : 1.6, transparent: true, opacity: unchanged ? .24 : .9,
+          depthWrite: false, depthTest: !removed, dashed: removed,
+          dashSize: .8, gapSize: .5,
+        }));
+        lines.computeLineDistances();
+        lines.userData.diffKind = kind; lines.renderOrder = removed ? 4 : 2;
+        s.diffModel.add(lines);
+      }
+    }
+    s.diffBounds = new THREE.Box3().setFromObject(s.diffModel);
+    s.theme();
     s.scheduleFit();
-    return () => { s.scene.remove(lines); s.comparisonBounds = null; geometry.dispose(); lines.material.dispose(); s.invalidate(); };
-  }, [comparison?.previewData]);
+    return () => {
+      if (runtime.current !== s) return;
+      for (const item of [...s.diffModel.children]) {
+        item.geometry.dispose(); item.material.dispose(); s.diffModel.remove(item);
+      }
+      s.diffBounds = null; s.diffActive = false; s.model.visible = true;
+      s.scheduleFit(); s.invalidate();
+    };
+  }, [diff]);
   useLayoutEffect(() => {
     const state = runtime.current;
     if (!state) return;
@@ -709,6 +748,7 @@ export function Viewport({ id, active = true, presentation = "workbench", design
       if (o.isLineSegments2) o.visible = true;
       else if (o.isMesh) o.visible = !wire;
     });
+    s.diffModel.traverse(o => { if (o.userData.diffKind && !o.isLineSegments2) o.visible = !wire; });
     s.theme();
   }, [wire, design?.previewData]);
   return (

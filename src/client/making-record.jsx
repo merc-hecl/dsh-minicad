@@ -54,23 +54,23 @@ export function MakingRecord({ project, progress, request, t, language, busy, on
   const [runs, setRuns] = useState([]);
   const [scope, setScope] = useState("versions"), [selectedVersion, setSelectedVersion] = useState(project.head);
   const [selectedRun, setSelectedRun] = useState(null), [selectedStep, setSelectedStep] = useState(null);
-  const [design, setDesign] = useState(null), [comparison, setComparison] = useState(null);
-  const [compareVersion, setCompareVersion] = useState(null), [compareOpen, setCompareOpen] = useState(false);
+  const [design, setDesign] = useState(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState(null);
   const [mode, setMode] = useState("model"), [reset, setReset] = useState(0);
-  const frames = useRef(null);
+  const reel = useRef(null);
   const controller = useRef(new AbortController()), cache = useRef(new Map());
   useEffect(() => {
-    const reel = frames.current;
-    const scrollFrames = event => {
-      if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY) || reel.scrollWidth <= reel.clientWidth) return;
-      const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? parseFloat(getComputedStyle(reel).lineHeight)
-        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? reel.clientWidth : 1;
+    const container = reel.current;
+    const scrollRecords = event => {
+      const strip = event.target.closest(".mc-record-frames, .mc-record-runs");
+      if (!strip || event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY) || strip.scrollWidth <= strip.clientWidth) return;
+      const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? parseFloat(getComputedStyle(strip).lineHeight)
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? strip.clientWidth : 1;
       event.preventDefault();
-      reel.scrollLeft += event.deltaY * unit;
+      strip.scrollLeft += event.deltaY * unit;
     };
-    reel.addEventListener("wheel", scrollFrames, { passive: false });
-    return () => reel.removeEventListener("wheel", scrollFrames);
+    container.addEventListener("wheel", scrollRecords, { passive: false });
+    return () => container.removeEventListener("wheel", scrollRecords);
   }, []);
   useEffect(() => {
     request("process_history", { projectId: project.id, sourceFile: project.sourceFile }, controller.current.signal)
@@ -133,16 +133,6 @@ export function MakingRecord({ project, progress, request, t, language, busy, on
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
   }, [focus?.key, load]);
-  const oldVersions = focus ? project.revisions.filter(version => version.revision < (focus.revision || focus.baseRevision + 1)) : [];
-  const comparedRevision = compareOpen && oldVersions.some(version => version.revision === compareVersion) ? compareVersion : null;
-  useEffect(() => {
-    setComparison(null);
-    if (!comparedRevision) return;
-    let disposed = false;
-    load({ key: `v${comparedRevision}`, revision: comparedRevision }).then(value => { if (!disposed) setComparison(value); })
-      .catch(error => { if (!disposed && error.name !== "AbortError") setError(error.message); });
-    return () => { disposed = true; };
-  }, [comparedRevision, load]);
   const dateFormatter = new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
     month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
   });
@@ -161,25 +151,18 @@ export function MakingRecord({ project, progress, request, t, language, busy, on
           <span className="mc-record-kind">{focus ? t(focus.runId ? "checkpointPreview" : "savedVersion") : project.sourceFile}</span>
           {focus?.revision && focus.revision !== project.head && <Button variant="ghost" size="sm"
             disabled={busy} onClick={() => onRestore(focus.revision)}>{t("restore")}</Button>}
-          <Button variant="ghost" size="sm" aria-pressed={compareOpen} disabled={!oldVersions.length}
-            onClick={() => { setCompareOpen(value => !value); if (!compareOpen) setCompareVersion(oldVersions[0]?.revision); }}>{t("compareVersion")}</Button>
           <Button variant="ghost" size="sm" icon={<IconRefreshOutlineRegular size={16} />} aria-label={t("resetView")} onClick={() => setReset(value => value + 1)} />
         </div>
-        {compareOpen && oldVersions.length > 0 && <div className="mc-record-compare-options" aria-label={t("compareVersion")}>
-          {oldVersions.map(version => <Button key={version.revision} variant="ghost" size="sm"
-            aria-pressed={comparedRevision === version.revision} onClick={() => setCompareVersion(version.revision)}>v{version.revision}</Button>)}
-        </div>}
         <div className="mc-record-stage">
-          <Viewport presentation="record" design={design} comparison={comparison} resetToken={reset} t={t} onError={() => setError(t("webglError"))} />
+          <Viewport presentation="record" design={design} resetToken={reset} t={t} onError={() => setError(t("webglError"))} />
           {loading && <div className="mc-record-placeholder" role="status"><StateDot state="ongoing" />{t("loading")}</div>}
           {!focus && !loading && <div className="mc-record-placeholder">{t(scope === "versions" ? "noSavedVersions" : "noProcessSteps")}</div>}
           {error && <div className="mc-record-error" role="alert"><span>{t("previewUnavailable")}</span><ErrorDetails detail={error} t={t} /></div>}
-          {comparison && <span className="mc-record-compare-legend"><i aria-hidden="true" />v{comparedRevision} · {t("compareOutline")}</span>}
         </div>
         <div className="mc-record-detail">
           {focus && <><p title={focus.title}>{focus.title}</p><span>{date}</span></>}
         </div>
-        <footer className="mc-record-reel">
+        <footer ref={reel} className="mc-record-reel">
           <div className="mc-record-reel-heading">
             <div className="mc-record-scope"><SegmentedTabs label={t("recordContent")} value={scope} onChange={changeScope}
               items={[{ value: "versions", label: `${t("savedVersions")} (${versions.length})` },
@@ -199,7 +182,7 @@ export function MakingRecord({ project, progress, request, t, language, busy, on
             </Button>)}
             {!processRuns.length && <span className="mc-muted">{t("noProcessSteps")}</span>}
           </div>}
-          <ol ref={frames} className="mc-record-frames" aria-label={t(scope === "versions" ? "savedVersions" : "modelingProcess")}>
+          <ol className="mc-record-frames" aria-label={t(scope === "versions" ? "savedVersions" : "modelingProcess")}>
             {entries.map(entry => <FrameThumbnail key={entry.key} entry={entry} load={load} selected={entry.key === focus?.key} onSelect={selectEntry}
               date={scope === "versions" ? dateFormatter.format(entry.created * 1000) : null} />)}
           </ol>

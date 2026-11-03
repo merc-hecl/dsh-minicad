@@ -55,6 +55,14 @@ export function apply(ctx) {
       throw Object.assign(new Error(data.error || response.statusText), {
         uiKey: data.code,
       });
+    if (method === "compare") {
+      for (const name of ["added", "removed", "unchanged"]) {
+        if (data[name]) {
+          data[name].previewData = decodePreview(Uint8Array.from(atob(data[name].preview), char => char.charCodeAt(0)));
+          delete data[name].preview;
+        }
+      }
+    }
     if (method === "list") designCatalog.update(data);
     else if (method === "status" && data.projects) designCatalog.update(data.projects);
     return data;

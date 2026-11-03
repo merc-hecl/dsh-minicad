@@ -29,7 +29,7 @@ const json = (value, status = 200) =>
   });
 const clientMethods = new Set([
   "process_state", "process_history",
-  "geometry_annotation", "measure",
+  "geometry_annotation", "measure", "compare",
   "list",
   "get",
   "rename",

@@ -394,6 +394,24 @@ export function describeShape(shape) {
   };
 }
 
+// Compare exact saved solids, independent of revision-local face IDs or meshing.
+// Added/removed regions describe the base revision relative to the target.
+export function compareShapes(base, target) {
+  const describe = operation => {
+    const part = operation();
+    try {
+      return part.solids().length ? describeShape(part) : null;
+    } finally {
+      part.dispose();
+    }
+  };
+  return {
+    added: describe(() => base.cut(target)),
+    removed: describe(() => target.cut(base)),
+    unchanged: describe(() => base.intersect(target)),
+  };
+}
+
 export function previewShape(shape) {
   const size = vector(shape.bbox().size);
   // The public faceMeshes API returns meshes in shape.faces() order, keeping

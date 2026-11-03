@@ -728,6 +728,26 @@ export class Store {
       if (method === "checkpoint_file") return journal.preview(args.runId, args.sequence);
     }
     if (method === "get") return this.project(key, false, sourceFile);
+    if (method === "compare") {
+      const base = this.snapshot(key, args.baseRevision, sourceFile, false);
+      const target = this.snapshot(key, args.targetRevision, sourceFile, false);
+      if (!base || !target) throw new Error("版本不存在");
+      const api = await this.kernel(), shapes = [];
+      try {
+        shapes.push(await this.shape(base));
+        shapes.push(await this.shape(target));
+        const regions = api.compareShapes(...shapes);
+        return {
+          projectId: key, sourceFile, baseRevision: base.state.revision, targetRevision: target.state.revision,
+          ...Object.fromEntries(Object.entries(regions).map(([name, region]) => [name, region ? {
+            volume: region.metrics.volume,
+            preview: Buffer.from(encodePreview(region.preview)).toString("base64"),
+          } : null])),
+        };
+      } finally {
+        shapes.forEach(shape => shape.dispose());
+      }
+    }
     if (method === "preview_file") {
       const saved = this.snapshot(key, args.revision, sourceFile, false);
       if (!saved) throw new Error("请先完成建模 / build a model first");
