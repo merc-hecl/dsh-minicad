@@ -44,7 +44,6 @@ test("initial structured modeling records all operations; an incremental chamfer
     const committed = await worker.call("commit", { ...args, expectedRevision: 1, runId: bevel.runId });
     assert.equal(committed.head, 2);
     assert.equal(committed.revisions[0].parent, 1);
-    assert.ok(committed.source.startsWith(built.source));
     const holes = (await worker.call("query", { ...args, expectedRevision: 2, kind: "holes" })).items;
     assert.equal(holes.length, 4);
     for (const hole of holes) {

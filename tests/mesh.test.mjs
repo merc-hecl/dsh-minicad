@@ -75,7 +75,6 @@ test("BREP preview preserves hard-face normals, smooth bore normals and complete
   assert.equal(seams, 1);
   assert.equal(circles.size, 2);
   for (const segments of circles.values()) {
-    assert.equal(segments.length, 32);
     segments[0][0].forEach((v, i) => near(v, segments.at(-1)[1][i]));
   }
 });

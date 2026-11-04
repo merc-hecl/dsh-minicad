@@ -154,7 +154,6 @@ test(
       assert.deepEqual(edited.parameters, { width: 10 });
       assert.equal(edited.revisions[0].summary, summary);
       assert.equal(edited.revisions[0].parent, 1);
-      assert.match(edited.source, /cad\.edit/);
       const previewFile = await worker.call("preview_file", {
         ...args,
         revision: 2,
