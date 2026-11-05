@@ -9,7 +9,15 @@ const centerLabels = { circle: "circleCenter", sphere: "sphereCenter", cylinder:
 
 function CoordinateRow({ label, point }) {
   return <><dt>{label} (mm)</dt><dd className="mc-measurement-coordinates">
-    {axes.map((axis, i) => <span key={axis}>{axis.toUpperCase()} {number(point[i])}</span>)}
+    {axes.map((axis, i) => <span key={axis}>
+      <span>{axis.toUpperCase()}</span><span>{number(point[i])}</span>
+    </span>)}
+  </dd></>;
+}
+
+function DistanceRow({ label, value, unit, approximate, title }) {
+  return <><dt>{label}</dt><dd className="mc-measurement-distance" title={title}>
+    <span>{approximate ? "≈" : ""}</span><span>{number(value)}</span><span>{unit}</span>
   </dd></>;
 }
 
@@ -46,7 +54,6 @@ export function MeasurementPanel({ targets, onClose, project, request, onResult,
   const { geometry } = current;
   const [minimum, maximum] = current.items || [];
   const accuracy = item => item.approximate ? t("measurementAccuracy", { accuracy: item.accuracy }) : undefined;
-  const value = item => `${item.approximate ? "≈ " : ""}${number(item.value)} ${item.unit}`;
   return <GeometryPanel title={t(targets.length === 1 ? "geometryParameters" : "measureDistance")} onClose={onClose} t={t}
     error={current.error && { key: current.error.uiKey || errorKey(current.error.message), detail: current.error.message }}>
     <div aria-live="polite" aria-busy={!!current.loading}>
@@ -66,10 +73,11 @@ export function MeasurementPanel({ targets, onClose, project, request, onResult,
         </>}
       </dl>}
       {minimum && maximum && <dl className="mc-measurement-values">
-        <dt>{t("minimumDistance")}</dt><dd title={accuracy(minimum)}>{value(minimum)}</dd>
-        <dt>{t("maximumDistance")}</dt><dd title={accuracy(maximum)}>{value(maximum)}</dd>
+        <DistanceRow label={t("minimumDistance")} value={minimum.value} unit={minimum.unit} approximate={minimum.approximate} title={accuracy(minimum)} />
+        <DistanceRow label={t("maximumDistance")} value={maximum.value} unit={maximum.unit} approximate={maximum.approximate} title={accuracy(maximum)} />
         <div className="mc-measurement-divider" />
-        {axes.map(axis => <React.Fragment key={axis}><dt>{t("projectionDistance")} {axis.toUpperCase()}</dt><dd>{minimum.approximate ? "≈ " : ""}{number(minimum.projections[axis])} mm</dd></React.Fragment>)}
+        {axes.map(axis => <DistanceRow key={axis} label={`${t("projectionDistance")} ${axis.toUpperCase()}`}
+          value={minimum.projections[axis]} unit={minimum.unit} approximate={minimum.approximate} />)}
       </dl>}
     </div>
   </GeometryPanel>;
