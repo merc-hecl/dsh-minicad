@@ -17,6 +17,7 @@ const parameters = { type: "object", additionalProperties: true };
 const target = { sourceFile, expectedRevision: integer };
 const readTarget = { ...target, runId: string };
 const buildOptions = { commit: { type: "boolean", default: true }, checks: checksSchema };
+const idFormat = { ...string, description: "Exactly one numbering placeholder: {n}, or {n:1} to {n:9} for a minimum zero-padded width. Example: Face-{n:3} gives Face-001." };
 
 export function apply(ctx) {
   ctx.systemPrompt.section({
@@ -137,6 +138,13 @@ Reply in the user's language with the saved revision, what changed, what was che
       ["sourceFile", "expectedRevision", "kind"],
     ),
     call("query"),
+  );
+  register(
+    "cad_set_geometry_id_format",
+    "Change the saved model's face and/or edge display numbering and commit a new revision with the same geometry. Supply at least one format. Omitted formats are kept; an identical format does not create a revision.",
+    schema({ ...target, faceFormat: idFormat, edgeFormat: idFormat, summary: string },
+      ["sourceFile", "expectedRevision", "summary"]),
+    call("set_geometry_id_format"),
   );
   register(
     "cad_edit",

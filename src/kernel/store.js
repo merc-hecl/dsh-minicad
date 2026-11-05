@@ -1,4 +1,4 @@
-import { defaultIdFormats } from "../shared/geometry-ids.js";
+import { defaultIdFormats, validateIdFormat } from "../shared/geometry-ids.js";
 import fs from "node:fs";
 import {
   basename,
@@ -375,8 +375,12 @@ export class Store {
     expected,
     inputs,
     assets = new Map(),
-    selectModel = true,
-    extraFiles = new Map(),
+    {
+      selectModel = true,
+      extraFiles = new Map(),
+      writeWorkingFiles = true,
+      previewBytes,
+    } = {},
   ) {
     const [root, data, task] = this.locate(key),
       directory = this.taskRoot(root, task);
@@ -411,7 +415,7 @@ export class Store {
     state.revision = revision;
     state.parent = expected || null;
     state.sourceFile = sourceFile;
-    const preview = encodePreview(state.preview);
+    const preview = previewBytes ?? encodePreview(state.preview);
     state.preview = {
       ...previewInfo(preview),
       digest: createHash("sha256").update(preview).digest("hex"),
@@ -423,14 +427,16 @@ export class Store {
         [join(folder, "parameters.json"), jsonBytes(state.parameters)],
         [join(folder, "model.smb"), binary],
         [join(folder, "state.json"), jsonBytes(state)],
-        [source, Buffer.from(state.source)],
-        [parameters, jsonBytes(state.parameters)],
-        [solid, binary],
       ]);
+    if (writeWorkingFiles) {
+      changes.set(source, Buffer.from(state.source));
+      changes.set(parameters, jsonBytes(state.parameters));
+      changes.set(solid, binary);
+    }
     for (const name of state.assets || []) {
       const target = inside(directory, name),
         bytes = assets.get(name) || fs.readFileSync(target);
-      changes.set(target, bytes);
+      if (writeWorkingFiles) changes.set(target, bytes);
       changes.set(inside(folder, name), bytes);
     }
     changes.set(this.designFile(root), this.workspaceBytes(data));
@@ -444,10 +450,11 @@ export class Store {
     const sourceFile = portable(relative(directory, modelPath(directory, args.sourceFile || task.sourceFile)));
     const head = task.models[sourceFile]?.head || 0;
     this.expect(head, args);
+    const saved = this.snapshot(key, undefined, sourceFile, false);
     const journal = new ProcessJournal(directory, sourceFile);
-    const run = journal.begin(sourceFile, head, args.summary, defaultIdFormats);
+    const run = journal.begin(sourceFile, head, args.summary, saved?.state.geometryIds || defaultIdFormats);
     try {
-      const result = await this.executeBuild(key, args, edit, journal, run);
+      const result = await this.executeBuild(key, args, edit, journal, run, saved);
       return result;
     } catch (error) {
       error.phase ||= run.phase;
@@ -458,7 +465,7 @@ export class Store {
       throw error;
     }
   }
-  async executeBuild(key, args, edit, journal, run) {
+  async executeBuild(key, args, edit, journal, run, saved) {
     const [root, , task] = this.locate(key),
       directory = this.taskRoot(root, task),
       sourceFile = portable(
@@ -508,8 +515,7 @@ export class Store {
     )
       throw new Error("parameters 必须是 JSON 对象");
     jsonBytes(parameters);
-    const saved = this.snapshot(key, undefined, sourceFile, false),
-      assets = new Map();
+    const assets = new Map();
     let shape,
       target = sourceFile,
       operations;
@@ -569,7 +575,7 @@ export class Store {
       assets.set(name, bytes);
     const state = {
       ...api.describeShape(shape),
-      geometryIds: defaultIdFormats,
+      geometryIds: run.geometryIds,
       source,
       parameters,
       operations: operations || [],
@@ -600,8 +606,10 @@ export class Store {
       head,
       inputs,
       assets,
-      !args.preserveSelection,
-      new Map([[journal.manifest(run.id), jsonBytes(finishedRun)]]),
+      {
+        selectModel: !args.preserveSelection,
+        extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finishedRun)]]),
+      },
     );
     return { ...this.project(key, args.geometry !== false, sourceFile), committed: true, diagnostics };
   }
@@ -623,10 +631,41 @@ export class Store {
     state.preview = candidate.preview();
     const finished = { ...run, phase: "done", committedRevision: run.baseRevision + 1, updated: now() };
     this.record(key, args.sourceFile, state, fs.readFileSync(join(folder, "model.smb")),
-      args.summary || run.summary, run.baseRevision, inputs, assets, !args.preserveSelection,
-      new Map([[journal.manifest(run.id), jsonBytes(finished)], [journal.index, jsonBytes({ id: run.id })]]));
+      args.summary || run.summary, run.baseRevision, inputs, assets, {
+        selectModel: !args.preserveSelection,
+        extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finished)], [journal.index, jsonBytes({ id: run.id })]]),
+      });
     return { ...this.project(key, false, args.sourceFile), committed: true,
       diagnostics: { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean) } };
+  }
+  async setGeometryIdFormat(key, sourceFile, head, args) {
+    this.expect(head, args);
+    const saved = this.snapshot(key, head, sourceFile, false);
+    if (!saved) throw new Error("请先完成建模 / build a model first");
+    if (args.faceFormat === undefined && args.edgeFormat === undefined)
+      throw new Error("请提供面或边的编号格式 / supply a face or edge ID format");
+    const current = saved.state.geometryIds || defaultIdFormats;
+    const geometryIds = { ...current };
+    for (const name of ["faceFormat", "edgeFormat"]) {
+      if (args[name] === undefined) continue;
+      validateIdFormat(args[name]);
+      geometryIds[name] = args[name];
+    }
+    if (isDeepStrictEqual(geometryIds, current)) return { sourceFile, head, committed: false, geometryIds };
+
+    const { path } = await this.dispatch("preview_file", { projectId: key, sourceFile, revision: head });
+    // Reading a legacy preview may have upgraded its saved metadata.
+    const state = this.snapshot(key, head, sourceFile, false).state;
+    delete state.restoredFrom;
+    state.geometryIds = geometryIds;
+    const assets = new Map((state.assets || []).map(name => [name, fs.readFileSync(inside(saved.folder, name))]));
+    this.record(key, sourceFile, state, fs.readFileSync(join(saved.folder, "model.smb")),
+      args.summary, head, undefined, assets, {
+        selectModel: false,
+        writeWorkingFiles: false,
+        previewBytes: fs.readFileSync(path),
+      });
+    return { sourceFile, head: head + 1, committed: true, geometryIds };
   }
   async export(key, args) {
     const saved = this.snapshot(key, args.revision, args.sourceFile, false);
@@ -807,6 +846,8 @@ export class Store {
     }
     if (method === "update_parameters")
       return this.build(key, { ...args, parameterMode: args.mode ?? "merge" });
+    if (method === "set_geometry_id_format")
+      return this.setGeometryIdFormat(key, sourceFile, row.head, args);
     if (["query", "measure", "check", "geometry_annotation"].includes(method)) {
       this.expect(row.head, args);
       const candidate = args.runId ? new ProcessJournal(directory, sourceFile).candidate(args.runId) : null;
@@ -896,7 +937,7 @@ export class Store {
         row.head,
         inputs,
         assets,
-        !args.preserveSelection,
+        { selectModel: !args.preserveSelection },
       );
       return this.project(key, args.geometry !== false, sourceFile);
     }

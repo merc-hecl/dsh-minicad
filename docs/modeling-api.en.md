@@ -10,6 +10,7 @@ Agents are encouraged to use `cad_edit` first when existing operations express t
 | `cad_build` | Execute custom source; omit `source` to rebuild working files from disk |
 | `cad_edit` | Create from an empty model or edit the saved solid incrementally; execute 1–100 sequential operations and commit one revision only if all succeed |
 | `cad_query` | Inspect faces, edges, solids, bore segments or vertex coordinates; edges include endpoints and optional arc-length samples, bores include axes and through clearance; supports trial candidates |
+| `cad_set_geometry_id_format` | Change face and edge display numbering and save a new revision |
 | `cad_commit` | Atomically publish an evaluated candidate after checking its base revision, unchanged working files and supplied dimensions |
 | `cad_measure` | Measure geometry in batches without changing the model |
 | `cad_check` | Check measured values against targets and tolerances or limits without changing the model |
@@ -19,6 +20,12 @@ Agents are encouraged to use `cad_edit` first when existing operations express t
 | `cad_restore` | Restore a file's historical revision as a new increasing revision |
 
 Read model file names and revisions with `cad_read_project` first. All model tools except reading and API lookup require an explicit task-relative `sourceFile`; mutations, queries, measurements and checks also require that file's `expectedRevision`. Explicit agent targets do not change the UI selection. Revisions are independent per file; new files start at revision 0.
+
+### Face and edge numbering
+
+Call `cad_set_geometry_id_format` on a saved model with `sourceFile`, `expectedRevision`, `summary`, and at least one of `faceFormat` and `edgeFormat`. A template must contain exactly one numbering placeholder. `{n}` starts numbering at 1. `{n:1}` through `{n:9}` set the minimum width and pad with leading zeros. For example, `Face-{n:3}` produces `Face-001`. Omitted formats retain their current values. Use `F-{n}` and `E-{n}` to reset the defaults.
+
+A changed format commits a revision immediately. The workbench and `cad_query` use it for the display ID. Later builds inherit the current revision's formats. Restoring a revision also restores its formats. Queries, measurements and edits continue to use full revision-scoped `id` references.
 
 ### Trials, checks and publication
 
