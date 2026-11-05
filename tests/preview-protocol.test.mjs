@@ -83,6 +83,9 @@ test(
       for (const name of ["mesh", "edges"])
         assert.equal(saved[name], undefined);
       const solid = await readFile(join(task.directory, "model.smb"));
+      const sourceFile = join(task.directory, args.sourceFile);
+      const draft = "// Unbuilt source";
+      await writeFile(sourceFile, draft);
       await writeFile(
         join(task.directory, "model.parameters.json"),
         '{"width":90}',
@@ -112,6 +115,7 @@ test(
       assert.equal(state.revisions.length, 1);
       assert.equal(state.parameters.width, 90);
       assert.equal(state.workingTreeChanged, true);
+      assert.equal(await readFile(sourceFile, "utf8"), draft);
       assert.deepEqual(
         await readFile(join(task.directory, "model.smb")),
         solid,

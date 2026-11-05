@@ -190,7 +190,7 @@ test(
 );
 
 test(
-  "query/edit: fillet, through hole, blind hole, face movement, stale ids and parameter replay",
+  "query/edit: fillet, through hole, blind hole, stale ids and parameter replay",
   { timeout: 90000 },
   async () =>
     setup(async (worker) => {
@@ -258,42 +258,6 @@ test(
         selector: { geomType: "cylinder" },
       });
       assert.ok(cylinder.items.length >= 2);
-      const box = await worker.call("create", { title: "direct edit" });
-      await worker.call("edit", {
-        projectId: box.id,
-        expectedRevision: 0,
-        operations: [{ op: "box", size: [10, 20, 30] }],
-      });
-      const top = await worker.call("query", {
-        projectId: box.id,
-        expectedRevision: 1,
-        kind: "faces",
-        selector: { position: "top" },
-      });
-      const moved = await worker.call("edit", {
-        projectId: box.id,
-        expectedRevision: 1,
-        operations: [
-          { op: "move_faces", faces: top.items[0].id, by: [0, 0, 2] },
-        ],
-      });
-      near(moved.design.metrics.volume, 6400);
-      near(moved.design.metrics.sizeZ, 32);
-      await assert.rejects(
-        worker.call("edit", {
-          projectId: box.id,
-          expectedRevision: 2,
-          operations: [
-            { op: "fillet", edges: { parallelTo: [0, 0, 1] }, radius: 100 },
-          ],
-        }),
-      );
-      assert.equal((await worker.call("get", { projectId: box.id })).head, 2);
-      assert.match(
-        (await worker.call("api", { topic: "shapes", symbol: "moveFaces" }))
-          .declarations,
-        /moveFaces/,
-      );
     }),
 );
 

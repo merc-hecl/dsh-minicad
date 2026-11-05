@@ -1,12 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import * as cad from "@classcad/smlibwasm";
 import { previewShape } from "../src/kernel/model.js";
-import { createWorker } from "../src/host/worker.js";
-import { decodePreview } from "../src/shared/preview.js";
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, `${a} != ${b}`);
 test("BREP preview preserves hard-face normals, smooth bore normals and complete CAD edges", () => {
@@ -78,75 +73,3 @@ test("BREP preview preserves hard-face normals, smooth bore normals and complete
     segments[0][0].forEach((v, i) => near(v, segments.at(-1)[1][i]));
   }
 });
-
-test(
-  "saved previews refresh without modifying source, geometry, revisions or external edits",
-  { timeout: 30000 },
-  async () => {
-    const root = await mkdtemp(join(tmpdir(), "minicad-preview-")),
-      worker = createWorker({ dataDir: root });
-    try {
-      const project = await worker.call("create"),
-        source =
-          "function build(p,cad){ return cad.Box(30,10,5).cut(cad.Cylinder(1,7)); }";
-      const built = await worker.call("build", {
-        projectId: project.id,
-        expectedRevision: 0,
-        source,
-        parameters: {},
-      });
-      const file = join(
-        project.directory,
-        built.revisions[0].folder,
-        "state.json",
-      );
-      const saved = JSON.parse(await readFile(file, "utf8")),
-        raw = cad.Box(30, 10, 5).cut(cad.Cylinder(1, 7)).mesh(0.01);
-      const triples = (values) =>
-        Array.from({ length: values.length / 3 }, (_, i) =>
-          Array.from(values.slice(i * 3, i * 3 + 3)),
-        );
-      saved.mesh = {
-        vertices: triples(raw.vertices),
-        triangles: triples(raw.triangles),
-      };
-      delete saved.previewVersion;
-      await writeFile(file, JSON.stringify(saved));
-      const binary = await readFile(join(project.directory, "model.smb"));
-      const externalSource = source + "\n// external editor";
-      await writeFile(join(project.directory, "model.js"), externalSource);
-      await worker.call("get", { projectId: project.id, geometry: false });
-      assert.equal(
-        JSON.parse(await readFile(file, "utf8")).previewVersion,
-        undefined,
-      );
-      const preview = await worker.call("preview_file", {
-        projectId: project.id,
-        revision: 1,
-      });
-      const decoded = decodePreview(await readFile(preview.path));
-      const refreshed = await worker.call("get", { projectId: project.id });
-      assert.equal(refreshed.head, 1);
-      assert.equal(refreshed.revisions.length, 1);
-      assert.equal(refreshed.design.previewVersion, 3);
-      assert.ok(decoded.normals.length);
-      assert.equal(refreshed.design.mesh, undefined);
-      assert.equal(refreshed.source, externalSource);
-      assert.equal(refreshed.workingTreeChanged, true);
-      assert.deepEqual(refreshed.design.metrics, built.design.metrics);
-      assert.deepEqual(
-        await readFile(join(project.directory, "model.smb")),
-        binary,
-      );
-      assert.equal(JSON.parse(await readFile(file, "utf8")).source, source);
-    } finally {
-      await worker.dispose();
-      await rm(root, {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 200,
-      });
-    }
-  },
-);

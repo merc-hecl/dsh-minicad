@@ -524,22 +524,24 @@ test(
       });
       near(built.design.metrics.volume, 6000);
       const original = await readFile(join(task.directory, "model.smb"));
-      for (const operation of [
+      const invalidOperations = [
         { op: "box", size: [1, 2] },
         { op: "box", size: [-1, 2, 3] },
         { op: "cylinder", radius: 1 },
         { op: "sphere", radius: 1, typo: 1 },
         { op: "rotate", axis: [0, 0, 0], angle: 90 },
         { op: "sphere", radius: { parameter: "missing" } },
-      ]) {
-        await assert.rejects(
-          worker.call("edit", {
-            ...args,
-            expectedRevision: 1,
-            operations: [operation],
-          }),
+      ];
+      for (const operation of invalidOperations) {
+        assert.throws(
+          () => editShape(imported, normalizeOperations([operation], imported)),
+          { operationIndex: 0, operation: operation.op },
         );
       }
+      await assert.rejects(
+        worker.call("edit", { ...args, expectedRevision: 1, operations: [invalidOperations[0]] }),
+        { operationIndex: 0, operation: "box" },
+      );
       await assert.rejects(
         worker.call("edit", {
           ...args,
