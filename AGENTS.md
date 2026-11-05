@@ -29,3 +29,14 @@
 - 一次提交围绕一个完整目的，提交前检查暂存差异和文件清单。不要提交凭据、运行数据、依赖目录、构建产物或被忽略的本地调研资料。
 - `docs/research/` 仅保存本地调研文档，由 Git 忽略；不要强制加入提交。
 - 用户要求“提交”仅授权本地 commit；只有明确要求推送时才 push。
+
+## 发布
+
+在干净的 `main` 上执行以下命令。功能版本用 `minor`，并将 `vX.Y.Z` 替换为第一条命令生成的标签。
+
+```sh
+npm version patch
+git push --atomic origin main vX.Y.Z
+```
+
+推送正式标签后，[发布工作流](.github/workflows/publish.yml) 会发布到 GitHub Releases 和 npm。

@@ -75,7 +75,8 @@ jobs:
         if: steps.npm.outputs.published == 'false'
         run: |
           mkdir -p dist
-          npm pack --pack-destination dist
+          # Reuse the client bundles built by npm run check.
+          npm pack --ignore-scripts --pack-destination dist
 
       # Bootstrap and retries reuse npm's original archive, keeping both downloads identical.
       - name: Reuse published npm archive

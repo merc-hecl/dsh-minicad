@@ -30,7 +30,7 @@
 2. 输入 `dsh-minicad`，点击「安装」并启用。
 3. 按提示重启，从侧栏打开 **MiniCAD**。
 
-[离线安装包 v0.1.0](https://github.com/merc-hecl/dsh-minicad/releases/download/v0.1.0/dsh-minicad-0.1.0.tgz) · [发布说明](https://github.com/merc-hecl/dsh-minicad/releases/tag/v0.1.0)
+[最新发布：离线安装包与发布说明](https://github.com/merc-hecl/dsh-minicad/releases/latest)
 
 **Web**（Node.js 22.19+、[pnpm](docs/guide.md#web-安装)）
 

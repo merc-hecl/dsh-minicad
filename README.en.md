@@ -30,7 +30,7 @@ Targets **DSH 0.2.1-rc.5**. Uses your existing DSH model configuration; no separ
 2. Enter `dsh-minicad`, click **Install** and enable it.
 3. Restart if prompted, then open **MiniCAD** from the sidebar.
 
-[Offline package v0.1.0](https://github.com/merc-hecl/dsh-minicad/releases/download/v0.1.0/dsh-minicad-0.1.0.tgz) · [Release notes](https://github.com/merc-hecl/dsh-minicad/releases/tag/v0.1.0)
+[Latest release (offline package and release notes)](https://github.com/merc-hecl/dsh-minicad/releases/latest)
 
 **Web** (Node.js 22.19+ and [pnpm](docs/guide.en.md#web-installation))
 
