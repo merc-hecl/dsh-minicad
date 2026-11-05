@@ -55,10 +55,10 @@ For edges, optional `edgeParameters: [0,0.5,1]` adds `samples: [{t,point}]` to e
 
 `cad_query(kind: "holes")` reports inward cylindrical bore wall segments with axis, diameter, axial span, `closedWall` and `through`. Through clearance requires a complete cylindrical wall and no material intersecting a slightly smaller cylinder along the entire model; `clearanceTolerance` records that margin. Counterbores and stepped bores can contain multiple segments, so segment count is not necessarily independent hole count. Open side cutouts are not complete walls.
 
-Selectors support `radius`, optional `tolerance`, `axisDirection`, `through` and `closedWall`. A face's ordinary `center` is its area centroid; use `axis` or `hole.center` to locate a bore.
+Selectors support `radius`, optional `tolerance`, `axisDirection`, `through` and `closedWall`. Queries return `geometricCenter: [x,y,z]` for circular edges, spherical faces and cylindrical faces. It gives the circle center, sphere center or midpoint of the cylindrical face's axial extent on its axis. A face's `center` gives its area centroid. Bore segments also expose the axial midpoint in `hole.center`.
 
 - `distance` measures minimum surface separation; `center_distance` measures geometric circle/sphere/cylinder centers or explicit points; `axis_distance` measures the minimum separation of infinite axes. Hole spacing usually calls for axis distance, not wall gap.
-- `coordinate` reads a geometric center's X/Y/Z coordinate; a cylinder center is the midpoint of its wall's axial extent. `span` reads an entity's world-axis bounding size.
+- `coordinate` reads the selected X, Y or Z component of `geometricCenter` for dimensional checks. `span` reads an entity's world-axis bounding size.
 - `count` counts matching `entityKind: "faces" | "edges" | "solids" | "holes"` with an optional selector. Combine diameter, through clearance, axis position and local thickness checks to detect missing bores, side openings and half-depth steps.
 
 `cad_api` accepts `Part.volume`, `Face.axis`, `Sketch.extrude`, etc. Pages default to 6000 characters with a maximum `limit` of 12000; follow `nextOffset` for the same topic/symbol. Primitives are centered by default, whereas an XY profile extrusion extends from its plane. `center` translates geometry; it is not a common alignment rule.
@@ -116,7 +116,7 @@ function build(parameters, cad) {
 
 ### Measurements, checks and geometry references
 
-Workbench measurement and the agent’s `cad_measure` call the same kernel service with the same model revision, geometry references, units and results. `distance` returns minimum distance `value`, nearest points `point` / `otherPoint`, and world-axis `projections: { x, y, z }`; the workbench displays these returned projections directly. `projected_distance` supports individual axes and dimensional checks without selecting a separate pair. Numerical `accuracy` describes solving/tessellation accuracy; `cad_check.tolerance` describes the allowed deviation from a target. They are independent.
+The workbench uses the same geometry query as `cad_query` for one selected target and the same distance calculation as `cad_measure` for two. `distance` returns minimum distance `value`, nearest points `point` / `otherPoint`, and world-axis `projections: { x, y, z }`; the workbench displays these returned projections directly. `projected_distance` supports individual axes and dimensional checks without selecting a separate pair. Numerical `accuracy` describes solving/tessellation accuracy; `cad_check.tolerance` describes the allowed deviation from a target. They are independent.
 
 `cad_measure.measurements` and `cad_check.checks` each accept 1–100 items. Measurements support:
 

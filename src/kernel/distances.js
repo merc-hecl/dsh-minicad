@@ -75,11 +75,25 @@ function curveNode(edge, start = 0, end = 1) {
     split: () => children ||= [curveNode(edge, start, mid), curveNode(edge, mid, end)] };
 }
 
+const isCircularEdge = item => item instanceof cad.Edge && item.geomType === "circle";
+
+function farthestOnArc(edge) {
+  const center = edge.arcCenter, normal = edge.normal.normalized();
+  const radius = edge.radius, start = edge.start;
+  return point => {
+    const delta = point.sub(center), radial = delta.sub(normal.mul(delta.dot(normal)));
+    if (radial.length <= 1e-12) return start;
+    // Maximizing distance to the point is equivalent to finding the nearest
+    // point on the trimmed arc to the opposite radius in the circle's plane.
+    return edge.closestPoint(center.sub(radial.normalized().mul(radius)));
+  };
+}
+
 // Parallel circular arcs admit analytic extrema: endpoints, aligned radii,
 // and intersections of their in-plane circles. This also handles coaxial arcs
 // whose extrema form a continuous family.
 function circlePair(a, b, maximum) {
-  if (!(a instanceof cad.Edge) || !(b instanceof cad.Edge) || a.geomType !== "circle" || b.geomType !== "circle") return null;
+  if (!isCircularEdge(a) || !isCircularEdge(b)) return null;
   const normal = a.normal.normalized();
   if (Math.abs(normal.dot(b.normal.normalized())) < 1 - 1e-10) return null;
   const delta = b.arcCenter.sub(a.arcCenter), height = delta.dot(normal);
@@ -87,16 +101,10 @@ function circlePair(a, b, maximum) {
   const r = a.radius, s = b.radius, candidates = [];
   const add = (p, q) => candidates.push({ value: p.distanceTo(q), point: vector(p), otherPoint: vector(q), method: "analytic_circles" });
   const onArc = (edge, p) => edge.distanceTo(p) < 1e-7;
-  function fromEndpoint(p, edge, swapped) {
-    let q;
-    if (maximum) {
-      const offset = p.sub(edge.arcCenter), radial = offset.sub(normal.mul(offset.dot(normal)));
-      q = radial.length > 1e-12 ? edge.closestPoint(edge.arcCenter.sub(radial.normalized().mul(edge.radius))) : edge.start;
-    } else q = edge.closestPoint(p);
-    if (swapped) add(q, p); else add(p, q);
-  }
-  for (const p of [a.start, a.end]) fromEndpoint(p, b, false);
-  for (const q of [b.start, b.end]) fromEndpoint(q, a, true);
+  const fromA = maximum ? farthestOnArc(b) : p => b.closestPoint(p);
+  const fromB = maximum ? farthestOnArc(a) : q => a.closestPoint(q);
+  for (const p of [a.start, a.end]) add(p, fromA(p));
+  for (const q of [b.start, b.end]) add(fromB(q), q);
   if (d > 1e-10) {
     const u = radial.mul(1 / d);
     for (const x of [-1, 1]) for (const y of [-1, 1]) {
@@ -166,25 +174,51 @@ function pointTree(points) {
   return { box, points: [points[0], points[mid], points.at(-1)],
     split: () => children ||= [pointTree(points.slice(0, mid)), pointTree(points.slice(mid))] };
 }
-function maximumNode(item) {
-  if (Array.isArray(item)) return { tree: pointTree([item]), approximate: false };
-  if (item instanceof cad.Edge) return item.geomType === "line"
-    ? { tree: pointTree([vector(item.start), vector(item.end)]), approximate: false }
-    : { tree: curveNode(item), approximate: true };
+function meshPoints(item) {
   // Two surfaces contribute their chord tolerances; reserve half the total
   // accuracy for the extremum search itself.
   const mesh = item.mesh(accuracy / 4, 5);
   try {
     const points = [];
     for (let i = 0; i < mesh.vertices.length; i += 3) points.push(Array.from(mesh.vertices.subarray(i, i + 3)));
-    const faces = item instanceof cad.Face ? [item] : item.faces();
-    const approximate = faces.some(face => face.geomType !== "plane" || face.edges().some(edge => edge.geomType !== "line"));
-    return { tree: pointTree(points), approximate, meshed: approximate };
+    return points;
   } finally { mesh.dispose(); }
 }
+function maximumNode(item) {
+  if (Array.isArray(item)) return { tree: pointTree([item]), approximate: false };
+  if (item instanceof cad.Edge) return item.geomType === "line"
+    ? { tree: pointTree([vector(item.start), vector(item.end)]), approximate: false }
+    : { tree: curveNode(item), approximate: true };
+  const points = meshPoints(item);
+  const faces = item instanceof cad.Face ? [item] : item.faces();
+  const approximate = faces.some(face => face.geomType !== "plane" || face.edges().some(edge => edge.geomType !== "line"));
+  return { tree: pointTree(points), approximate, meshed: approximate };
+}
+
+function arcCylinderMaximum(a, b) {
+  const [edge, face] = isCircularEdge(a) ? [a, b] : [b, a];
+  if (!isCircularEdge(edge) || !(face instanceof cad.Face) || face.geomType !== "cylinder") return null;
+  const farthest = farthestOnArc(edge);
+  // For a fixed arc point the maximum on a mesh triangle is at a vertex.
+  // Solve the other side analytically to avoid subdividing the arc for every vertex.
+  let best = { value: -Infinity };
+  for (const onFace of meshPoints(face)) {
+    const point = new cad.Vector(...onFace), onArc = farthest(point);
+    const value = point.distanceTo(onArc);
+    if (value > best.value) {
+      const arcPoint = vector(onArc);
+      best = edge === a ? { value, point: arcPoint, otherPoint: onFace }
+        : { value, point: onFace, otherPoint: arcPoint };
+    }
+  }
+  return { ...best, method: "tessellated_extrema", accuracy, approximate: true };
+}
+
 export function farthestPair(a, b) {
   const circles = circlePair(a, b, true);
   if (circles) return circles;
+  const arcCylinder = arcCylinderMaximum(a, b);
+  if (arcCylinder) return arcCylinder;
   const left = maximumNode(a), right = maximumNode(b);
   const approximate = left.approximate || right.approximate;
   return { ...extreme(left.tree, right.tree, true, approximate ? accuracy / 2 : 1e-9),

@@ -127,7 +127,7 @@ Reply in the user's language with the saved revision, what changed, what was che
   );
   register(
     "cad_query",
-    "Query faces, edges, solids, bores or vertex coordinates; edges include endpoints and optional arc-length samples; supports candidate runId.",
+    "Query faces, edges, solids, bores or vertex coordinates. Circular edges, spherical faces and cylindrical faces include geometricCenter; edges include endpoints and optional arc-length samples. Supports candidate runId.",
     schema(
       {
         ...readTarget,

@@ -232,7 +232,8 @@ function describeItem(item, index, kind, scope, revision, idFormats) {
     result.radius = item.radius;
   const axis = naturalAxis(item);
   if (axis) result.axis = axis;
-  if (item.geomType === "circle" || item.geomType === "sphere") result.geometricCenter = naturalCenter(item);
+  if (["circle", "sphere", "cylinder"].includes(item.geomType))
+    result.geometricCenter = naturalCenter(item);
   return result;
 }
 function naturalAxis(item) {

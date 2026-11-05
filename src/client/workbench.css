@@ -166,6 +166,10 @@ html[data-platform="darwin"] .mc-workbench {
 .mc-measurement-values { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 10px 12px; margin: 0; font-size: 13px; line-height: 28px; }
 .mc-measurement-values dt { color: var(--mc-muted); }
 .mc-measurement-values dd { margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; user-select: text; }
+.mc-measurement-properties { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); overflow-wrap: anywhere; }
+.mc-measurement-properties dd { text-align: end; }
+.mc-measurement-coordinates { display: flex; justify-content: flex-end; flex-wrap: wrap; column-gap: 8px; }
+.mc-measurement-coordinates span { min-width: 0; }
 .mc-measurement-divider { grid-column: 1 / -1; height: 1px; background: var(--mc-border); }
 .mc-header-actions button[aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
 .mc-scale {

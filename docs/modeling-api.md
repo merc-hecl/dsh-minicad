@@ -55,10 +55,10 @@
 
 `cad_query(kind: "holes")` 返回向内的圆柱孔壁段，包括轴线、孔径、轴向跨度、完整孔壁 `closedWall` 和贯穿性 `through`。贯穿性检查要求完整圆柱孔壁，并检验略小于孔径的圆柱沿整件的轴向通道没有材料阻挡；结果给出 `clearanceTolerance`。沉孔、阶梯孔可能包含多个孔段，孔段数不直接等于独立孔数；侧边开口会标为非完整孔壁。
 
-选择器支持 `radius`、可选 `tolerance`、`axisDirection`、`through` 和 `closedWall`。普通面查询的 `center` 是面积重心；孔轴位置应使用 `axis` 或孔段的 `hole.center`。
+选择器支持 `radius`、可选 `tolerance`、`axisDirection`、`through` 和 `closedWall`。圆边、球面和圆柱面的查询结果包含 `geometricCenter: [x,y,z]`，分别表示圆心、球心和圆柱面轴向范围在轴线上的中点。面的 `center` 表示面积重心。孔段还通过 `hole.center` 返回轴向中点。
 
 - `distance` 是表面最短距离；`center_distance` 是圆、球、圆柱的几何中心或显式点之间的距离；`axis_distance` 是无限轴线之间的最短距离。检查孔中心距通常应选轴距，而不是孔壁间隙。
-- `coordinate` 读取几何中心的 X/Y/Z 坐标；圆柱中心取该孔壁轴向范围的中点。`span` 读取所选几何沿世界 X/Y/Z 的包围尺寸。
+- `coordinate` 读取 `geometricCenter` 的指定 X、Y 或 Z 分量，可用于尺寸检查。`span` 读取所选几何沿世界 X/Y/Z 的包围尺寸。
 - `count` 按 `entityKind: "faces" | "edges" | "solids" | "holes"` 和可选选择器统计数量。配合孔径、贯穿性、孔轴位置和局部板厚检查，可识别少孔、开口孔和半厚台阶。
 
 `cad_api` 可查询 `Part.volume`、`Face.axis`、`Sketch.extrude` 等，默认返回最多 6000 字符，`limit` 最大 12000；按 `nextOffset` 继续读取同一 topic/symbol，避免把截断声明当作完整 API。实体基本体默认居中，XY 轮廓拉伸从其平面向正向延伸；`center` 是平移，不是统一的中心对齐方式。
@@ -114,7 +114,7 @@ function build(parameters, cad) {
 
 ### 测量、检查和几何引用
 
-工作台测量与 agent 的 `cad_measure` 直接调用同一个内核服务，使用相同的模型版本、几何引用、单位和计算结果。`distance` 返回最小距离 `value`、最近点 `point` / `otherPoint` 及世界轴投影 `projections: { x, y, z }`；界面直接显示这些投影值。`projected_distance` 可用于单轴读取和尺寸检查，不另行选取点对。数值近似结果的 `accuracy` 表示求解/离散精度，`cad_check` 的 `tolerance` 表示目标值的允许公差，两者独立。
+工作台单选时使用与 `cad_query` 相同的几何查询，双选时使用与 `cad_measure` 相同的距离计算。`distance` 返回最小距离 `value`、最近点 `point` / `otherPoint` 及世界轴投影 `projections: { x, y, z }`；界面直接显示这些投影值。`projected_distance` 可用于单轴读取和尺寸检查，不另行选取点对。数值近似结果的 `accuracy` 表示求解/离散精度，`cad_check` 的 `tolerance` 表示目标值的允许公差，两者独立。
 
 `cad_measure` 的 `measurements` 与 `cad_check` 的 `checks` 均接受 1～100 项。测量支持：
 

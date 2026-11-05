@@ -29,7 +29,7 @@ const json = (value, status = 200) =>
   });
 const clientMethods = new Set([
   "process_state", "process_history",
-  "geometry_annotation", "measure", "compare",
+  "geometry_annotation", "query", "measure", "compare",
   "list",
   "get",
   "rename",
@@ -49,7 +49,8 @@ export async function apply(ctx, config = {}) {
   const bySession = new Map(),
     lastError = new Map(),
     active = new Map(),
-    building = new Map();
+    building = new Map(),
+    measurements = new Map();
   let disposed = false;
   const call = async (method, args, signal) => {
     if (!["build", "edit", "restore", "update_parameters", "commit", "set_geometry_id_format"].includes(method)) return worker.call(method, args, signal);
@@ -214,6 +215,32 @@ export async function apply(ctx, config = {}) {
   }
   async function rpc(method, args, signal) {
     await startup;
+    const { measurementId } = args;
+    if (typeof measurementId === "string") {
+      const existing = measurements.get(measurementId);
+      if (method === "cancel_measurement") {
+        if (existing) existing.abort();
+        else {
+          // The cancel request can reach the host before the original request.
+          const canceled = new AbortController();
+          canceled.abort();
+          measurements.set(measurementId, canceled);
+          setTimeout(() => {
+            if (measurements.get(measurementId) === canceled) measurements.delete(measurementId);
+          }, config.timeout ?? 120000).unref();
+        }
+        return { canceled: true };
+      }
+      if (method === "query" || method === "measure") {
+        const controller = existing ?? new AbortController();
+        measurements.set(measurementId, controller);
+        try {
+          return await call(method, args, AbortSignal.any([signal, controller.signal]));
+        } finally {
+          measurements.delete(measurementId);
+        }
+      }
+    }
     if (method === "model_apps") return modelOpener.applications();
     if (method === "open_model") return modelOpener.open(args, signal);
     if (method === "create" || method === "open_design") return ensureSession(await call(method, args));
