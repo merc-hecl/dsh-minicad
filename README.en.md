@@ -6,6 +6,8 @@
 
 Give the DSH agent dimensions or a reference drawing. It builds, revises and exports the model; you inspect the result and decide what changes next.
 
+**AI coding disclosure:** 100% of this project's code was written by AI.
+
 ![MiniCAD running in DSH: a drilled plate and the canvas composer](docs/images/workbench.png)
 
 ## What you can do
