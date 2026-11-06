@@ -92,7 +92,7 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
     {expanded && phase && !native.waiting && <section className="mc-task-status-details mc-panel" aria-label={label}>
       <div className="mc-status-detail-heading"><strong>{label}</strong><Button variant="ghost" size="sm" aria-label={t("closeStatus")}
         icon={<IconCloseOutlineRegular size={14} />} onClick={closeExpanded} /></div>
-      {phase === "working" && (currentTask || native.activityDetail) && <p className="mc-status-current">{currentTask?.content || native.activityDetail}</p>}
+      {phase === "working" && <p className="mc-status-current">{currentTask?.content || native.activityDetail}</p>}
       {failure && <p className="mc-task-status-error">{failure}</p>}
       {(phase === "stopped" || phase === "error") && <p className="mc-muted">{t(revision > 0 ? "agentRetained" : "agentNoVersion", { version: revision })}</p>}
       {native.todos.length > 0 && <><div className="mc-task-list-heading"><span>{t("agentTasks")}</span><span>{completed}/{native.todos.length}</span></div>
