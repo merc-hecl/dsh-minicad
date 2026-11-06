@@ -234,7 +234,7 @@ Reply in the user's language with the saved revision, what changed, what was che
   );
   register(
     "cad_restore",
-    "Restore a model's historical revision as a new revision.",
+    "Make an existing revision current without creating a revision. The next edit branches from the selected revision.",
     schema({ ...target, revision: { type: "integer", minimum: 1 } }),
     call("restore"),
   );

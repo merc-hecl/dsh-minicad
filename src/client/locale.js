@@ -58,6 +58,7 @@ export const zh = {
   selectGeometry: "选择目标",
 
   workingFilesChanged: "建模文件已修改，请先重新构建再进行局部编辑",
+  checkoutWorkingFilesChanged: "建模文件有未构建的修改，请先构建再切换版本",
   geometryReferenceInvalid: "几何引用已失效，请重新查询当前版本",
   geometrySelectionMissing: "没有找到匹配的面或边",
   geometrySelectionAmbiguous: "几何选择不唯一，请缩小范围",
@@ -111,8 +112,12 @@ export const zh = {
   drawing: "图纸",
 
   references: "参考图纸",
-  restore: "恢复此版本",
-  restored: "已恢复版本",
+  versionLibrary: "版本库",
+  versionCount: "{count} 个版本",
+  revisionBase: "基底",
+  revisionPreview: "预览 v{n}",
+  currentVersion: "当前版本",
+  switchVersion: "切换到 v{n}",
   current: "当前",
   noProjects: "每一个想法，从一个设计开始",
   emptyTitle: "让想法成为零件",
@@ -136,7 +141,6 @@ export const zh = {
   dimensions: "外形尺寸",
   solids: "实体",
 
-  restoredSummary: "恢复历史版本",
   previous: "上一页",
   next: "下一页",
   page: "第 {page} / {total} 页",
@@ -216,6 +220,7 @@ export const en = {
   selectGeometry: "Select targets",
 
   workingFilesChanged: "Model files changed. Rebuild them before making local edits.",
+  checkoutWorkingFilesChanged: "Build working changes before switching versions.",
   geometryReferenceInvalid: "The geometry reference is stale. Query the current revision again.",
   geometrySelectionMissing: "No matching faces or edges were found.",
   geometrySelectionAmbiguous: "The geometry selection is ambiguous. Narrow the selection.",
@@ -270,8 +275,12 @@ export const en = {
   drawing: "Drawing",
 
   references: "References",
-  restore: "Restore version",
-  restored: "Version restored",
+  versionLibrary: "Version history",
+  versionCount: "Versions: {count}",
+  revisionBase: "Base",
+  revisionPreview: "Preview v{n}",
+  currentVersion: "Current version",
+  switchVersion: "Switch to v{n}",
   current: "Current",
   noProjects: "Every idea starts with a design",
   emptyTitle: "Turn an idea into a part",
@@ -295,7 +304,6 @@ export const en = {
   dimensions: "Overall size",
   solids: "Solids",
 
-  restoredSummary: "Restored a previous version",
   previous: "Previous page",
   next: "Next page",
   page: "Page {page} / {total}",

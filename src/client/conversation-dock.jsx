@@ -8,13 +8,13 @@ import { useFloatingInput } from "./use-floating-input.js";
 
 const EMPTY = { running: false, waiting: false, pending: false, todos: [], activities: [] };
 export const ConversationDock = forwardRef(function ConversationDock({ children, running,
-  hidden, t, statusTarget, revision, onCancel, onRunning, onStart, onRecord }, ref) {
+  hidden, t, statusTarget, revision, latestRevision, onCancel, onRunning, onStart, onRecord }, ref) {
   const [open, setOpen] = useState(false), [expanded, setExpanded] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [native, setNative] = useState(EMPTY), [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState(null), [dismissed, setDismissed] = useState(false);
   const input = useRef(null), statusPanel = useRef(null), wasRunning = useRef(false);
-  const baseline = useRef(revision), stopped = useRef(false);
+  const baseline = useRef(latestRevision), stopped = useRef(false);
   const closeExpanded = useCallback(() => setExpanded(false), []);
   useDismissOnOutsidePointer(statusPanel, expanded, closeExpanded);
   const alive = running || native.running || pending;
@@ -51,7 +51,7 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
   }, [native.running, native.pending, running, onRunning]);
   useEffect(() => {
     if (!wasRunning.current && alive) {
-      baseline.current = revision; stopped.current = false;
+      baseline.current = latestRevision; stopped.current = false;
       setFeedback(null); setDismissed(false);
     }
     if (wasRunning.current && !alive) {
@@ -60,7 +60,7 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
       setExpanded(true);
     }
     wasRunning.current = alive;
-  }, [alive, native.terminal, native.failure, revision]);
+  }, [alive, native.terminal, native.failure, latestRevision]);
   useEffect(() => {
     if (phase !== "done") return;
     const timer = setTimeout(() => setExpanded(false), 6000);
@@ -68,10 +68,10 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
   }, [phase]);
   const completed = native.todos.filter(todo => todo.status === "completed").length;
   const currentTask = native.todos.find(todo => todo.status === "in_progress");
-  const saved = revision > baseline.current;
+  const saved = latestRevision > baseline.current;
   const label = phase === "working" ? [native.activity || t("agentWorking"), currentTask?.content].filter(Boolean).join(" · ")
     : phase === "waiting" ? t(native.interaction === "approval" ? "agentApproval" : native.interaction === "plan-review" ? "agentPlanReview" : "taskStatus.waiting")
-      : phase === "done" ? saved ? t("agentSaved", { version: revision }) : t("agentDone")
+      : phase === "done" ? saved ? t("agentSaved", { version: latestRevision }) : t("agentDone")
         : phase ? t(`taskStatus.${phase}`) : t("openInput");
   const failure = native.failure || (native.terminal === "interrupted" ? t("agentInterrupted")
     : native.terminal === "max-tokens" ? t("agentTokenLimit") : "");

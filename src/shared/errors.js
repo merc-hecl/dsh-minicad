@@ -4,6 +4,7 @@ const rules = [
   ["modelAppLaunchFailed", /FreeCAD 启动失败/],
   ["revisionConflict", /设计已更新/],
   ["workingFilesChanged", /源码或参数已修改/],
+  ["checkoutWorkingFilesChanged", /请先构建再切换版本/],
   ["geometryReferenceInvalid", /几何引用已过期|几何引用不存在/],
   ["geometrySelectionMissing", /没有找到匹配的面或边/],
   ["geometrySelectionAmbiguous", /几何选择不唯一/],

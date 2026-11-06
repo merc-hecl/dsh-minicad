@@ -19,6 +19,7 @@ const localMethods = new Set([
   "open_design", "close_design",
   "model_selection",
   "select_model",
+  "restore",
   "message",
   "api",
   "process_state", "process_history", "checkpoint_file",

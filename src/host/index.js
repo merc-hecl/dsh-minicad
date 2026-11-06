@@ -360,6 +360,10 @@ export async function apply(ctx, config = {}) {
     }
     if (!clientMethods.has(method))
       throw Object.assign(new Error("不支持的操作"), { status: 404 });
+    if (method === "restore") {
+      const project = building.get(args.projectId) || await call("get", { projectId: args.projectId, geometry: false }, signal);
+      if (designBusy(project)) throw new Error("当前设计正在构建，请稍后重试");
+    }
     const result = await call(method, args, signal);
     if (method === "get") { const project = await ensureSession(result); await alignDirectory(project, signal); return project; }
     return result;

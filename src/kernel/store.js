@@ -29,6 +29,8 @@ const now = () => Date.now() / 1000;
 const id = () => randomUUID().replaceAll("-", "");
 const portable = (path) => path.split(sep).join("/");
 const stem = (name) => name.slice(0, -extname(name).length);
+const nextRevision = (model) => (model?.revisions.at(-1)?.revision ?? 0) + 1;
+const candidateRevision = (run) => run.candidateRevision ?? run.baseRevision + 1;
 const cleanName = (name) =>
   String(name)
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
@@ -389,7 +391,7 @@ export class Store {
     if (inputs)
       for (const [path, bytes] of inputs)
         if (!equalBytes(fileBytes(path), bytes)) throw new Conflict();
-    const revision = expected + 1,
+    const revision = nextRevision(model),
       time = now(),
       history = inside(directory, `.cad-history/${portable(stem(sourceFile))}`);
     let folder = join(history, `v${String(revision).padStart(4, "0")}`),
@@ -443,6 +445,7 @@ export class Store {
     for (const [path, bytes] of extraFiles) changes.set(path, bytes);
     this.commit(changes);
     this.cacheSummary(folder, state);
+    return revision;
   }
   async build(key, args, edit = false) {
     const [root, , task] = this.locate(key);
@@ -452,7 +455,7 @@ export class Store {
     this.expect(head, args);
     const saved = this.snapshot(key, undefined, sourceFile, false);
     const journal = new ProcessJournal(directory, sourceFile);
-    const run = journal.begin(sourceFile, head, args.summary, saved?.state.geometryIds || defaultIdFormats);
+    const run = journal.begin(sourceFile, head, nextRevision(task.models[sourceFile]), args.summary, saved?.state.geometryIds || defaultIdFormats);
     try {
       const result = await this.executeBuild(key, args, edit, journal, run, saved);
       return result;
@@ -586,7 +589,7 @@ export class Store {
     const scope = args.commit === false ? api.modelScope(key, `${sourceFile}@${run.id}`) : api.modelScope(key, sourceFile);
     state.validation = args.checks?.length ? {
       checks: args.checks,
-      ...api.checkShape(shape, api.values(args.checks, parameters), scope, head + 1),
+      ...api.checkShape(shape, api.values(args.checks, parameters), scope, run.candidateRevision),
     } : { passed: null, checks: [], results: [] };
     const diagnostics = { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean) };
     if (args.commit === false) {
@@ -596,7 +599,7 @@ export class Store {
     }
     if (state.validation.passed === false)
       throw Object.assign(new Error("尺寸检查未通过，当前版本未被覆盖 / dimensional checks failed; saved revision retained"), { validation: state.validation });
-    const finishedRun = { ...run, phase: "done", committedRevision: head + 1, updated: Date.now() / 1000 };
+    const finishedRun = { ...run, phase: "done", committedRevision: run.candidateRevision, updated: now() };
     this.record(
       key,
       target,
@@ -617,19 +620,21 @@ export class Store {
     const [root, , task] = this.locate(key), directory = this.taskRoot(root, task);
     const journal = new ProcessJournal(directory, args.sourceFile);
     const candidate = journal.candidate(args.runId), { run, state, folder, inputs, assets } = candidate;
-    this.expect(task.models[args.sourceFile]?.head || 0, args);
+    const model = task.models[args.sourceFile];
+    this.expect(model?.head || 0, args);
     this.expect(run.baseRevision, args);
+    if (run.phase !== "preview") throw new Conflict();
     const api = await this.kernel();
     const checks = [...new Map([...(state.validation?.checks || []), ...(args.checks || [])]
       .map(check => [JSON.stringify(check), check])).values()];
     state.validation = checks.length ? { checks, ...api.checkShape(
       api.readShape(fs.readFileSync(join(folder, "model.smb")), "model.smb"),
-      api.values(checks, state.parameters), api.modelScope(key, `${args.sourceFile}@${run.id}`), run.baseRevision + 1,
+      api.values(checks, state.parameters), api.modelScope(key, `${args.sourceFile}@${run.id}`), candidateRevision(run),
     ) } : { passed: null, checks: [], results: [] };
     if (state.validation.passed === false)
       throw Object.assign(new Error("尺寸检查未通过，当前版本未被覆盖 / dimensional checks failed; saved revision retained"), { validation: state.validation });
     state.preview = candidate.preview();
-    const finished = { ...run, phase: "done", committedRevision: run.baseRevision + 1, updated: now() };
+    const finished = { ...run, phase: "done", committedRevision: nextRevision(model), updated: now() };
     this.record(key, args.sourceFile, state, fs.readFileSync(join(folder, "model.smb")),
       args.summary || run.summary, run.baseRevision, inputs, assets, {
         selectModel: !args.preserveSelection,
@@ -659,13 +664,13 @@ export class Store {
     delete state.restoredFrom;
     state.geometryIds = geometryIds;
     const assets = new Map((state.assets || []).map(name => [name, fs.readFileSync(inside(saved.folder, name))]));
-    this.record(key, sourceFile, state, fs.readFileSync(join(saved.folder, "model.smb")),
+    const revision = this.record(key, sourceFile, state, fs.readFileSync(join(saved.folder, "model.smb")),
       args.summary, head, undefined, assets, {
         selectModel: false,
         writeWorkingFiles: false,
         previewBytes: fs.readFileSync(path),
       });
-    return { sourceFile, head: head + 1, committed: true, geometryIds };
+    return { sourceFile, head: revision, committed: true, geometryIds };
   }
   async export(key, args) {
     const saved = this.snapshot(key, args.revision, args.sourceFile, false);
@@ -860,7 +865,7 @@ export class Store {
       const api = await this.kernel(),
         shape = await this.shape(saved),
         scope = api.modelScope(key, candidate ? `${sourceFile}@${args.runId}` : sourceFile);
-      const revision = candidate ? candidate.run.baseRevision + 1 : row.head;
+      const revision = candidate ? candidateRevision(candidate.run) : row.head;
       const result = { sourceFile, revision, ...(candidate ? { runId: args.runId, committed: false } : {}) };
       if (method === "geometry_annotation") {
         const describe = reference => {
@@ -910,35 +915,22 @@ export class Store {
       this.expect(row.head, args);
       const saved = this.snapshot(key, args.revision, sourceFile, false);
       if (!saved) throw new Error("版本不存在");
-      const inputs = this.prepareInputs(directory, sourceFile),
-        shape = await this.shape(saved),
-        api = await this.kernel(),
-        assets = new Map(
-          (saved.state.assets || []).map((name) => [
-            name,
-            fs.readFileSync(inside(saved.folder, name)),
-          ]),
-        );
-      const state = {
-        ...api.describeShape(shape),
-        geometryIds: saved.state.geometryIds || { ...defaultIdFormats },
-        source: saved.state.source,
-        parameters: saved.state.parameters,
-        assets: [...assets.keys()],
-        restoredFrom: Number(args.revision),
-        validation: saved.state.validation || null,
-      };
-      this.record(
-        key,
-        sourceFile,
-        state,
-        api.saveShape(shape),
-        args.summary || `Restore v${args.revision}`,
-        row.head,
-        inputs,
-        assets,
-        { selectModel: !args.preserveSelection },
-      );
+      const revision = saved.state.revision;
+      if (revision !== row.head) {
+        if (this.project(key, false, sourceFile).workingTreeChanged)
+          throw new Conflict("源码、参数或资源有未构建的修改，请先构建再切换版本 / build working changes before switching versions");
+        const changes = new Map(paths(directory, sourceFile).map((file, index) => [
+          file, fs.readFileSync(join(saved.folder, ["model.js", "parameters.json", "model.smb"][index])),
+        ]));
+        for (const name of saved.state.assets || [])
+          changes.set(inside(directory, name), fs.readFileSync(inside(saved.folder, name)));
+        const model = task.models[sourceFile];
+        model.head = revision;
+        model.updated = task.updated = now();
+        if (!args.preserveSelection) task.sourceFile = sourceFile;
+        changes.set(this.designFile(root), this.workspaceBytes(data));
+        this.commit(changes);
+      }
       return this.project(key, args.geometry !== false, sourceFile);
     }
     if (method === "export") return this.export(key, { ...args, sourceFile });

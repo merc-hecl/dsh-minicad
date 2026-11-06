@@ -175,17 +175,36 @@ test(
         expectedRevision: 2,
         revision: 1,
       });
-      assert.equal(restored.head, 3);
+      assert.equal(restored.head, 1);
+      assert.deepEqual(restored.revisions.map(entry => entry.revision), [2, 1]);
       near(restored.design.metrics.volume, built.design.metrics.volume);
       assert.equal(restored.design.parameters.width, 60);
       const persisted = await worker.call("get", { projectId: p.id });
-      assert.equal(persisted.head, 3);
+      assert.equal(persisted.head, 1);
       assert.equal(persisted.design.checks, undefined);
       const cad = await import("@classcad/smlibwasm");
       near(
         cad.fromSmb(await readFile(join(p.directory, "model.smb"))).volume,
         built.design.metrics.volume,
       );
+      const base = { projectId: p.id, sourceFile: "model.js", expectedRevision: 1 };
+      await assert.rejects(worker.call("restore", { ...base, expectedRevision: 2, revision: 2 }), /设计已更新/);
+      const trial = await worker.call("edit", { ...base, commit: false,
+        operations: [{ op: "scale", factor: [0.5, 1, 1] }] });
+      const candidate = await worker.call("query", { ...base, runId: trial.runId, kind: "faces" });
+      assert.equal(candidate.revision, 3);
+      const branch = await worker.call("commit", { ...base, runId: trial.runId });
+      assert.deepEqual(branch.revisions.map(entry => [entry.revision, entry.parent]), [[3, 1], [2, 1], [1, null]]);
+      near(branch.design.metrics.sizeX, 30);
+      const run = await worker.call("process_state", base);
+      assert.equal(run.committedRevision, 3);
+      assert.deepEqual(run.steps.map(step => step.operation), ["scale"]);
+      const other = await worker.call("restore", { ...base, expectedRevision: 3, revision: 2 });
+      assert.equal(other.head, 2);
+      near(other.design.metrics.sizeX, 80);
+      const again = await worker.call("restore", { ...base, expectedRevision: 2, revision: 3 });
+      assert.equal(again.head, 3);
+      near(again.design.metrics.sizeX, 30);
     }),
 );
 
@@ -333,8 +352,9 @@ test(
       near(restored.design.metrics.volume, 1260);
       const after = await worker.call("build", {
         projectId: p.id,
-        expectedRevision: 3,
+        expectedRevision: 1,
       });
+      assert.equal(after.head, 3);
       near(after.design.metrics.volume, 1260);
     }),
 );

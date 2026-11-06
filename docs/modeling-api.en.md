@@ -17,7 +17,7 @@ Agents are encouraged to use `cad_edit` first when existing operations express t
 | `cad_update_parameters` | Merge top-level parameters and rebuild by default; `mode: "replace"` replaces the entire parameter object |
 | `cad_api` | Locate installed declarations by symbol or `Class.member`, with `offset` / `limit` paging |
 | `cad_export` | Export a saved revision of a specified model file |
-| `cad_restore` | Restore a file's historical revision as a new increasing revision |
+| `cad_restore` | Make an existing revision current without creating a revision |
 
 Read model file names and revisions with `cad_read_project` first. All model tools except reading and API lookup require an explicit task-relative `sourceFile`; mutations, queries, measurements and checks also require that file's `expectedRevision`. Explicit agent targets do not change the UI selection. Revisions are independent per file; new files start at revision 0.
 
@@ -28,6 +28,8 @@ Call `cad_set_geometry_id_format` on a saved model with `sourceFile`, `expectedR
 A changed format commits a revision immediately. The workbench and `cad_query` use it for the display ID. Later builds inherit the current revision's formats. Restoring a revision also restores its formats. Queries, measurements and edits continue to use full revision-scoped `id` references.
 
 ### Trials, checks and publication
+
+`head` identifies the current revision. Use `cad_restore` to switch it. Each commit records the current revision as its `parent` and takes the next number across all saved revisions of that file. Build pending working changes before switching revisions.
 
 `cad_build`, `cad_edit` and `cad_update_parameters` retain direct commits by default. Set `commit: false` to save a candidate and process checkpoints without replacing the saved source, parameters, solid or revision. The result supplies `runId` and current `head`. Pass the same `sourceFile`, `expectedRevision: head` and `runId` to query, measure and check that candidate. Candidate references belong to that candidate, not the saved model.
 

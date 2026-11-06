@@ -17,7 +17,7 @@
 | `cad_update_parameters` | 默认合并顶层参数并重建；`mode: "replace"` 替换完整参数对象 |
 | `cad_api` | 按符号或 `Class.member` 定位安装版本的声明，支持 `offset` / `limit` 分页 |
 | `cad_export` | 导出指定建模文件的已保存版本 |
-| `cad_restore` | 恢复指定文件的历史版本，并创建新的递增版本 |
+| `cad_restore` | 将指定文件的已有版本设为当前版本，不产生新版本 |
 
 先用 `cad_read_project` 获取建模文件名和版本。除读取和 API 查询外，agent 的工具调用必须明确提供任务内相对路径 `sourceFile`；修改、查询、测量和检查还需提供该文件的 `expectedRevision`。这些显式目标调用不会改变 UI 当前选中的模型；不同文件的版本分别计算。新建文件从版本 0 开始。
 
@@ -28,6 +28,8 @@
 格式实际变化时直接提交一个新版本，工作台和 `cad_query` 的 `displayId` 都使用该格式。后续建模继承当前版本的格式，恢复历史版本时也恢复其格式。查询、测量和编辑仍使用各自版本的完整 `id` 引用。
 
 ### 试算、检查与发布
+
+`head` 是当前版本，可用 `cad_restore` 切换。每次提交把当前版本记录为 `parent`，编号在该文件的所有已保存版本中递增。切换版本前，先构建工作文件中的改动。
 
 `cad_build`、`cad_edit` 和 `cad_update_parameters` 默认保留直接提交行为；设置 `commit: false` 时只生成候选与过程检查点，不修改已保存的源码、参数、实体或版本。结果返回 `runId` 和当前 `head`。随后用同一 `sourceFile`、`expectedRevision: head`、`runId` 调用查询、测量和检查工具，检查的是该候选，而不是画布中已保存的模型。候选引用仅在该候选中有效。
 

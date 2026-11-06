@@ -179,13 +179,13 @@ test(
         expectedRevision: 2,
         revision: 1,
       });
-      assert.equal(restored.head, 3);
+      assert.equal(restored.head, 1);
       assert.deepEqual(restored.design.geometryIds, defaultIdFormats);
       assert.equal(
         (
           await worker.call("query", {
             ...args,
-            expectedRevision: 3,
+            expectedRevision: 1,
             kind: "faces",
           })
         ).items[0].displayId,
@@ -248,4 +248,7 @@ test("numbering changes commit a restorable revision without rebuilding the mode
   const restored = await worker.call("restore", { ...args, expectedRevision: 3, revision: 1 });
   assert.equal((await query(restored.head, "faces"))[0].displayId, "F-1");
   assert.equal((await query(restored.head, "edges"))[0].displayId, "E-1");
+  const branch = await worker.call("set_geometry_id_format", { ...args, expectedRevision: 1, faceFormat: "Branch-{n}" });
+  assert.equal(branch.head, 4);
+  assert.equal((await query(4, "faces"))[0].displayId, "Branch-1");
 });

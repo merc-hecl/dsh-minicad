@@ -14,7 +14,7 @@ Give the DSH agent dimensions or a reference drawing. It builds, revises and exp
 
 - **Build and revise** — Parametric parts, multiple solids and PDF drawing references.
 - **Measure and reference** — Select faces or edges to measure or request a precise change.
-- **Compare and restore** — Review modeling steps, see geometry changes and restore saved versions.
+- **Compare and restore** — Switch revisions in the version tree, review modeling steps and compare geometry.
 - **Keep designing** — Share one design across conversations, or save an independent copy.
 - **Deliver** — Export STEP, STL or a project ZIP, or open the model in FreeCAD.
 

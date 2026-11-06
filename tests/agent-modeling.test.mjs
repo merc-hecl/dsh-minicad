@@ -477,7 +477,7 @@ test(
         expectedRevision: 3,
         revision: 1,
       });
-      assert.equal(restored.head, 4);
+      assert.equal(restored.head, 1);
       near(restored.design.metrics.volume, 6000);
       assert.equal(
         (await worker.call("get", { projectId })).sourceFile,
@@ -580,12 +580,13 @@ test(
         expectedRevision: 1,
         revision: 1,
       });
+      assert.equal(restored.head, 1);
       near(restored.design.metrics.volume, 6000);
       near(
         cad.fromSmb(
           await readFile(join(task.directory, "resources", "part.smb")),
         ).volume,
-        6000,
+        6,
       );
       imported.dispose();
       changed.dispose();

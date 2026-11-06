@@ -49,8 +49,8 @@ export class ProcessJournal {
     };
   }
   save(run) { atomicWrite(this.manifest(run.id), jsonBytes(run)); }
-  begin(sourceFile, baseRevision, summary, geometryIds) {
-    const run = { id: randomUUID(), sourceFile, baseRevision, summary: summary || "", geometryIds,
+  begin(sourceFile, baseRevision, candidateRevision, summary, geometryIds) {
+    const run = { id: randomUUID(), sourceFile, baseRevision, candidateRevision, summary: summary || "", geometryIds,
       phase: "working", created: Date.now() / 1000, updated: Date.now() / 1000, steps: [] };
     fs.mkdirSync(join(this.root, run.id), { recursive: true });
     this.save(run);

@@ -50,7 +50,7 @@ function FrameThumbnail({ entry, load, selected, onSelect, date }) {
   </li>;
 }
 
-export function MakingRecord({ project, progress, request, t, language, busy, onRestore, onClose, onTranscriptTarget }) {
+export function MakingRecord({ project, progress, request, t, language, onClose, onTranscriptTarget }) {
   const [runs, setRuns] = useState([]);
   const [scope, setScope] = useState("versions"), [selectedVersion, setSelectedVersion] = useState(project.head);
   const [selectedRun, setSelectedRun] = useState(null), [selectedStep, setSelectedStep] = useState(null);
@@ -149,8 +149,6 @@ export function MakingRecord({ project, progress, request, t, language, busy, on
         <div className="mc-record-toolbar">
           {focus && <Tag tone="neutral">{focus.label}</Tag>}
           <span className="mc-record-kind">{focus ? t(focus.runId ? "checkpointPreview" : "savedVersion") : project.sourceFile}</span>
-          {focus?.revision && focus.revision !== project.head && <Button variant="ghost" size="sm"
-            disabled={busy} onClick={() => onRestore(focus.revision)}>{t("restore")}</Button>}
           <Button variant="ghost" size="sm" icon={<IconRefreshOutlineRegular size={16} />} aria-label={t("resetView")} onClick={() => setReset(value => value + 1)} />
         </div>
         <div className="mc-record-stage">

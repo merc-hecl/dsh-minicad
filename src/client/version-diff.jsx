@@ -5,7 +5,8 @@ import { ErrorDetails } from "./workbench-dialog.jsx";
 export function VersionDiff({ project, request, onResult, onClose, t, language }) {
   const versions = [...project.revisions].sort((a, b) => b.revision - a.revision);
   const [baseRevision, setBaseRevision] = useState(project.head);
-  const [targetRevision, setTargetRevision] = useState(versions.find(item => item.revision < project.head)?.revision ?? project.head);
+  const [targetRevision, setTargetRevision] = useState(versions.find(item => item.revision === project.head)?.parent
+    ?? versions.find(item => item.revision !== project.head)?.revision ?? project.head);
   const [menu, setMenu] = useState(null), [result, setResult] = useState(null), [error, setError] = useState(null);
   useEffect(() => {
     const controller = new AbortController();
