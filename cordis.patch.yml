@@ -9,7 +9,7 @@
         name: MiniCAD
         description: 参数化零件设计与图纸建模
         order: 20
-        # Standard tool composition from installed DSH 0.2.1-rc.5; presets have no inheritance.
+        # Presets do not inherit tools from DSH's standard preset.
         plugins:
           - id: persona
             name: '@deepseek-ai/dsh-persona'
@@ -91,8 +91,6 @@
             config:
               - id: tool-subagent-control
                 name: '@deepseek-ai/dsh-tool-subagent-control'
-              - id: tool-subagent-list-agents
-                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
               - id: tool-subagent
                 name: '@deepseek-ai/dsh-tool-subagent'
                 config:

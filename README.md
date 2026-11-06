@@ -22,7 +22,7 @@
 
 ## 安装
 
-适配 **DSH 0.2.1-rc.5**。使用 DSH 中已配置的模型，无需另配 API Key。
+适配 **DSH 0.2.2-rc.1**。使用 DSH 中已配置的模型，无需另配 API Key。
 
 **桌面版**
 
@@ -37,7 +37,7 @@
 从 npm 安装，完成后重启 DSH：
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add dsh-minicad -w
+npx @deepseek-ai/dsh@0.2.2-rc.1 plugin --profile web add dsh-minicad -w
 ```
 
 ## 开始做一个零件

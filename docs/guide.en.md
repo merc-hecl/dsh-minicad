@@ -4,7 +4,7 @@
 
 ## Install and update
 
-Compatibility target: DSH **0.2.1-rc.5**. Prebuilt packages include the client, SMLib WebAssembly kernel and runtime dependencies. No manual dependency installation, build or Python environment is needed.
+Compatibility target: DSH **0.2.2-rc.1**. Prebuilt packages include the client, SMLib WebAssembly kernel and runtime dependencies. No manual dependency installation, build or Python environment is needed.
 
 Desktop: open DSH **Plugins → Add plugin**, enter the npm package name `dsh-minicad`, click **Install**, enable it and restart if prompted. The application manages its own profile; do not modify it through the CLI.
 
@@ -16,14 +16,14 @@ Requires Node.js 22.19+ and pnpm. If pnpm is missing, install it first:
 
 ```sh
 npm install -g pnpm
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add dsh-minicad -w
+npx @deepseek-ai/dsh@0.2.2-rc.1 plugin --profile web add dsh-minicad -w
 ```
 
-For a local package, replace `dsh-minicad` with its extracted directory, such as `link:C:/MiniCAD/package`; use `link:/absolute/path/to/package` on macOS/Linux. If dsh is installed globally, `dsh` can replace `npx @deepseek-ai/dsh@0.2.1-rc.5`. Restart the Web host after installation.
+For a local package, replace `dsh-minicad` with its extracted directory, such as `link:C:/MiniCAD/package`; use `link:/absolute/path/to/package` on macOS/Linux. If dsh is installed globally, `dsh` can replace `npx @deepseek-ai/dsh@0.2.2-rc.1`. Restart the Web host after installation.
 
 For a Web profile without pnpm, put the extracted `package` directory in the profile's `node_modules/dsh-minicad` and merge the complete entries from [cordis.patch.yml](../cordis.patch.yml) into its patch array. Do not append YAML after an existing `[]`. This method does not apply to Desktop.
 
-To update an npm installation on Desktop, uninstall it through **Plugins**, then install it again by package name. For Web, run `npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web update dsh-minicad -w`, then restart. To update a local package, extract it into a separate directory, switch to that directory in plugin management and restart. Keep design folders separate from the installation.
+To update an npm installation on Desktop, uninstall it through **Plugins**, then install it again by package name. For Web, run `npx @deepseek-ai/dsh@0.2.2-rc.1 plugin --profile web update dsh-minicad -w`, then restart. To update a local package, extract it into a separate directory, switch to that directory in plugin management and restart. Keep design folders separate from the installation.
 
 ## Model, inspect and export
 
@@ -74,7 +74,7 @@ An empty string enables automatic detection. Non-PATH Linux installations such a
 Remove through Desktop **Plugins**, or for Web:
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web remove dsh-minicad -w
+npx @deepseek-ai/dsh@0.2.2-rc.1 plugin --profile web remove dsh-minicad -w
 ```
 
 Restart to remove the entry. Uninstalling does not delete design data.

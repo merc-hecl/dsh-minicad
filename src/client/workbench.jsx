@@ -252,10 +252,14 @@ export function Workbench({
     if (next) openConversation(project.id, next);
     else clearSelection();
   }, [workspaceState.archivedSessionIds, project?.id, project?.activeSessionId]);
+  const activeSessionId = project?.activeSessionId;
+  const sessionListed = !!sessionState.byId[activeSessionId];
+  const sessionCatalogReady = sessionState.phase === "ready";
   useEffect(() => {
-    const id = project?.activeSessionId;
-    if (!id) return;
-    const reference = retainSession(id);
+    if (!activeSessionId || (!sessionListed && !sessionCatalogReady)) return;
+    let reference;
+    try { reference = retainSession(activeSessionId); }
+    catch (error) { showError(error); return; }
     let disposed = false;
     reference.ready
       .then(() => {
@@ -269,7 +273,7 @@ export function Workbench({
       setSessionReference(null);
       reference.release();
     };
-  }, [project?.activeSessionId]);
+  }, [activeSessionId, sessionListed, sessionCatalogReady]);
   useEffect(() => {
     if (!selected) return;
     let disposed = false,

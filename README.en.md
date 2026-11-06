@@ -22,7 +22,7 @@ Give the DSH agent dimensions or a reference drawing. It builds, revises and exp
 
 ## Install
 
-Targets **DSH 0.2.1-rc.5**. Uses your existing DSH model configuration; no separate API key.
+Targets **DSH 0.2.2-rc.1**. Uses your existing DSH model configuration; no separate API key.
 
 **Desktop**
 
@@ -37,7 +37,7 @@ Targets **DSH 0.2.1-rc.5**. Uses your existing DSH model configuration; no separ
 Install from npm, then restart DSH:
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add dsh-minicad -w
+npx @deepseek-ai/dsh@0.2.2-rc.1 plugin --profile web add dsh-minicad -w
 ```
 
 ## Make your first part

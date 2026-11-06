@@ -64,12 +64,13 @@ export function DesignNavigator({ projects, selected, currentSessionId, language
     <div className={c.list} role="tree" aria-label={t("projects")}>
       {folders.map(project => {
         const matchesFolder = project.title.toLocaleLowerCase().includes(queryText);
-        const sessions = project.sessions.map(id => {
+        const sessions = project.sessions.flatMap(id => {
           const session = sessionState.byId[id];
-          return { id, title: session?.title || "", blank: session?.blank ?? true,
-            updatedAt: session?.updatedAt ?? project.created * 1000, running: session?.running || false,
+          if (!session) return [];
+          return [{ id, title: session.title || "", blank: session.blank,
+            updatedAt: session.updatedAt, running: session.running,
             runningSubagentCount: sessionState.projectionsBySession[id]?.values.subagentCatalog?.filter(child => sessionState.byId[child.id]?.running).length || 0,
-            completed: false, archived: archived.has(id), pinned: pins.includes(id) };
+            completed: false, archived: archived.has(id), pinned: pins.includes(id) }];
         }).filter(session => (archivedFilter === "show-archived" || session.archived === (archivedFilter === "only-archived"))
           && (!session.blank || session.id === project.activeSessionId)
           && (!queryText || matchesFolder || session.title.toLocaleLowerCase().includes(queryText)));
