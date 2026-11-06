@@ -176,13 +176,32 @@ html[data-platform="darwin"] .mc-workbench {
   .mc-measurement-properties :is(dt, dd) { grid-column: 1 / -1; }
 }
 .mc-header-actions button[aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
-.mc-scale {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  pointer-events: none;
+.mc-navigation-readout {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 18px;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mc-scale,
+.mc-cursor-coordinates {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.mc-scale {
+  color: var(--mc-muted);
+}
+.mc-cursor-coordinates > span {
+  display: flex;
+  gap: 4px;
+}
+.mc-cursor-coordinates [data-coordinate] {
+  min-width: 6ch;
+  text-align: right;
 }
 .mc-scale-bar {
   height: 7px;
@@ -331,7 +350,7 @@ body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [ro
 body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [role="dialog"]) > [aria-hidden="true"]::after {
   background: transparent;
 }
-.mc-scale {
+.mc-navigation-readout {
   border-radius: var(--dsw-radius-lg);
 }
 .mc-sidebar {
@@ -379,8 +398,7 @@ body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [ro
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  width: 176px;
+  gap: 4px;
   pointer-events: none;
 }
 .mc-view-cube {

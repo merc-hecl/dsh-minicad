@@ -4,7 +4,7 @@ import { Tooltip } from "@deepseek-ai/dsh-client-ui-primitives";
 
 const SIZE = 176;
 const EDGE = 60;
-const CENTER = new THREE.Vector2(80, 96);
+const CENTER = new THREE.Vector2(SIZE / 2, 96);
 const AXES = ["X", "Y", "Z"].map((label, index) => ({
   label, normal: new THREE.Vector3().setComponent(index, 1),
 }));

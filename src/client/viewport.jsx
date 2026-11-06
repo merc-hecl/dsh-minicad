@@ -35,6 +35,7 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
+  const coordinates = useRef(null);
   const [scale, setScale] = useState(null);
   const floating = useRef(null);
   const selectionProps = useRef(null);
@@ -128,10 +129,16 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
     };
     let turn = null, cubeDrag = null, fitFrame = 0;
     let renderFrame = 0, disposed = false, inView = true;
+    // Pointer-only frames update the readout without redrawing the scene.
+    let sceneDirty = false;
     state.active = active;
     const canRender = () => !disposed && inView && state.active && !document.hidden;
-    function invalidate() {
+    function scheduleFrame() {
       if (canRender() && !renderFrame) renderFrame = requestAnimationFrame(draw);
+    }
+    function invalidate() {
+      sceneDirty = true;
+      scheduleFrame();
     }
     state.invalidate = invalidate;
     state.clearPick = () => {
@@ -142,6 +149,47 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
       invalidate();
     };
     const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2(), ndc = new THREE.Vector2();
+    const cursorValues = coordinates.current?.querySelectorAll("[data-coordinate]");
+    const cursorHits = [], gridPoint = new THREE.Vector3();
+    const xyPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1));
+    let cursorOnCanvas = false;
+    function setPointerRay(x, y, rect) {
+      ndc.set((x - rect.left) / rect.width * 2 - 1, 1 - (y - rect.top) / rect.height * 2);
+      raycaster.setFromCamera(ndc, camera);
+    }
+    function showCoordinates(point) {
+      cursorValues?.forEach((element, axis) => {
+        const value = point?.getComponent(axis);
+        const label = value === undefined ? "—" : (Math.abs(value) < 0.005 ? 0 : value).toFixed(2);
+        if (element.textContent !== label) element.textContent = label;
+      });
+    }
+    function clearCoordinates() {
+      cursorOnCanvas = false;
+      showCoordinates(null);
+    }
+    function updateCoordinates() {
+      if (!cursorOnCanvas) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      if (pointer.x < rect.left || pointer.x >= rect.right || pointer.y < rect.top || pointer.y >= rect.bottom) {
+        clearCoordinates();
+        return;
+      }
+      setPointerRay(pointer.x, pointer.y, rect);
+      if (state.diffActive) {
+        for (const item of diffModel.children) {
+          if (item.isMesh && !item.isLineSegments2) raycaster.intersectObject(item, false, cursorHits);
+        }
+      } else if (state.surface) {
+        raycaster.intersectObject(state.surface, false, cursorHits);
+      }
+      const hit = cursorHits[0];
+      cursorHits.length = 0;
+      const gridHit = !hit && Math.abs(raycaster.ray.direction.z) > 0.04
+        ? raycaster.ray.intersectPlane(xyPlane, gridPoint) : null;
+      showCoordinates(hit?.point ?? gridHit);
+    }
     let clickStart = null;
     const startPick = (event) => {
       if (event.button === 0 && selectionProps.current.selecting && !selectionProps.current.pickingDisabled)
@@ -155,7 +203,7 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
       const preview = design?.previewData;
       if (!preview || !state.surface) return;
       const rect = renderer.domElement.getBoundingClientRect();
-      raycaster.setFromCamera(new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1, 1-(event.clientY-rect.top)/rect.height*2), camera);
+      setPointerRay(event.clientX, event.clientY, rect);
       const surfaceHit = raycaster.intersectObject(state.surface, false)[0];
       let index, kind, point;
       if (surfaceHit) { index = preview.faceIndices[surfaceHit.faceIndex]; kind = "faces"; point = surfaceHit.point; }
@@ -249,19 +297,27 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
       panel.style.setProperty("--mc-bar-origin", `${Math.max(0, Math.min(width, x - px))}px ${above ? 44 : 0}px`);
       panel.dataset.placed = "true";
     };
-    const cancelPick = () => { clickStart = null; };
-    const movePick = event => {
-      if (clickStart && Math.hypot(event.clientX-clickStart.x,event.clientY-clickStart.y) > 4) cancelPick();
+    const cancelPointer = () => { clickStart = null; clearCoordinates(); };
+    const movePointer = event => {
+      if (clickStart && Math.hypot(event.clientX-clickStart.x,event.clientY-clickStart.y) > 4) clickStart = null;
+      if (!cursorValues || event.pointerType !== "mouse") return;
+      cursorOnCanvas = true;
+      pointer.set(event.clientX, event.clientY);
+      scheduleFrame();
     };
     renderer.domElement.addEventListener("pointerdown", startPick);
     renderer.domElement.addEventListener("pointerup", endPick);
-    renderer.domElement.addEventListener("pointermove", movePick);
-    renderer.domElement.addEventListener("pointercancel", cancelPick);
+    renderer.domElement.addEventListener("pointermove", movePointer);
+    renderer.domElement.addEventListener("pointerleave", clearCoordinates);
+    renderer.domElement.addEventListener("pointercancel", cancelPointer);
     state.setActive = (value) => {
       state.active = value;
       controls.enabled = canRender() && !turn && !cubeDrag;
       if (canRender()) invalidate();
-      else { cancelAnimationFrame(renderFrame); renderFrame = 0; }
+      else {
+        cancelAnimationFrame(renderFrame); renderFrame = 0;
+        clearCoordinates();
+      }
     };
     controls.addEventListener("change", invalidate);
     function leaveDefaultView() {
@@ -571,6 +627,13 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
     function draw() {
       renderFrame = 0;
       if (!canRender()) return;
+      if (sceneDirty) {
+        sceneDirty = false;
+        drawScene();
+      }
+      updateCoordinates();
+    }
+    function drawScene() {
       if (turn) {
         const amount = turn.duration ? Math.min((performance.now() - turn.start) / turn.duration, 1) : 1;
         const eased = amount * amount * (3 - 2 * amount);
@@ -612,8 +675,9 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
       controls.dispose();
       renderer.domElement.removeEventListener("pointerdown", startPick);
       renderer.domElement.removeEventListener("pointerup", endPick);
-      renderer.domElement.removeEventListener("pointermove", movePick);
-      renderer.domElement.removeEventListener("pointercancel", cancelPick);
+      renderer.domElement.removeEventListener("pointermove", movePointer);
+      renderer.domElement.removeEventListener("pointerleave", clearCoordinates);
+      renderer.domElement.removeEventListener("pointercancel", cancelPointer);
       for (const root of [scene, gridScene]) {
         root.traverse((o) => {
           if (o.userData.sharedPosition) o.geometry.deleteAttribute("position");
@@ -757,21 +821,25 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
         {selectionTools}
       </div>
       {presentation === "workbench" && <div className="mc-navigation">
-      <ViewCube
-        ref={cube}
-        active={active}
-        t={t}
-        onSelect={(direction) => runtime.current?.orient(direction)}
-        onDragStart={() => runtime.current?.beginCubeDrag()}
-        onDrag={(start, end) => runtime.current?.rotateCube(start, end)}
-        onDragEnd={() => runtime.current?.endCubeDrag()}
-      />
-      {active && scale && (
-        <div className="mc-scale mc-panel mc-secondary" role="img" aria-label={`${millimetres(scale.distance)} mm`}>
-          <span>{millimetres(scale.distance)} mm</span>
-          <span className="mc-scale-bar" style={{ width: scale.width }} aria-hidden="true" />
+        <ViewCube
+          ref={cube}
+          active={active}
+          t={t}
+          onSelect={(direction) => runtime.current?.orient(direction)}
+          onDragStart={() => runtime.current?.beginCubeDrag()}
+          onDrag={(start, end) => runtime.current?.rotateCube(start, end)}
+          onDragEnd={() => runtime.current?.endCubeDrag()}
+        />
+        <div className="mc-navigation-readout mc-panel mc-secondary">
+          {active && scale && <div className="mc-scale" role="img" aria-label={`${millimetres(scale.distance)} mm`}>
+            <span>{millimetres(scale.distance)} mm</span>
+            <span className="mc-scale-bar" style={{ width: scale.width }} aria-hidden="true" />
+          </div>}
+          <div ref={coordinates} className="mc-cursor-coordinates" role="group" aria-label={t("cursorCoordinates")}>
+            {["X", "Y", "Z"].map(axis => <span key={axis}>{axis}<span data-coordinate>—</span></span>)}
+            <span>mm</span>
+          </div>
         </div>
-      )}
       </div>}
     </div>
   );
