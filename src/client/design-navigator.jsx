@@ -1,21 +1,23 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Button, Modal, Menu, Tooltip,
   IconProjectAddOutlineRegular, IconSearchOutlineRegular, IconSlidersTwoOutlineRegular,
   IconCloseFillRegular, IconPaperclipOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { DesignFolderRow, TaskRow, workspaceClasses as c, workspaceLocale } from "./design-navigation-rows.jsx";
+import { SessionActionMenu } from "./session-action-menu.jsx";
 import { errorKey } from "../shared/errors.js";
 
 export function DesignNavigator({ projects, selected, currentSessionId, language, t, onOpen, onCreate,
   onRename, onFork, onNewSession, onForkSession, onRenameSession, onRemove, onReference,
-  attachments, pickerBusy, sessionState, workspaceState, renderTaskSlot }) {
+  attachments, pickerBusy, sessionState, workspaceState, renderTaskSlot, contextMenus, shortcutCatalog }) {
   const [expanded, setExpanded] = useState({});
   const [archivedFilter, setArchivedFilter] = useState("hide-archived");
   const [search, setSearch] = useState(false), [query, setQuery] = useState("");
   const [options, setOptions] = useState(false), [order, setOrder] = useState("updated");
   const [removeTarget, setRemoveTarget] = useState(null), [removing, setRemoving] = useState(false), [removeError, setRemoveError] = useState(null);
   const [now, setNow] = useState(Date.now());
+  const shortcuts = useSyncExternalStore(shortcutCatalog.subscribe, shortcutCatalog.getSnapshot);
   const input = useRef(null);
   const navigationT = (key, values = {}) => {
     if (key === "actions.workspace.aria") return t("taskActions", values);
@@ -30,10 +32,7 @@ export function DesignNavigator({ projects, selected, currentSessionId, language
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(timer); }, []);
   const archived = new Set(workspaceState.archivedSessionIds);
   const pins = workspaceState.pinnedSessionIds;
-  const actions = (name, props, options) => {
-    if (name === "sidebar.workspaces.session.menu.item") return renderTaskSlot("minicad.session.menu", {
-      ...props, onRenameSession, onForkSession,
-    }, options);
+  const actions = (name, props) => {
     const slots = { "sidebar.workspaces.session.row.action": "minicad.session.rowActions",
       "sidebar.session.row.leading": "minicad.session.leading", "sidebar.session.row.hover": "minicad.session.hover" };
     return slots[name] ? renderTaskSlot(slots[name], props) : null;
@@ -96,6 +95,9 @@ export function DesignNavigator({ projects, selected, currentSessionId, language
             }} t={navigationT} />
           {open && sessions.map(session => <TaskRow key={session.id} node={session} currentId={currentSessionId} now={now}
             onOpen={() => { if (!session.archived && session.id !== currentSessionId) onOpen(project.id, session.id); }}
+            renderMenu={props => <SessionActionMenu {...props} sessionId={session.id} displayTitle={session.title}
+              contextMenus={contextMenus} shortcuts={shortcuts} renderSlot={renderTaskSlot}
+              onRename={onRenameSession} onFork={onForkSession} />}
             onRenameRequest={onRenameSession} renderSlot={actions} t={navigationT} />)}
         </div>;
       })}

@@ -337,13 +337,9 @@ export const workspaceLocale = {
 * Workspace browser tree row components (figma Cell set 14:3080): pure presentational —
 * all data and callbacks arrive via props. Hover swaps (folder->chevron,
 * time->ellipsis, action buttons) are CSS-only, and a session row's clipped
-* title marquees programmatically while the row is hovered. Workspace row
-* menus are visual-only except Rename/Delete. A Session row's "..." menu and
-* its hover buttons are the `sidebar.workspaces.session.menu.item` and
-* `sidebar.workspaces.session.row.action` lists, rendered through the
-* browser's `renderSlot` with the menu's open state as the occurrence's hook
-* context; this package's own actions are entries like any plugin's. The
-* session and workspace hover cards are suppressed while a menu is open.
+* title marquees programmatically while the row is hovered. The browser
+* supplies the session menu renderer and the native quick-action slot.
+* Session and workspace hover cards are suppressed while a menu is open.
 */
 /** Row display title: blank rows show the localized New Session label. */
 function displayTitle(node, t) {
@@ -721,15 +717,15 @@ function SessionHoverContent({ node, now, renderSlot, t }) {
 * @param props.now - epoch ms for relative-time formatting.
 * @param props.onOpen - open a session by id.
 * @param props.onRenameRequest - open the rename dialog from a title double-click (id + current title).
-* @param props.renderSlot - child-seat renderer for the row's action lists
-* (`sidebar.workspaces.session.menu.item` / `sidebar.workspaces.session.row.action`),
-* its leading decoration, and its hover-card section.
+* @param props.renderMenu - session action menu renderer.
+* @param props.renderSlot - renderer for quick actions, the leading decoration,
+* and the hover-card section.
 * @param props.onReveal - scroll this row into view after search navigation, then acknowledge it.
 * @param props.drag - optional row-drag target wiring; blank rows cannot start a drag.
 * @param props.t - the browser root's locale seat.
 * @returns the session row.
 */
-function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest, renderSlot, onReveal, drag, t }) {
+function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest, renderSlot, renderMenu, onReveal, drag, t }) {
 	const row = node;
 	const title = displayTitle(node, t);
 	const selected = node.id === currentId;
@@ -738,7 +734,6 @@ function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest, render
 	const showStatus = primaryStatus.state !== "idle";
 	const draggable = drag !== void 0 && !row.blank && !row.archived;
 	const [menuOpen, setMenuOpen] = (0, react.useState)(false);
-	const menuOpenState = (0, react.useMemo)(() => [menuOpen, setMenuOpen], [menuOpen]);
 	const rowRef = (0, react.useRef)(null);
 	const titleRef = (0, react.useRef)(null);
 	const marquee = useTitleMarquee(titleRef);
@@ -803,13 +798,9 @@ function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest, render
 					onClick: (e) => {
 						e.stopPropagation();
 					},
-					children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Menu, {
+					children: [renderMenu({
 						open: menuOpen,
-						onClose: () => {
-							setMenuOpen(false);
-						},
-						portal: true,
-						closeOnPointerLeave: true,
+						setOpen: setMenuOpen,
 						anchor: (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							className: Rows_module_css_default.iconButton,
@@ -818,12 +809,7 @@ function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest, render
 								setMenuOpen((v) => !v);
 							},
 							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconEllipsisOutlineRegular, {})
-						}),
-						children: renderSlot("sidebar.workspaces.session.menu.item", {
-							sessionId: node.id,
-							displayTitle: row.title,
-							closeMenu: () => setMenuOpen(false)
-						}, { hookContext: menuOpenState })
+						})
 					}), renderSlot("sidebar.workspaces.session.row.action", {
 						sessionId: node.id,
 						displayTitle: row.title

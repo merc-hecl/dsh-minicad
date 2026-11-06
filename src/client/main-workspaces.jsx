@@ -106,7 +106,8 @@ export function mirrorNativeSlot(ctx, target, source, select = () => true, adapt
       entries = next;
       disposers = next.map((entry, index) => {
         const Component = component || entry.component;
-        return ctx.slots.register({ name: target, id: `action-${index}`, order: index,
+        const placement = entry.options.key === undefined ? { id: `action-${index}`, order: index } : { key: entry.options.key };
+        return ctx.slots.register({ name: target, ...placement,
           inject: entry.inject, locale: entry.locale, store: entry.store }, props => <Component {...props} {...adapt(props)} />);
       });
     };
@@ -140,7 +141,7 @@ export function registerMainWorkspaces(ctx, catalog, request) {
     sync();
     return () => { unsubscribe(); dispose?.(); };
   });
-  for (const name of ["sidebar.workspaces.directoryFlow", "sidebar.workspaces.session.menu.item",
+  for (const name of ["sidebar.workspaces.directoryFlow",
     "sidebar.workspaces.session.row.action", "sidebar.session.row.leading", "sidebar.session.row.hover"])
     mirrorNativeSlot(ctx, `minicad.main.${name}`, name);
 }

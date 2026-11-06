@@ -15,7 +15,7 @@ import designNavigatorCss from "./design-navigator.css";
 import directoryOpenCss from "./directory-open-action.css";
 import conversationDockCss from "./conversation-dock.css";
 export const inject = [
-  "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts", "inputTriggers", "uiConversation",
+  "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts", "inputTriggers", "uiConversation", "contextMenus",
 ];
 export function apply(ctx) {
   ctx.effect(
@@ -125,6 +125,7 @@ export function apply(ctx) {
             menuOpenState: (_standard, state) => () => state,
             shortcuts: ctx.shortcuts.catalog,
           } } },
+          "minicad.contextMenu.icon": { kind: "keyed", scope: "root" },
           "minicad.session.rowActions": { kind: "list", scope: "root" },
           "minicad.session.leading": { kind: "list", scope: "root" },
           "minicad.session.hover": { kind: "list", scope: "root" },
@@ -142,6 +143,8 @@ export function apply(ctx) {
           addGeometryReference={addGeometryReference}
           SessionProvider={SessionProvider}
           renderSlot={renderSlot}
+          contextMenus={ctx.contextMenus}
+          shortcutCatalog={ctx.shortcuts.catalog}
           retainSession={(id) => ctx.sessions.retain(id, { source: "minicad" })}
           sessionCatalog={{ subscribe: listener => ctx.sessions.list.subscribe(listener), getSnapshot: () => ctx.sessions.list.getSnapshot() }}
           workspaceCatalog={{ subscribe: listener => ctx.workspaces.list.subscribe(listener), getSnapshot: () => ctx.workspaces.list.getSnapshot() }}
@@ -157,16 +160,13 @@ export function apply(ctx) {
   ctx.slots.inject("minicad.composer", () =>
     ctx.slots.register({ name: "minicad.composer" }, props => <Composer {...props} minicadT={t} chatT={chatT} />),
   );
-  // Native session actions keep their own pin/archive behavior and dialogs.
-  // MiniCAD redirects only rename requests and fork placement into this workspace.
   const mirror = (...args) => mirrorNativeSlot(ctx, ...args);
   // This is the same directory control used by the Session header, with an
   // explicit design path so renamed workspaces never use an old Session cwd.
   mirror("minicad.directoryActions", "sidebar.right.tab.files.actions", entry => entry.options.id === "open-in-app",
     () => ({ request, minicadT: t }), DirectoryOpenAction);
-  mirror("minicad.session.menu", "sidebar.workspaces.session.menu.item", undefined, props => ({
-    requestSessionRename: props.onRenameSession, forkSession: props.onForkSession,
-  }));
+  mirror("minicad.session.menu", "sidebar.workspaces.session.menu.item");
+  mirror("minicad.contextMenu.icon", "contextMenu.icon");
   mirror("minicad.session.rowActions", "sidebar.workspaces.session.row.action");
   mirror("minicad.session.leading", "sidebar.session.row.leading");
   mirror("minicad.session.hover", "sidebar.session.row.hover");

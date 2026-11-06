@@ -51,6 +51,7 @@ const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
 
 export function Workbench({
   locale, t, enter, back, request, addGeometryReference, SessionProvider, renderSlot, retainSession, sessionCatalog, workspaceCatalog, renameConversation,
+  contextMenus, shortcutCatalog,
 }) {
   const workbench = useRef(null);
   const dock = useRef(null);
@@ -506,6 +507,7 @@ export function Workbench({
         aria-hidden={panelCollapsed} inert={panelCollapsed ? "" : undefined} data-instant={!pointerModality() || undefined}>
           <DesignNavigator projects={projects} selected={selected} currentSessionId={project?.activeSessionId} language={language} t={t}
             sessionState={sessionState} workspaceState={workspaceState} renderTaskSlot={renderSlot}
+            contextMenus={contextMenus} shortcutCatalog={shortcutCatalog}
             onRenameSession={(sessionId, currentTitle) => setRenameTarget({ sessionId, currentTitle })} onForkSession={forkConversation}
             pickerBusy={!!picker || busy}
             onCreate={() => { if (!busy) { setError(null); setPicker({ type: "open" }); } }}
