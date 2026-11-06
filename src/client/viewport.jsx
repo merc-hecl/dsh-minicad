@@ -104,6 +104,15 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
     const gridScene = new THREE.Scene();
     const gridCamera = camera.clone();
     gridScene.add(grid);
+    const gridAxes = [[-1, 0, 0, 1, 0, 0], [0, -1, 0, 0, 1, 0]].map(points => {
+      const axis = new LineSegments2(new LineSegmentsGeometry().setPositions(points), new LineMaterial({
+        linewidth: 1.6, alphaToCoverage: true, transparent: true, depthTest: false, depthWrite: false,
+      }));
+      axis.position.z = grid.position.z;
+      axis.renderOrder = 1;
+      return axis;
+    });
+    gridScene.add(...gridAxes);
     const groundLine = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(-1, 0, 0), new THREE.Vector3(1, 0, 0),
@@ -504,6 +513,11 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
           ? (index ? 0.5 : 0.35)
           : (index ? 0.75 : 0.6)) * fade;
       });
+      const axisColors = state.dark ? [0xf28b82, 0x79ce9a] : [0xc94b4b, 0x258552];
+      gridAxes.forEach((axis, index) => {
+        axis.material.color.set(axisColors[index]);
+        axis.material.opacity = 0.72 * fade;
+      });
       groundLine.material.color.set(state.dark ? 0x9caabe : 0x8e9bab);
       groundLine.material.opacity = (state.dark ? 0.5 : 0.6) * (1 - fade);
     }
@@ -545,6 +559,12 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
       // live orbit target so panning and camera roll preserve its alignment.
       const fade = THREE.MathUtils.smoothstep(Math.abs(direction.z), 0.04, 0.18);
       gridTheme(fade);
+      gridAxes.forEach((axis, index) => {
+        axis.visible = fade > 0;
+        // Extend each line along the visible grid while keeping its other coordinate at zero.
+        axis.position.setComponent(index, grid.position.getComponent(index));
+        axis.scale.setComponent(index, step * divisions / 2);
+      });
       groundLine.visible = fade < 1;
       if (groundLine.visible) {
         groundLine.position.copy(camera.position).addScaledVector(direction, state.orbitDistance);
