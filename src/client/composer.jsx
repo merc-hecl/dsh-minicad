@@ -14,6 +14,19 @@ const COMPOSER_SLOTS = { views: WorkbenchViews };
 const EMPTY_TODOS = [];
 const EMPTY_SOURCE = { subscribe: () => () => {}, getSnapshot: () => null };
 
+function latestLiveTool(members, nodes) {
+  let latest;
+  function visit(call) {
+    if (!("kind" in call) && (!latest || call.time >= latest.time)) latest = call;
+    for (const child of call.subCalls) visit(child);
+  }
+  for (const { key } of members) {
+    const node = nodes.get(key);
+    if (node?.kind === "tool-call") visit(node.data.root);
+  }
+  return latest;
+}
+
 export function Composer({ renderFactorySlot, useSession, useInput, useSessionStatus, useProjection, useChat, useConversation, sessionId,
   transcriptTarget, onSubmitted, onSessionState, onRestored, minicadT, chatT }) {
   const session = useSession(s => s);
@@ -34,8 +47,12 @@ export function Composer({ renderFactorySlot, useSession, useInput, useSessionSt
     && (node.location.kind === "turn" || node.location.kind === "step") && node.location.turn.turn === turnId)?.data.current;
   const reason = turn?.end?.data.reason;
   const activityKind = summary?.running || "thinking";
+  const tool = summary?.running && !groupState.data.closed ? latestLiveTool(groupState.members, chat.nodes) : undefined;
   const activity = retry?.retryState === "scheduled" ? minicadT("agentRetry", { current: retry.retry, total: retry.mode === "normal" ? retry.maxRetries : "∞" })
-    : summary && !groupState.data.closed ? chatT(`message.stepProcess.${summary.preparing ? `prepare.${activityKind === "thinking" ? "tools" : activityKind}` : activityKind}`) : "";
+    : tool?.name ? minicadT(tool.phase === "preparing" ? "agentPreparingTool" : "agentRunningTool", { tool: tool.name })
+      : summary && !groupState.data.closed ? chatT(`message.stepProcess.${summary.preparing ? `prepare.${activityKind === "thinking" ? "tools" : activityKind}` : activityKind}`) : "";
+  // DSH's tool detail can contain arguments. Keep its detail only for reasoning.
+  const activityDetail = summary?.running ? "" : summary?.runningDetail || "";
   const callbacks = useRef(null);
   callbacks.current = { onSubmitted, onSessionState, onRestored };
   const previous = useRef({ ids: new Set(), draft: input.draft, sent: false });
@@ -54,14 +71,14 @@ export function Composer({ renderFactorySlot, useSession, useInput, useSessionSt
     callbacks.current.onSessionState?.({ running: session.running, waiting: !!interaction,
       interaction: interaction?.kind, turnId, terminal: reason?.kind,
       failure: session.promptError?.error?.message || (reason?.kind === "error" ? reason.error?.message : ""),
-      todos, activity, activityDetail: summary?.runningDetail || "",
+      todos, activity, activityDetail,
       activities: (summary?.counts || []).map(item => ({ ...item, label: chatT(`message.stepProcess.done.${item.kind}`) })),
       pending: ids.size > 0,
       inputEmpty: !input.draft.trim() && input.attachmentIds.length === 0 && input.occurrences.length === 0 });
     current.ids = ids;
     current.draft = input.draft;
   }, [session.running, session.pendingSubmissions, session.promptError, input.draft, input.attachmentIds, input.occurrences,
-    interaction, turnId, reason, todos, summary, activity, chatT]);
+    interaction, turnId, reason, todos, summary, activity, activityDetail, chatT]);
   return <CompactComposerContext.Provider value={minicadT}><TranscriptTarget.Provider value={transcriptTarget}>
     {renderFactorySlot("conversation.content", { variant: "embedded", phase: "active", hero: false }, { slots: COMPOSER_SLOTS })}
   </TranscriptTarget.Provider></CompactComposerContext.Provider>;
