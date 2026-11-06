@@ -509,6 +509,7 @@ function ProjectRowItem({ group, containsCurrentDescendant = false, onToggle, on
 		className: clsx(Rows_module_css_default.projectRow, menuOpen && Rows_module_css_default.menuOpen),
 		"data-row-key": `workspace:${group.key}`,
 		role: "treeitem",
+		tabIndex: 0,
 		"aria-expanded": row.expanded,
 		onClick: onToggle,
 		draggable: drag !== void 0,
@@ -748,6 +749,7 @@ function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest, render
 			"data-row-key": `session:${node.id}`,
 			className: clsx(Rows_module_css_default.sessionRow, selected && Rows_module_css_default.selected, menuOpen && Rows_module_css_default.menuOpen, row.archived && Rows_module_css_default.archived, drag?.marker === "before" && Rows_module_css_default.dropBefore, drag?.marker === "after" && Rows_module_css_default.dropAfter),
 			role: "treeitem",
+			tabIndex: 0,
 			"aria-selected": selected,
 			"aria-description": row.archived ? t("toast.archivedNotOpenable") : void 0,
 			onClick: () => {

@@ -34,12 +34,12 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
     input.current?.closest(".mc-workbench")?.focus({ preventScroll: true });
   };
   useImperativeHandle(ref, () => ({ reveal, dismiss, keyDown(event) {
-    if (event.defaultPrevented || event.isComposing) return;
+    if (event.defaultPrevented || event.isComposing || hidden) return;
     if (event.key === "Escape" && event.target.closest('[role="dialog"],[role="menu"],[data-trigger-menu]')) return;
     if (event.key === "Escape" && floating.cancelDrag()) { event.preventDefault(); return; }
     const editing = event.target.closest('input,textarea,[contenteditable="true"],button,a,[role="button"],[role="tab"],[role="dialog"],[role="menu"]');
     if (event.key === "Escape" && expanded) { event.preventDefault(); setExpanded(false); }
-    else if (event.key === "Escape" && open && !native.waiting) {
+    else if (event.key === "Escape" && visible && !pinned && !native.waiting) {
       event.preventDefault(); dismiss();
     } else if (event.key === "Enter" && !editing && !hidden && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
       event.preventDefault(); reveal();
@@ -55,17 +55,13 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
       setFeedback(null); setDismissed(false);
     }
     if (wasRunning.current && !alive) {
-      setFeedback(stopped.current || native.terminal === "aborted" ? "stopped"
-        : native.failure || feedback === "error" || ["error", "interrupted", "max-tokens"].includes(native.terminal) ? "error" : "done");
-      setExpanded(true);
+      const result = stopped.current || native.terminal === "aborted" ? "stopped"
+        : native.failure || feedback === "error" || ["error", "interrupted", "max-tokens"].includes(native.terminal) ? "error" : "done";
+      setFeedback(result);
+      if (result !== "done") setExpanded(true);
     }
     wasRunning.current = alive;
   }, [alive, native.terminal, native.failure, latestRevision]);
-  useEffect(() => {
-    if (phase !== "done") return;
-    const timer = setTimeout(() => setExpanded(false), 6000);
-    return () => clearTimeout(timer);
-  }, [phase]);
   const completed = native.todos.filter(todo => todo.status === "completed").length;
   const currentTask = native.todos.find(todo => todo.status === "in_progress");
   const saved = latestRevision > baseline.current;

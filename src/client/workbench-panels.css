@@ -143,14 +143,10 @@
   .mc-making-record[data-mode="conversation"] .mc-record-model { display: none; }
   .mc-record-conversation-heading { display: none; }
 }
-@media (max-width: 760px) {
+@container mc-workbench (max-width: 760px) {
   .mc-record-bar { gap: 8px; padding-left: 12px; }
   .mc-record-project { display: none; }
   .mc-record-switch { margin-left: auto; }
-  .mc-workbench[data-record-open] > .mc-sidebar { visibility: hidden; }
-  .mc-workbench:not([data-project-panel-collapsed]) > .mc-version-library {
-    left: calc(var(--mc-gutter) + var(--mc-sidebar-width) + 12px);
-  }
 }
 /* DSH publishes the current keyboard modality; frequent key actions stay immediate. */
 html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-making-record, .mc-version-library, .mc-task-status-details, .mc-task-status, .mc-sidebar) {

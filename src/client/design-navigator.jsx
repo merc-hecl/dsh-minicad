@@ -60,7 +60,32 @@ export function DesignNavigator({ projects, selected, currentSessionId, language
         <Tooltip label={t("openDesignFolder")} side="bottom" align="end" portal delayMs={500}><button className={c.iconButton} aria-label={t("openDesignFolder")} disabled={pickerBusy} onClick={onCreate}><IconProjectAddOutlineRegular /></button></Tooltip>
       </div>
     </div>
-    <div className={c.list} role="tree" aria-label={t("projects")}>
+    <div className={c.list} role="tree" aria-label={t("projects")} onKeyDown={event => {
+      const row = event.target;
+      if (event.defaultPrevented || event.isComposing || !row.matches('[role="treeitem"]')) return;
+      const rows = [...event.currentTarget.querySelectorAll('[role="treeitem"]')];
+      const index = rows.indexOf(row);
+      const folder = row.hasAttribute("aria-expanded");
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault(); row.click();
+      } else if (["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        const next = event.key === "Home" ? 0 : event.key === "End" ? rows.length - 1
+          : Math.max(0, Math.min(rows.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)));
+        rows[next]?.focus();
+      } else if (event.key === "ArrowRight" && folder) {
+        event.preventDefault();
+        if (row.getAttribute("aria-expanded") === "false") row.click();
+        else row.parentElement.querySelector('[role="treeitem"][aria-selected]')?.focus();
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        if (folder && row.getAttribute("aria-expanded") === "true") row.click();
+        else if (!folder) row.closest('[role="group"]')?.querySelector('[role="treeitem"][aria-expanded]')?.focus();
+      } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+        const action = row.querySelector('.mc-design-row-rowActions button');
+        if (action) { event.preventDefault(); action.focus(); action.click(); }
+      }
+    }}>
       {folders.map(project => {
         const matchesFolder = project.title.toLocaleLowerCase().includes(queryText);
         const sessions = project.sessions.flatMap(id => {

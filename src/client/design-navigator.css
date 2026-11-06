@@ -84,7 +84,7 @@
   height: 34px;
 }
 .mc-design-row-projectRow .mc-design-row-rowActions {
-  height: 20px;
+  height: 28px;
 }
 .mc-design-row-sessionRow {
   gap: 0;
@@ -215,12 +215,15 @@
 .mc-design-row-rowActions {
   flex: none;
   align-items: center;
-  gap: 15px;
+  gap: 4px;
   display: none;
 }
 .mc-design-row-projectRow:hover .mc-design-row-rowActions,
 .mc-design-row-sessionRow:hover .mc-design-row-rowActions,
 .mc-design-row-searchResultRow:hover .mc-design-row-rowActions,
+.mc-design-row-projectRow:focus-within .mc-design-row-rowActions,
+.mc-design-row-sessionRow:focus-within .mc-design-row-rowActions,
+.mc-design-row-searchResultRow:focus-within .mc-design-row-rowActions,
 .mc-design-row-projectRow.mc-design-row-menuOpen .mc-design-row-rowActions,
 .mc-design-row-sessionRow.mc-design-row-menuOpen .mc-design-row-rowActions {
   display: inline-flex;
@@ -229,8 +232,10 @@
   margin-left: auto;
 }
 .mc-design-row-sessionRow:hover .mc-design-row-time,
+.mc-design-row-sessionRow:focus-within .mc-design-row-time,
 .mc-design-row-sessionRow.mc-design-row-menuOpen .mc-design-row-time,
 .mc-design-row-sessionRow:hover .mc-design-row-pinIndicator,
+.mc-design-row-sessionRow:focus-within .mc-design-row-pinIndicator,
 .mc-design-row-sessionRow.mc-design-row-menuOpen .mc-design-row-pinIndicator {
   display: none;
 }
@@ -313,8 +318,8 @@
 .mc-design-row-iconButton {
   border-radius: var(--dsw-radius-xs);
   cursor: pointer;
-  width: 16px;
-  height: 16px;
+  width: 28px;
+  height: 28px;
   color: var(--dsw-alias-label-tertiary);
   background: 0 0;
   border: none;
@@ -326,6 +331,15 @@
 }
 .mc-design-row-iconButton:hover {
   color: var(--dsw-alias-label-primary);
+}
+.mc-design-row-iconButton:focus-visible,
+.mc-design-navigator [role="treeitem"]:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--mc-accent));
+  outline-offset: -2px;
+}
+@media (hover: none) {
+  .mc-design-row-rowActions { display: inline-flex; }
+  .mc-design-row-sessionRow :is(.mc-design-row-time, .mc-design-row-pinIndicator) { display: none; }
 }
 .mc-design-row-chevron {
   color: var(--dsw-alias-label-caption);

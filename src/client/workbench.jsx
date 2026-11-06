@@ -69,6 +69,23 @@ export function Workbench({
   const [projects, setProjects] = useState([]),
     [project, setProject] = useState(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [layoutWidth, setLayoutWidth] = useState("wide");
+  const narrow = layoutWidth === "narrow";
+  useLayoutEffect(() => {
+    const element = workbench.current;
+    let previous;
+    const resize = () => {
+      const next = element.clientWidth <= 760 ? "narrow" : element.clientWidth <= 1000 ? "medium" : "wide";
+      if (next === previous) return;
+      previous = next;
+      setLayoutWidth(next);
+      if (next === "narrow") setPanelCollapsed(true);
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const [picker, setPicker] = useState(null);
   const sessionState = useSyncExternalStore(sessionCatalog.subscribe, sessionCatalog.getSnapshot);
   const workspaceState = useSyncExternalStore(workspaceCatalog.subscribe, workspaceCatalog.getSnapshot);
@@ -97,6 +114,9 @@ export function Workbench({
   const [diffOpen, setDiffOpen] = useState(false), [diff, setDiff] = useState(null);
   const [progress, setProgress] = useState(null), [processDesign, setProcessDesign] = useState(null);
   const [nativeRunning, setNativeRunning] = useState(false);
+  useEffect(() => {
+    if (narrow && (historyOpen || versionLibraryOpen || diffOpen)) setPanelCollapsed(true);
+  }, [narrow, historyOpen, versionLibraryOpen, diffOpen]);
   useLayoutEffect(() => { setSelectionTargets([]); setMeasurementResult(null); setActiveTool(null); }, [measurementKey, !!processDesign, historyOpen, diffOpen]);
   useEffect(() => { setDiffOpen(false); setDiff(null); }, [project?.id, project?.sourceFile]);
   useLayoutEffect(closeVersionLibrary, [closeVersionLibrary, project?.id, project?.sourceFile]);
@@ -431,6 +451,7 @@ export function Workbench({
     <div
       ref={workbench}
       className="mc-workbench"
+      data-layout-width={layoutWidth}
       data-project-panel-collapsed={panelCollapsed || undefined}
       data-record-open={historyOpen || undefined}
       data-version-library-open={versionLibraryOpen || undefined}
@@ -511,7 +532,10 @@ export function Workbench({
           <Btn className="mc-library-toggle" icon={IconPanelLeftOutlineRegular}
             label={t(panelCollapsed ? "expandProjects" : "collapseProjects")}
             aria-expanded={!panelCollapsed} aria-controls="mc-design-library"
-            onClick={() => setPanelCollapsed(value => !value)} />
+            onClick={() => {
+              if (narrow && panelCollapsed) { setHistoryOpen(false); closeVersionLibrary(); setDiffOpen(false); }
+              setPanelCollapsed(value => !value);
+            }} />
           <div className="mc-header-document">
             <span className="mc-crumb" title={project?.title || t("app")}>
               {project?.title || t("app")}
@@ -558,7 +582,7 @@ export function Workbench({
               const items = await refreshList();
               if (selection.current === task.id) { if (items[0]) await load(items[0].id); else clearSelection(); }
             }}
-            onOpen={openConversation} attachments={project?.attachments || []} onReference={openReference} />
+            onOpen={(...args) => { if (narrow) setPanelCollapsed(true); return openConversation(...args); }} attachments={project?.attachments || []} onReference={openReference} />
       </aside>
       {renderSlot("minicad.directoryFlow", {
         open: !!picker, busy,
@@ -581,7 +605,6 @@ export function Workbench({
             <PluginIcon size={44} />
           </div>
           <h1>{t("emptyTitle")}</h1>
-          <p>{t("emptyHint")}</p>
         </div>
       )}
       {loading && (
