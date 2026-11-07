@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Menu, Tooltip, Toast, IconChevronDownOutlineRegular, IconRightUpOutlineRegular,
   IconWarningOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 import freecadIcon from "./assets/freecad.svg";
@@ -17,7 +17,7 @@ function ApplicationIcon({ source, size = 14 }) {
 }
 
 export function DirectoryOpenAction(props) {
-  const { absolutePath, projectId, sourceFile, hasModel, request, minicadT, t } = props;
+  const { absolutePath, projectId, sourceFile, hasModel, request, minicadT, t, onMenuOpenChange } = props;
   const available = props.useOpenInAppApps(apps => apps);
   const nativeChoice = props.useOpenInAppChoice(id => id);
   const operation = props.useOpenInAppLaunch(value => value);
@@ -31,10 +31,10 @@ export function DirectoryOpenAction(props) {
     const anchor = menuAnchor.current;
     if (!anchor) return null;
     const rect = anchor.getBoundingClientRect();
-    const panel = anchor.closest(".mc-header-actions");
-    // Native Menu adds 4px; include the enclosing toolbar and another 4px.
-    const bottom = (panel?.getBoundingClientRect().bottom ?? rect.bottom) + 4;
-    return DOMRect.fromRect({ x: rect.left, y: rect.top, width: rect.width, height: bottom - rect.top });
+    const toolbar = anchor.closest(".mc-header-actions")?.getBoundingClientRect() ?? rect;
+    // The app menu is outside the toolbar; native Menu adds another 4px gap.
+    const top = toolbar.top - 4, bottom = toolbar.bottom + 4;
+    return DOMRect.fromRect({ x: rect.left, y: top, width: rect.width, height: bottom - top });
   }, []);
   const notify = text => setBanner({ text, sequence: ++sequence.current });
   const refresh = async signal => {
@@ -56,6 +56,10 @@ export function DirectoryOpenAction(props) {
   const preferred = apps.find(app => app.id === (modelChoice ? "freecad" : nativeChoice) && !app.disabled)
     ?? apps.find(app => !app.disabled) ?? apps[0];
   const busy = pending || operation.phase === "busy";
+  useLayoutEffect(() => {
+    onMenuOpenChange?.(menuOpen && !busy);
+    return () => onMenuOpenChange?.(false);
+  }, [menuOpen, busy, onMenuOpenChange]);
   const primaryLabel = t("open.title", { app: preferred.name });
   const nativeShortcut = preferred.id === "freecad" ? undefined : shortcut;
   const act = async id => {

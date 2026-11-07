@@ -225,7 +225,7 @@ The plugin's `cad.assembly` supports whole-model `translate` and `rotate`, plus 
 
 A batch contains 1–20 specifications. Each can supply its own `checks`; checks from previous revisions are not inherited. Optional formats are STEP, STL, SMP and ZIP. All variants are evaluated and checked before any are published. Publication and export are individually durable; failures report already saved variants rather than promising a whole-batch rollback. Each output is independent and does not automatically track future source changes. Use `cad.readModel` for task-relative resources; custom relative `require` paths are the source author's responsibility when creating files in different directories.
 
-The model inspection panel opened by **Select targets** switches between files/specifications and shows or hides parts. Transparency and visibility only affect display, not geometry, revisions or exports.
+The display-mode icon cycles through solid, wireframe and transparent display. **Select targets** switches model files/specifications and shows part inspection controls only for assemblies with multiple solids; single-solid models with multiple files show only a compact model picker. These viewing operations do not affect geometry, revisions or exports.
 
 ## Native storage
 

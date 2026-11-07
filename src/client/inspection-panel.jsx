@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Button, Menu, Switch, Tooltip, IconChevronDownOutlineRegular, IconCloseOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
+import React, { useLayoutEffect, useState } from "react";
+import { Button, Menu, Tooltip, IconChevronDownOutlineRegular, IconCloseOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 
 function VisibilityIcon({ hidden }) {
   return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
@@ -8,35 +8,40 @@ function VisibilityIcon({ hidden }) {
   </svg>;
 }
 
-export function InspectionPanel({ project, parts, hidden, setHidden, transparent, setTransparent, onModel, onClose, busy, t }) {
+export function InspectionPanel({ project, parts, hidden, setHidden, onModel, onMenuOpenChange, onClose, busy, t }) {
   const [modelMenu, setModelMenu] = useState(false);
-  return <section id="mc-model-inspection" className="mc-inspection mc-panel" aria-label={t("inspectModel")}>
+  const menuVisible = modelMenu && !busy;
+  const hasParts = parts?.length > 1;
+  useLayoutEffect(() => {
+    onMenuOpenChange(menuVisible);
+    return () => onMenuOpenChange(false);
+  }, [menuVisible, onMenuOpenChange]);
+  return <section id="mc-model-inspection" className="mc-inspection mc-panel" aria-label={t(hasParts ? "inspectModel" : "modelSpecifications")}>
     <div className="mc-inspection-content mc-panel-scroll">
-      <header><strong>{t("inspectModel")}</strong><Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={14} />} aria-label={t("close")} onClick={onClose} /></header>
-      {project.models.length > 1 && <Menu portal open={modelMenu} onClose={() => setModelMenu(false)} selectedIds={[project.sourceFile]}
-        anchor={<Button className="mc-inspection-model-picker" variant="outline" disabled={busy} aria-haspopup="menu" aria-expanded={modelMenu}
-          aria-label={t("modelSpecifications")} onClick={() => setModelMenu(value => !value)}>
+      {hasParts && <header><strong>{t("inspectModel")}</strong><Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={14} />} aria-label={t("close")} onClick={onClose} /></header>}
+      {project.models.length > 1 && <Menu portal dense autoFocus minWidthFromAnchor className="mc-inspection-model-menu" open={menuVisible}
+        onClose={() => setModelMenu(false)} selectedIds={[project.sourceFile]}
+        anchor={<Button className="mc-inspection-model-picker" variant="outline"
+          disabled={busy} aria-label={t("modelSpecifications")} aria-haspopup="menu" aria-expanded={menuVisible}
+          onClick={() => setModelMenu(value => !value)}>
           <span title={project.sourceFile}>{project.sourceFile}</span><IconChevronDownOutlineRegular size={14} />
         </Button>}
         items={project.models.map(model => ({ id: model.sourceFile, label: model.sourceFile }))}
         onSelect={id => { setModelMenu(false); if (id !== project.sourceFile) onModel(id); }} />}
-      <div className="mc-inspection-actions"><span>{t("transparentView")}</span>
-        <Switch checked={transparent} onChange={setTransparent} label={t("transparentView")} />
-      </div>
-      {!!parts?.length && <>
-        <div className="mc-inspection-actions mc-inspection-parts-heading"><strong>{t("assemblyParts")}</strong>
-          <Button variant="ghost" size="sm" disabled={!hidden.length} onClick={() => setHidden([])}>{t("showAllParts")}</Button></div>
-        <div className="mc-inspection-parts">{parts.map(part => {
-          const invisible = hidden.includes(part.id);
-          const visibilityLabel = t(invisible ? "showPart" : "hidePart") + " · " + part.name;
-          return <div key={part.id} className="mc-inspection-part" data-hidden={invisible || undefined}>
-            <Tooltip label={visibilityLabel} portal><Button variant="ghost" size="sm" className="mc-part-visibility" aria-label={visibilityLabel}
-              icon={<VisibilityIcon hidden={invisible} />} onClick={() => {
-                setHidden(invisible ? hidden.filter(id => id !== part.id) : [...hidden, part.id]);
-              }} /></Tooltip>
-            <span className="mc-part-name" title={part.name + " · " + part.id}>{part.name}</span>
-          </div>;
-        })}</div>
+      {hasParts && <>
+      <div className="mc-inspection-actions mc-inspection-parts-heading"><strong>{t("assemblyParts")}</strong>
+        <Button variant="ghost" size="sm" disabled={!hidden.length} onClick={() => setHidden([])}>{t("showAllParts")}</Button></div>
+      <div className="mc-inspection-parts">{parts.map(part => {
+        const invisible = hidden.includes(part.id);
+        const visibilityLabel = t(invisible ? "showPart" : "hidePart") + " · " + part.name;
+        return <div key={part.id} className="mc-inspection-part" data-hidden={invisible || undefined}>
+          <Tooltip label={visibilityLabel} portal><Button variant="ghost" size="sm" className="mc-part-visibility" aria-label={visibilityLabel}
+            icon={<VisibilityIcon hidden={invisible} />} onClick={() => {
+              setHidden(invisible ? hidden.filter(id => id !== part.id) : [...hidden, part.id]);
+            }} /></Tooltip>
+          <span className="mc-part-name" title={part.name + " · " + part.id}>{part.name}</span>
+        </div>;
+      })}</div>
       </>}
     </div>
   </section>;

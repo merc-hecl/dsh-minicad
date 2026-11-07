@@ -14,6 +14,8 @@
   --mc-panel-gap: 24px;
   --mc-sidebar-width: 256px;
   --mc-sidebar-rail: var(--mc-sidebar-width);
+  --mc-header-top: calc(10px + var(--mc-top-inset));
+  --mc-header-height: 40px;
   --mc-content-top: calc(80px + var(--mc-top-inset));
   --mc-panel-left: calc(var(--mc-gutter) + var(--mc-sidebar-rail) + var(--mc-panel-gap));
   --mc-canvas-left: var(--mc-panel-left);
@@ -229,8 +231,8 @@ html[data-platform="darwin"] .mc-workbench {
   z-index: 2;
   left: var(--mc-gutter);
   right: var(--mc-gutter);
-  top: calc(10px + var(--mc-top-inset));
-  height: 40px;
+  top: var(--mc-header-top);
+  height: var(--mc-header-height);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;

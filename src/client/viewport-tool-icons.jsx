@@ -21,6 +21,14 @@ export function WireframeViewIcon(props) {
   </ViewportIcon>;
 }
 
+export function TransparentViewIcon(props) {
+  return <ViewportIcon {...props}>
+    <path d="m12 2.5 9 5v9l-9 5-9-5v-9Z" fill="currentColor" fillOpacity=".06" />
+    <path d="m3 7.5 9 5 9-5M12 12.5v9" strokeOpacity=".45" />
+    <path d="M12 2.5v9l-9 5m9-5 9 5" strokeOpacity=".8" />
+  </ViewportIcon>;
+}
+
 export function SelectGeometryIcon(props) {
   return <ViewportIcon {...props}>
     <path d="M10 3H3v7m0 5v6h6M15 3h6v7" strokeDasharray="2.5 3" />

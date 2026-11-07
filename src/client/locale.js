@@ -1,5 +1,6 @@
 export const zh = {
-  inspectModel: "模型查看", modelSpecifications: "模型与规格", transparentView: "透明",
+  inspectModel: "模型查看", modelSpecifications: "模型与规格", displayMode: "显示模式", transparentView: "透明",
+  switchDisplayMode: "切换为{mode}",
   assemblyParts: "零件", showAllParts: "显示全部",
   showPart: "显示", hidePart: "隐藏",
   workbenchTools: "工作台工具栏",
@@ -165,7 +166,8 @@ export const zh = {
   copied: "已复制",
 };
 export const en = {
-  inspectModel: "Model inspection", modelSpecifications: "Models and variants", transparentView: "Transparent",
+  inspectModel: "Model inspection", modelSpecifications: "Models and variants", displayMode: "Display mode", transparentView: "Transparent",
+  switchDisplayMode: "Switch to {mode}",
   assemblyParts: "Parts", showAllParts: "Show all",
   showPart: "Show", hidePart: "Hide",
   workbenchTools: "Workbench toolbar",
