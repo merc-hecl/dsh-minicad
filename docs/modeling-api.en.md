@@ -39,7 +39,21 @@ Publish once with `cad_commit`, supplying `runId`, the original `expectedRevisio
 
 All modeling commits accept `checks`; failed checks preserve the previous revision. `cad_commit` retains trial checks and adds new ones; an empty list cannot discard failed candidate checks. Correct a check definition by evaluating a new trial. Each check can include `name` and `basis` to record the dimension and its drawing view, annotation and units. Definitions and results persist with the revision and in ZIP `state.json`. `cad_check` is read-only, so supply the complete check list when publishing. A successful build without checks establishes valid geometry, not drawing compliance. Never change a drawing target to the measured value merely to pass a check.
 
-Use `cad.log(...)` or `console.log(...)` for diagnostics. Tool results include logs and checkpoint labels; failures include their phase, operation and source stack. Do not publish test boxes or deliberately throw exceptions to obtain diagnostics.
+Give every trial and saved change a concise `summary` in the user's language, such as "Create the plate outline and mounting holes" or "Adjust the center hole diameter". The making record displays this title directly. Keep full dimensions in source, parameters and checks; avoid placeholders such as `probe`, `probe2` and `test`.
+
+When `cad_build` has multiple modeling stages worth reviewing, record the actual intermediate solids with `cad.checkpoint(part, "Stage description")`. Step cards prioritize these labels. Simple changes need no artificial extra stages; an unlabeled final checkpoint displays the run summary. For example:
+
+```javascript
+function build(parameters, cad) {
+  let plate = cad.Box(80, 50, 6).named("Base plate");
+  cad.checkpoint(plate, "Create the plate blank");
+  plate = plate.cut(cad.Cylinder(3, 10));
+  cad.checkpoint(plate, "Cut the center through-hole");
+  return plate;
+}
+```
+
+Use `cad_api` to inspect the kernel API and `cad.log(...)` or `console.log(...)` for diagnostics during actual modeling. Tool results include logs and checkpoint labels; failures include their phase, operation and source stack. Do not create dummy geometry or deliberately throw exceptions just to inspect the API or read logs.
 
 ### Bores and dimensional inspection
 

@@ -36,6 +36,7 @@
 .mc-record-count { flex: none; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mc-record-runs { display: flex; gap: 4px; overflow-x: auto; padding: 0 4px 8px; scrollbar-width: thin; }
 .mc-record-runs button { flex: none; gap: 6px; }
+.mc-record-run-title { max-width: min(360px, 45vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mc-record-runs [aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
 .mc-record-runs > span { font-size: 12px; }
 .mc-record-frames { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 0 4px; margin: 0; list-style: none; }

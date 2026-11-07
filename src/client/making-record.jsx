@@ -96,7 +96,8 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
   const steps = useMemo(() => activeRun ? activeRun.steps.map(step => ({ key: `${activeRun.id}:${step.sequence}`,
     label: `${t("checkpoint")} ${step.sequence}`, runId: activeRun.id, sequence: step.sequence,
     metrics: step.metrics, geometryIds: activeRun.geometryIds, created: step.created,
-    title: step.label || t(step.operation || "modeling"), baseRevision: activeRun.baseRevision })) : [], [activeRun, t]);
+    title: step.label || (step.operation === "result" ? activeRun.summary : "") || t(step.operation || "modeling"),
+    baseRevision: activeRun.baseRevision })) : [], [activeRun, t]);
   const entries = scope === "versions" ? versions : steps;
   const focus = scope === "versions" ? versionFocus : steps.find(entry => entry.key === selectedStep) || steps.at(-1);
   const selectEntry = key => {
@@ -178,7 +179,8 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
             {processRuns.map(run => <Button key={run.id} variant="ghost" size="sm" aria-pressed={run.id === activeRun?.id}
               title={`${run.summary || t("modeling")} · ${dateFormatter.format(run.created * 1000)}`}
               onClick={() => { setSelectedRun(run.id); setSelectedStep(null); }}>
-              {run.committedRevision ? `v${run.committedRevision}` : `${t(run.phase === "preview" ? "unsavedTrial" : `taskStatus.${run.phase}`)} · ${dateFormatter.format(run.created * 1000)}`}
+              <span className="mc-record-run-title">{run.summary || t("modeling")}</span>
+              <span className="mc-muted">{run.committedRevision ? `v${run.committedRevision}` : t(run.phase === "preview" ? "unsavedTrial" : `taskStatus.${run.phase}`)} · {dateFormatter.format(run.created * 1000)}</span>
               <span className="mc-muted">{t("stepCount", { count: run.steps.length })}</span>
             </Button>)}
             {!processRuns.length && <span className="mc-muted">{t("noProcessSteps")}</span>}
