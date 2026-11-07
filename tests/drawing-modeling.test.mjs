@@ -98,7 +98,7 @@ test("trial diagnostics use the task cwd; failed checks and changed working file
     return cad.checkpoint(part,'diagnostic label');
   }`;
   const first = await worker.call("build", { ...target, expectedRevision: 0, source });
-  const original = await readFile(join(task.directory, "parts/model.smb"));
+  const original = await readFile(join(task.directory, "parts/model.smp"));
   assert.ok(first.diagnostics.logs.includes("drawing resource"));
   assert.ok(first.diagnostics.logs.some(line => line.includes(task.directory) && line.includes(join(task.directory, "parts"))));
   assert.ok(first.diagnostics.checkpoints.includes("diagnostic label"));
@@ -109,7 +109,7 @@ test("trial diagnostics use the task cwd; failed checks and changed working file
   await assert.rejects(worker.call("build", { ...target, expectedRevision: 1, source, checks }), error =>
     error.validation.passed === false && error.diagnostics.logs.includes("drawing resource"));
   assert.equal((await worker.call("get", target)).head, 1);
-  assert.deepEqual(await readFile(join(task.directory, "parts/model.smb")), original);
+  assert.deepEqual(await readFile(join(task.directory, "parts/model.smp")), original);
   const fresh = await worker.call("build", { ...target, expectedRevision: 1, source, commit: false });
   await writeFile(join(task.directory, "parts/model.parameters.json"), '{"changed":true}');
   await assert.rejects(worker.call("commit", { ...target, expectedRevision: 1, runId: fresh.runId }), /更新|版本/);

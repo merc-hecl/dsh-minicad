@@ -1,5 +1,7 @@
+import { InspectionPanel, visiblePreview } from "./inspection-panel.jsx";
 import React, {
   useCallback,
+  useMemo,
   useState,
   useEffect,
   useLayoutEffect,
@@ -102,6 +104,12 @@ export function Workbench({
   const [selectionInstant, setSelectionInstant] = useState(false);
   const [measurementResult, setMeasurementResult] = useState(null);
   const measurementKey = JSON.stringify([project?.id, project?.sourceFile, project?.head]);
+  const [inspectionOpen, setInspectionOpen] = useState(false);
+  const [hiddenParts, setHiddenParts] = useState([]);
+  const [isolation, setIsolation] = useState(null);
+  const [transparent, setTransparent] = useState(false);
+  useEffect(() => { setHiddenParts([]); setIsolation(null); setTransparent(false); }, [measurementKey]);
+  useEffect(() => { setSelectionTargets([]); setMeasurementResult(null); }, [hiddenParts]);
   const [wire, setWire] = useState(false),
     [resetView, setResetView] = useState(0);
   const [modal, setModal] = useState(null),
@@ -322,7 +330,7 @@ export function Workbench({
         if (state.title && state.title !== projectRef.current?.title) {
           setProject((current) => current ? { ...current, title: state.title } : current);
         }
-        if (projectRef.current && (state.activeSessionId !== projectRef.current.activeSessionId || state.head !== projectRef.current.head || state.sourceVersion !== projectRef.current.sourceVersion || state.workspaceDirectory !== projectRef.current.workspaceDirectory || state.sourceFile !== projectRef.current.sourceFile)) {
+        if (projectRef.current && (JSON.stringify(state.models) !== JSON.stringify(projectRef.current.models) || state.activeSessionId !== projectRef.current.activeSessionId || state.head !== projectRef.current.head || state.sourceVersion !== projectRef.current.sourceVersion || state.workspaceDirectory !== projectRef.current.workspaceDirectory || state.sourceFile !== projectRef.current.sourceFile)) {
           const p = await api("get", { projectId: selected });
           if (!disposed && selection.current === selected) {
             setProject(p);
@@ -397,6 +405,19 @@ export function Workbench({
       await refreshList();
     });
   }
+  function selectModelFile(sourceFile) {
+    if (busy || running || nativeRunning || sourceFile === project.sourceFile) return;
+    const captured = project, controller = loadController.current;
+    return action(async () => {
+      const data = await api("select_model", { projectId: captured.id, sourceFile });
+      if (controller.signal.aborted || selection.current !== captured.id) return;
+      controller.abort();
+      const next = new AbortController();
+      loadController.current = next;
+      setProgress(null); setProcessDesign(null); processKey.current = "";
+      setProject(await withPreview(data, next));
+    });
+  }
   function dismissVersionLibrary() {
     closeVersionLibrary();
     workbench.current?.querySelector(".mc-header-version")?.focus();
@@ -445,7 +466,9 @@ export function Workbench({
     });
   }
   const design = project?.design;
-  const displayedDesign = diffOpen ? design : processDesign || design;
+  const originalDesign = diffOpen ? design : processDesign || design;
+  const displayedDesign = useMemo(() => originalDesign && ({ ...originalDesign,
+    previewData: visiblePreview(originalDesign.previewData, originalDesign.parts, diffOpen ? [] : hiddenParts) }), [originalDesign, hiddenParts, diffOpen]);
   const displayedDiff = diffOpen && diff?.projectId === project?.id && diff?.sourceFile === project?.sourceFile ? diff : null;
   return (
     <div
@@ -506,6 +529,7 @@ export function Workbench({
         design={displayedDesign}
         diff={displayedDiff}
         wire={wire}
+        transparent={!diffOpen && transparent}
         selecting={!modal && !processDesign && !historyOpen && !diffOpen && selecting}
         targets={selectionTargets}
         selectionInstant={selectionInstant}
@@ -557,6 +581,8 @@ export function Workbench({
               onClick={() => { clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
           </div>
           <div className="mc-header-action-group">
+            <Btn icon={IconPanelLeftOutlineRegular} label={t("inspectModel")} aria-pressed={inspectionOpen} disabled={!project || historyOpen || versionLibraryOpen || diffOpen}
+              onClick={() => setInspectionOpen(value => !value)} />
             <Btn icon={IconCompareSplitOutlineRegular} label={t("compareVersion")} disabled={!project || project.revisions.length < 2} aria-pressed={diffOpen}
               onClick={() => { closeVersionLibrary(); setHistoryOpen(false); setDiffOpen(value => !value); }} />
             <Btn icon={IconFlatListOutlineRegular} label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen}
@@ -612,6 +638,10 @@ export function Workbench({
           <span role="status" className="mc-loading"><StateDot state="ongoing" />{t("loading")}</span>
         </div>
       )}
+      {inspectionOpen && project && !historyOpen && !versionLibraryOpen && !diffOpen && !processDesign && <InspectionPanel key={measurementKey} project={project} parts={design?.parts}
+        hidden={hiddenParts} setHidden={setHiddenParts} isolation={isolation} setIsolation={setIsolation} transparent={transparent} setTransparent={setTransparent}
+        busy={busy || running || nativeRunning} onClose={() => setInspectionOpen(false)} t={t}
+        onModel={selectModelFile} />}
       {diffOpen && project && <VersionDiff key={`${project.id}:${project.sourceFile}`} project={project} request={request}
         onResult={setDiff} onClose={() => setDiffOpen(false)} t={t} language={language} />}
       {historyOpen && project && <MakingRecord key={`${project.id}:${project.sourceFile}`} project={project} progress={progress}

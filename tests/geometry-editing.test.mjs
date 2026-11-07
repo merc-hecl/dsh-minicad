@@ -183,7 +183,7 @@ test("selected face and edge batches measure and edit the same saved geometry in
     assert.equal(edges.length, 4);
     const rounded = await worker.call("edit", { ...args, expectedRevision: 2, operations: [{ op: "fillet", edges: edges.map(item => item.id), radius: 1 }] });
     assert.equal(rounded.head, 3); near(rounded.design.metrics.volume, 1200 - (4 - Math.PI) * 6);
-    const solidFile = join(built.workspaceDirectory, "model.smb"), before = await readFile(solidFile);
+    const solidFile = join(built.workspaceDirectory, "model.smp"), before = await readFile(solidFile);
     await assert.rejects(worker.call("geometry_annotation", { ...args, expectedRevision: 3, references: [edges[0].id, top.id] }), /stale/);
     await assert.rejects(worker.call("edit", { ...args, expectedRevision: 3, operations: [{ op: "fillet", edges: edges.map(item => item.id), radius: 1 }] }), /stale/);
     assert.deepEqual(await readFile(solidFile), before); assert.equal((await worker.call("get", args)).head, 3);
@@ -204,7 +204,7 @@ test("agent edit trials preserve saved files and commit a checked replayable bat
     const args = { projectId: task.id, sourceFile: "model.js", geometry: false, expectedRevision: 1 };
     const built = await worker.call("build", { ...args, expectedRevision: 0,
       source: "function build(p,cad){return cad.Box(20,10,p.thickness);}", parameters: { thickness: 4 } });
-    const before = await readFile(join(built.workspaceDirectory, "model.smb"));
+    const before = await readFile(join(built.workspaceDirectory, "model.smp"));
     const sourceBefore = await readFile(join(built.workspaceDirectory, "model.js"));
     const top = (await worker.call("query", { ...args, kind: "faces", selector: { position: "top" } })).items[0];
     const operations = [{ op: "offset_faces", faces: top.id, distance: 3 },
@@ -217,7 +217,7 @@ test("agent edit trials preserve saved files and commit a checked replayable bat
     near(candidate.items[0].center[2], 5);
     assert.equal((await worker.call("get", args)).head, 1);
     assert.deepEqual(await readFile(join(built.workspaceDirectory, "model.js")), sourceBefore);
-    assert.deepEqual(await readFile(join(built.workspaceDirectory, "model.smb")), before);
+    assert.deepEqual(await readFile(join(built.workspaceDirectory, "model.smp")), before);
     const committed = await worker.call("commit", { ...args, runId: trial.runId, summary: "Agent face offset, scale and rotation" });
     assert.equal(committed.head, 2); assert.equal(committed.revisions.length, 2);
     near(committed.design.metrics.volume, 2800);

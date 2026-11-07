@@ -87,7 +87,7 @@ html[data-input-modality="keyboard"] .mc-input-grip > span { transition: none; }
 .mc-status-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .mc-status-detail-heading strong { min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mc-status-detail-heading > button { flex: none; }
-.mc-status-current { height: 3lh; margin: 8px 0 12px; overflow-y: auto; overflow-wrap: anywhere; scrollbar-gutter: stable; }
+.mc-status-current { max-height: 180px; margin: 12px 0; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; scrollbar-gutter: stable; }
 .mc-task-list-heading { display: flex; justify-content: space-between; margin-top: 12px; color: var(--mc-muted); }
 .mc-agent-tasks { list-style: none; margin: 8px 0 0; padding: 0; max-height: 260px; overflow: auto; }
 .mc-agent-tasks li { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; overflow-wrap: anywhere; }

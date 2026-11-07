@@ -31,7 +31,7 @@ const diffColors = {
   added: [0x16834a, 0x61d994], removed: [0xc33a48, 0xff7b86], unchanged: [0x94a0b0, 0x8f9caf],
 };
 
-export function Viewport({ id, active = true, presentation = "workbench", sidebarCollapsed = false, design, diff, wire, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, onError, t }) {
+export function Viewport({ id, active = true, presentation = "workbench", sidebarCollapsed = false, design, diff, wire, transparent = false, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
@@ -765,6 +765,16 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
   useEffect(() => {
     runtime.current?.scheduleFit();
   }, [design?.previewData]);
+  useEffect(() => {
+    const s = runtime.current;
+    if (!s || !s.surface) return;
+    s.surface.material.transparent = transparent;
+    s.surface.material.opacity = transparent ? 0.3 : 1;
+    s.surface.material.depthWrite = !transparent;
+    s.surface.material.side = transparent ? THREE.DoubleSide : THREE.FrontSide;
+    s.surface.material.needsUpdate = true;
+    s.invalidate();
+  }, [transparent, design?.previewData]);
   useEffect(() => { runtime.current?.setActive(active); }, [active]);
   useLayoutEffect(() => { runtime.current?.positionSelection(); }, [sidebarCollapsed]);
   useEffect(() => {

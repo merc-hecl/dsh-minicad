@@ -16,7 +16,9 @@
 | `cad_check` | 批量检查测量结果是否满足目标与公差或上下限，不修改模型 |
 | `cad_update_parameters` | 默认合并顶层参数并重建；`mode: "replace"` 替换完整参数对象 |
 | `cad_api` | 按符号或 `Class.member` 定位安装版本的声明，支持 `offset` / `limit` 分页 |
-| `cad_export` | 导出指定建模文件的已保存版本 |
+| `cad_fit` | 检查两个零件的间隙与干涉，不修改模型 |
+| `cad_variants` | 从已保存源码生成独立参数规格，可逐个导出 |
+| `cad_export` | 导出指定建模文件的已保存版本，可指定零件 |
 | `cad_restore` | 将指定文件的已有版本设为当前版本，不产生新版本 |
 
 先用 `cad_read_project` 获取建模文件名和版本。除读取和 API 查询外，agent 的工具调用必须明确提供任务内相对路径 `sourceFile`；修改、查询、测量和检查还需提供该文件的 `expectedRevision`。这些显式目标调用不会改变 UI 当前选中的模型；不同文件的版本分别计算。新建文件从版本 0 开始。
@@ -104,7 +106,7 @@
 
 每个操作可用 `target` 指定一个独立实体，例如 `target: { nearest: [10, 0, 0], one: true }` 或当前查询返回的实体 ID。只修改选中实体，再与未修改实体做并集；移动后接触或重叠的实体可能合并。省略 `target` 时作用于整个 Part。操作的必填参数、数值范围、向量长度和未知字段均由内核校验；失败错误包含从 0 开始的 `operationIndex`，批次失败保留上一版。
 
-自定义代码定义 `build(parameters, cad)` 并返回有效、正体积的 `cad.Part`。`cad` 提供 SMLib 函数、同一套 `cad.edit(part, operations, parameters)`，以及任务内资源读取：
+自定义代码定义 `build(parameters, cad)` 并返回有效、正体积的 `cad.Part` 或 `cad.assembly` 多零件集合。`cad` 提供 SMLib 函数、同一套 `cad.edit(part, operations, parameters)`，以及任务内资源读取：
 
 ```javascript
 function build(parameters, cad) {
@@ -145,3 +147,52 @@ function build(parameters, cad) {
 几何 ID 绑定设计任务、建模文件和版本；旧版本或其他模型的引用会被拒绝。`faces` / `edges` 可接受多个 ID。ID 通过拓扑位置和内核派生关系解析，不按最近中心猜测；前序操作导致引用消失、拆分或失去派生关系时会拒绝。修改后重新查询；同批次后续步骤可使用几何选择器。参数重放要求引用所在拓扑保持一致，预期会改变拓扑的参数化编辑宜使用几何选择器。
 
 导出文件写入任务的 `exports/<建模文件路径（不含 .js）>/`，不同文件的同号版本不会互相覆盖。旧的导出文件仍保留。
+
+
+## 多零件模型
+
+`cad_build` 可返回 `cad.assembly([{ id, name, shape }])`。`id` 是设计内稳定且唯一的零件标识，`name` 是显示名，`shape` 是放置在世界坐标中的有效 `cad.Part`。零件接触或重叠不会自动合并；整体体积为各零件体积之和，包含重叠材料。重复实例可复用构造代码，但每个放置实例必须有自己的 ID。
+
+```javascript
+function build(p, cad) {
+  return cad.assembly([
+    { id: "base", name: "底座", shape: cad.Box(p.length, 40, 8) },
+    { id: "lid", name: "盖板", shape: cad.Box(p.length, 40, 2).translate(0, 0, 5) }
+  ]);
+}
+```
+
+- `cad_query(kind: "parts")` 返回 ID、名称、尺寸、体积和预览几何范围。
+- 查询面、边或实体时，选择器可加 `part: "lid"`。查询结果包含所属零件 `part` 和 `partName`，几何 ID 仍绑定整个模型文件和版本。
+- `cad_edit` 的每个操作用 `part: "lid"` 指定零件，例如 `{op:"translate",part:"lid",by:[0,0,10]}`。零件内仍使用原有布尔、面编辑等操作，其他零件保持独立。新增/删除零件或更改零件列表用 `cad_build` 更新源码。
+- 测量指定零件可用 `target: {part:"lid",one:true}`；测厚必须定位一个实体。
+- `cad_fit` 接收 `sourceFile`、`expectedRevision`、`pairs:[{from:"base",to:"lid"}]` 和可选 `tolerance`（默认 0.001 mm）。返回最小表面距离、干涉体积和 `contact` / `separated` / `interference`。它不是装配约束求解器，也不修改零件。
+- `cad_export` 可加 `part:"lid"` 导出一个零件，省略则导出整组。整组支持 STEP、STL、SMP、项目 ZIP；SMB 只用于单体导出。单件导出保留装配中的世界位置。STEP 回读检查实体数量、体积和包围尺寸/位置；不宣称保留装配约束或层级树。
+- 版本对比仍显示占据空间的体积变化；仅重命名、改 ID 或重新分组不会产生体积差异。
+
+内置 `cad.assembly` 可使用 `translate`、`rotate` 整体放置，以及 `parts`、`part(id)` 读取成员；它不是 SMLib 的 `cad.Part`。自定义布尔运算作用于成员的 `shape`，再重新组成 assembly。
+
+## 多规格生成
+
+`cad_variants` 读取指定模型的已保存源码，按规格合并顶层参数，生成独立模型文件。原模型、当前选中的文件和原版本不变。输出文件必须是新的任务内 `.js` 路径。
+
+```json
+{
+  "sourceFile": "model.js",
+  "expectedRevision": 1,
+  "variants": [
+    { "name": "60 mm", "sourceFile": "sizes/box-60.js", "parameters": { "length": 60 } },
+    { "name": "80 mm", "sourceFile": "sizes/box-80.js", "parameters": { "length": 80 } },
+    { "name": "100 mm", "sourceFile": "sizes/box-100.js", "parameters": { "length": 100 } }
+  ],
+  "formats": ["step", "stl"]
+}
+```
+
+一次 1～20 个规格，每个规格可携带自己的 `checks`；不会自动继承旧版本检查。可选 `formats` 为 STEP、STL、SMP、ZIP。所有规格先完成试算与随附检查，再逐个保存与导出；保存/导出阶段失败会报告已经保存的规格，不承诺整批回滚。各规格源码独立，之后不会自动跟随原模型变化。源码应通过 `cad.readModel` 使用任务内资源；复制到不同目录时，自定义 `require` 的相对路径由源码负责。
+
+工作台「模型查看」可切换模型与规格，并显示、隐藏或单独查看零件；透明查看只影响显示，所有查看操作均不修改几何、版本或导出内容。
+
+## 原生存储
+
+工作文件、历史快照和试算候选统一保存为 `.smp` 多实体容器，零件名称和 ID 随版本状态保存。已移除旧设计注册迁移，不读取旧 `.smb` 历史快照；旧源码需要重新构建，旧历史不会自动迁移。外部 SMB 仍是可导入/导出的单体交换格式。

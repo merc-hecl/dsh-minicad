@@ -29,7 +29,7 @@ test("initial structured modeling records all operations; an incremental chamfer
     const edges = (await worker.call("query", { ...args, expectedRevision: 1, kind: "edges" })).items
       .filter(edge => edge.type === "line" && Math.abs(edge.bounds.max[2] - edge.bounds.min[2]) < 1e-6);
     assert.equal(edges.length, 8);
-    const files = ["model.js", "model.parameters.json", "model.smb", ".cad-design.json"];
+    const files = ["model.js", "model.parameters.json", "model.smp", ".cad-design.json"];
     const before = await Promise.all(files.map(file => readFile(join(project.directory, file))));
     const bevel = await worker.call("edit", { ...args, expectedRevision: 1, commit: false,
       operations: [{ op: "chamfer", edges: edges.map(edge => edge.id), distance: 0.5 }],

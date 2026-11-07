@@ -1,3 +1,5 @@
+import { Assembly, assembly, partInfo, inspectFit } from "./assembly.js";
+export { Assembly, inspectFit };
 import * as cad from "@classcad/smlibwasm";
 import { readFileSync } from "node:fs";
 import { dirname, sep } from "node:path";
@@ -21,11 +23,18 @@ export {
 
 export const kernelName = `SMLib / smlibwasm ${cad.version}`;
 const vector = (v) => [v.x, v.y, v.z];
-export function readShape(bytes, name) {
-  return cad.fromFile(bytes, name);
+export function readShape(bytes, name, parts) {
+  const shape = cad.fromFile(bytes, name);
+  if (parts) {
+    const bodies = shape instanceof cad.Part ? [shape] : [...shape];
+    if (bodies.length !== parts.length) throw new Error("零件存储不完整 / incomplete assembly storage");
+    return assembly(parts.map((part, i) => ({ ...part, shape: bodies[i] })));
+  }
+  if (shape instanceof cad.ShapeList) return assembly(shape.map((body, i) => ({ id: `part-${i + 1}`, name: body.name || `Part ${i + 1}`, shape: body })));
+  return shape;
 }
 export const saveShape = (shape) =>
-  Buffer.from(cad.toSmb(shape, { ascii: false }));
+  Buffer.from(cad.toSmp(shape instanceof Assembly ? shape.parts.map(p => p.shape.named(p.id)) : shape, { ascii: false }));
 export function readModel(root, name, assets, onRead) {
   const bytes = assets[name] || readFileSync(inside(root, name));
   onRead(name, bytes);
@@ -47,6 +56,7 @@ export function buildShape(
     if (file.startsWith(dirname(filename) + sep)) delete require.cache[file];
   const api = {
     ...cad,
+    assembly,
     log,
     edit: (part, operations, parameters) =>
       editShape(part, operations, parameters, { readModel: api.readModel, checkpoint }),
@@ -185,7 +195,7 @@ function primitive(spec, context) {
     default:
       throw new Error("不支持的建模操作 / unsupported modeling operation");
   }
-  if (!(shape instanceof cad.Part))
+  if (!(shape instanceof cad.Part || shape instanceof Assembly))
     throw new Error("操作必须生成实体 / operation must produce a solid Part");
   return placed(shape, spec);
 }
@@ -295,12 +305,19 @@ function publicOperation(value) {
   return value;
 }
 export function editShape(part, operations, parameters = {}, context = {}) {
-  const base = part;
+  const base = context.referenceBase || part;
   for (const [index, raw] of operations.entries()) {
     try {
       const op = values(raw, parameters);
       validate(publicOperation(op), operationSchema, `operations[${index}]`);
-      if (op.target !== undefined) {
+      if (part instanceof Assembly) {
+        const selected = part.part(op.part);
+        const { part: partId, ...local } = op;
+        const next = editShape(selected.shape, [local], {}, { ...context, checkpoint: undefined, referenceBase: base });
+        part = assembly(part.parts.map(item => item.id === partId ? { ...item, shape: next } : item));
+      } else if (op.part !== undefined) {
+        throw new Error("此模型不是多零件模型 / part requires an assembly");
+      } else if (op.target !== undefined) {
         if (!part) throw new Error("请先创建实体 / create a solid first");
         const solids = part.solids();
         const selected = select(part, "solids", op.target, base, solids).one();
@@ -369,7 +386,7 @@ export function editSource(source, operations, revision) {
 }
 export function describeShape(shape) {
   if (
-    !(shape instanceof cad.Part) ||
+    !(shape instanceof cad.Part || shape instanceof Assembly) ||
     !shape.isValid() ||
     !shape.solids().length ||
     !Number.isFinite(shape.volume) ||
@@ -389,6 +406,7 @@ export function describeShape(shape) {
   };
   return {
     metrics,
+    parts: partInfo(shape),
     preview: previewShape(shape),
     previewVersion: 3,
     kernel: kernelName,
@@ -398,6 +416,12 @@ export function describeShape(shape) {
 // Compare exact saved solids, independent of revision-local face IDs or meshing.
 // Added/removed regions describe the base revision relative to the target.
 export function compareShapes(base, target) {
+  if (base instanceof Assembly || target instanceof Assembly) {
+    const a = base instanceof Assembly ? base.material() : base;
+    const b = target instanceof Assembly ? target.material() : target;
+    try { return compareShapes(a, b); }
+    finally { if (a !== base) a.dispose(); if (b !== target) b.dispose(); }
+  }
   const describe = operation => {
     const part = operation();
     try {
@@ -414,6 +438,27 @@ export function compareShapes(base, target) {
 }
 
 export function previewShape(shape) {
+  if (shape instanceof Assembly) {
+    const previews = shape.parts.map(p => previewShape(p.shape));
+    const lists = { positions: [], normals: [], indices: [], edges: [], faceIndices: [], edgeIndices: [] };
+    let vertex = 0, face = 0, edge = 0;
+    previews.forEach((p, i) => {
+      for (const name of ["positions", "normals", "edges"]) lists[name].push(p[name]);
+      lists.indices.push(p.indices.map(n => n + vertex));
+      lists.faceIndices.push(p.faceIndices.map(n => n + face));
+      lists.edgeIndices.push(p.edgeIndices.map(n => n + edge));
+      vertex += p.positions.length / 3;
+      face += shape.parts[i].shape.faces().length;
+      edge += topologyItems(shape.parts[i].shape, "edges").length;
+    });
+    if (lists.faceIndices.reduce((n, a) => n + a.length, 0) > 500000) throw new Error("预览网格超过 50 万三角形 / preview exceeds 500,000 triangles");
+    return Object.fromEntries(Object.entries(lists).map(([name, blocks]) => {
+      const array = new (name.includes("Indices") || name === "indices" ? Uint32Array : Float32Array)(blocks.reduce((n, a) => n + a.length, 0));
+      let offset = 0;
+      for (const block of blocks) { array.set(block, offset); offset += block.length; }
+      return [name, array];
+    }));
+  }
   const size = vector(shape.bbox().size);
   // The public faceMeshes API returns meshes in shape.faces() order, keeping
   // ownership exact without guessing from triangle positions or normals.
@@ -504,22 +549,24 @@ export function previewShape(shape) {
   };
 }
 export function exportShape(shape, format) {
-  if (format === "smb") return saveShape(shape);
+  if (format === "smp") return saveShape(shape);
+  const parts = shape instanceof Assembly ? shape.parts.map(p => p.shape.named(p.name)) : [shape];
   if (format === "step") {
-    const text = cad.toStep(shape),
-      back = cad.fromStep(text);
+    const solids = parts.flatMap(part => [...part.solids()].map(solid => solid.named(part.name)));
+    const text = cad.toStep(solids), back = cad.fromStep(text);
+    const bodies = back instanceof cad.Part ? [back] : [...back];
     try {
-      if (
-        !back.isValid() ||
-        Math.abs(back.volume - shape.volume) >
-          Math.max(0.001, shape.volume * 1e-6)
-      )
-        throw new Error("STEP 回读校验失败");
-    } finally {
-      back.dispose();
-    }
+      if (bodies.length !== solids.length || bodies.some((body, i) => !body.isValid() ||
+        Math.abs(body.volume - solids[i].volume) > Math.max(0.001, solids[i].volume * 1e-6) ||
+        ["min", "max"].some(corner => vector(body.bbox()[corner]).some((v, axis) => Math.abs(v - vector(solids[i].bbox()[corner])[axis]) > 0.001))))
+        throw new Error("STEP 回读校验失败 / STEP round-trip failed");
+    } finally { bodies.forEach(body => body.dispose()); }
     return Buffer.from(text);
   }
-  if (format === "stl") return Buffer.from(cad.toStl(shape));
+  if (format === "smb") {
+    if (parts.length !== 1) throw new Error("多零件请导出 SMP 或 STEP / export an assembly as SMP or STEP");
+    return Buffer.from(cad.toSmb(parts[0], { ascii: false }));
+  }
+  if (format === "stl") return Buffer.from(cad.toStl(parts));
   throw new Error("不支持的导出格式");
 }

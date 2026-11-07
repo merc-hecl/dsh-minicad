@@ -31,6 +31,7 @@ const placement = { center: vector, rotate: rotation };
 const choices = (items) => ({ type: "string", enum: items });
 export const selector = object(
   {
+    part: text,
     geomType: text,
     name: text,
     parallelTo: vector,
@@ -135,7 +136,7 @@ export const primitiveSchema = {
   ),
 };
 const mode = choices(["fuse", "cut", "intersect"]);
-const common = { target: reference };
+const common = { target: reference, part: text };
 const operation = (op, fields, optional = {}) =>
   object({ op: { const: op }, ...fields, ...optional, ...common }, [
     "op",
@@ -273,6 +274,7 @@ export function toDshSchema(rule) {
     };
     rule = object(
       {
+        part: text,
         geomType: { type: "string" },
         name: { type: "string" },
         parallelTo: coordinates,

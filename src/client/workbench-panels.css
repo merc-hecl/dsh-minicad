@@ -59,6 +59,11 @@
 .mc-record-conversation-heading > span + span { color: var(--mc-muted); font-size: 11px; }
 .mc-record-transcript { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; --dsh-chat-content-width: 100%; --dsh-composer-side-clearance: 0px; }
 .mc-record-transcript > div { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+/* Native quote hover cards measure their inline anchor, excluding bubble padding.
+   Include that padding in the anchor bounds without changing the message layout. */
+.mc-record-transcript [data-message-bubble] span:has(> [data-quote-preview]) {
+  display: inline-block; max-width: 100%; padding-block: 10px; margin-block: -10px; vertical-align: top;
+}
 .mc-workbench:is([data-record-open], [data-version-library-open]) > :is(.mc-empty, .mc-viewport) { visibility: hidden; }
 
 .mc-version-library {
@@ -159,3 +164,18 @@ html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-making-record, .m
 @media (prefers-reduced-motion: reduce) {
   .mc-native-input, .mc-task-status, .mc-task-status::before, .mc-task-status-mark, .mc-task-status-details, .mc-making-record, .mc-version-library, .mc-sidebar { animation: none !important; transition: none !important; }
 }
+
+.mc-inspection { position: absolute; z-index: 12; top: var(--mc-content-top); right: var(--mc-gutter); width: min(300px, calc(100% - 40px)); max-height: calc(100% - var(--mc-content-top) - 170px); overflow: auto; padding: 12px; border-radius: 16px; display: grid; gap: 10px; }
+.mc-inspection header, .mc-inspection-actions { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.mc-inspection strong { font-size: 13px; }
+.mc-inspection-parts { display: grid; gap: 4px; }
+.mc-inspection-model-picker { width: 100%; justify-content: space-between; gap: 8px; }
+.mc-inspection-model-picker > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-inspection-model-picker > svg { flex: none; }
+.mc-inspection-actions { font-size: 13px; min-height: 32px; }
+.mc-inspection-parts-heading { border-top: 1px solid var(--mc-border); padding-top: 8px; }
+.mc-inspection-part { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 2px 4px; border-radius: 8px; }
+.mc-part-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.mc-inspection-part[data-hidden] .mc-part-name, .mc-inspection-part[data-hidden] .mc-part-visibility { color: var(--mc-muted); }
+.mc-inspection-part[data-isolated] { background: var(--mc-selected); }
+.mc-inspection-part button[aria-pressed="true"] { color: var(--mc-accent); }

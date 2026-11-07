@@ -69,7 +69,7 @@ function modelPath(root, name) {
 function paths(root, name) {
   const source = modelPath(root, name),
     base = stem(source);
-  return [source, `${base}.parameters.json`, `${base}.smb`];
+  return [source, `${base}.parameters.json`, `${base}.smp`];
 }
 function availableDirectory(root, title, current) {
   let name = cleanName(title).slice(0, 80);
@@ -102,32 +102,10 @@ export class Store {
     this.registry = join(this.root, "designs.json");
     this.journal = join(this.root, "pending-files.json");
     this.recover();
-    if (!fs.existsSync(this.registry)) this.migrateDesigns();
+    if (!fs.existsSync(this.registry)) this.write(this.registry, jsonBytes({ version: 1, paths: [] }));
   }
   designFile(root) { return join(root, ".cad-design.json"); }
   workspaceBytes(data) { return jsonBytes(Object.values(data.projects)[0]); }
-  migrateDesigns() {
-    const legacy = join(this.root, "libraries.json"), paths = [], changes = new Map();
-    if (fs.existsSync(legacy)) for (const root of readJson(legacy).paths.filter(path => fs.existsSync(path))) {
-      const library = readJson(join(root, "minicad.json"));
-      if (![2, 3].includes(library.version) || !library.projects) throw new Error("已有设计数据需要迁移为项目文件");
-      for (const old of Object.values(library.projects)) {
-        const directory = inside(root, old.directory);
-        const task = { ...old, version: 1,
-          sessions: old.sessions || (old.session_id ? [old.session_id] : []),
-          activeSessionId: old.activeSessionId || old.session_id || null };
-        delete task.directory; delete task.session_id;
-        const file = this.designFile(directory);
-        if (fs.existsSync(file)) {
-          if (readJson(file).id !== task.id) throw new Error(`设计元数据冲突 / design metadata conflict: ${file}`);
-        } else changes.set(file, jsonBytes(task));
-        paths.push(directory);
-      }
-    }
-    changes.set(this.registry, jsonBytes({ version: 1, paths: [...new Set(paths)] }));
-    this.commit(changes);
-  }
-
   recover() {
     if (!fs.existsSync(this.journal)) return;
     const pending = readJson(this.journal);
@@ -359,8 +337,8 @@ export class Store {
   }
   async shape(saved) {
     return (await this.kernel()).readShape(
-      fs.readFileSync(join(saved.folder, "model.smb")),
-      "model.smb",
+      fs.readFileSync(join(saved.folder, "model.smp")),
+      "model.smp", saved.state.parts,
     );
   }
   prepareInputs(directory, sourceFile) {
@@ -427,7 +405,7 @@ export class Store {
         [join(folder, "preview.bin"), preview],
         [join(folder, "model.js"), Buffer.from(state.source)],
         [join(folder, "parameters.json"), jsonBytes(state.parameters)],
-        [join(folder, "model.smb"), binary],
+        [join(folder, "model.smp"), binary],
         [join(folder, "state.json"), jsonBytes(state)],
       ]);
     if (writeWorkingFiles) {
@@ -628,14 +606,14 @@ export class Store {
     const checks = [...new Map([...(state.validation?.checks || []), ...(args.checks || [])]
       .map(check => [JSON.stringify(check), check])).values()];
     state.validation = checks.length ? { checks, ...api.checkShape(
-      api.readShape(fs.readFileSync(join(folder, "model.smb")), "model.smb"),
+      api.readShape(fs.readFileSync(join(folder, "model.smp")), "model.smp", state.parts),
       api.values(checks, state.parameters), api.modelScope(key, `${args.sourceFile}@${run.id}`), candidateRevision(run),
     ) } : { passed: null, checks: [], results: [] };
     if (state.validation.passed === false)
       throw Object.assign(new Error("尺寸检查未通过，当前版本未被覆盖 / dimensional checks failed; saved revision retained"), { validation: state.validation });
     state.preview = candidate.preview();
     const finished = { ...run, phase: "done", committedRevision: nextRevision(model), updated: now() };
-    this.record(key, args.sourceFile, state, fs.readFileSync(join(folder, "model.smb")),
+    this.record(key, args.sourceFile, state, fs.readFileSync(join(folder, "model.smp")),
       args.summary || run.summary, run.baseRevision, inputs, assets, {
         selectModel: !args.preserveSelection,
         extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finished)], [journal.index, jsonBytes({ id: run.id })]]),
@@ -664,7 +642,7 @@ export class Store {
     delete state.restoredFrom;
     state.geometryIds = geometryIds;
     const assets = new Map((state.assets || []).map(name => [name, fs.readFileSync(inside(saved.folder, name))]));
-    const revision = this.record(key, sourceFile, state, fs.readFileSync(join(saved.folder, "model.smb")),
+    const revision = this.record(key, sourceFile, state, fs.readFileSync(join(saved.folder, "model.smp")),
       args.summary, head, undefined, assets, {
         selectModel: false,
         writeWorkingFiles: false,
@@ -676,25 +654,28 @@ export class Store {
     const saved = this.snapshot(key, args.revision, args.sourceFile, false);
     if (!saved) throw new Error("请先完成建模");
     const api = await this.kernel(),
-      shape = await this.shape(saved),
+      fullShape = await this.shape(saved),
+      shape = args.part ? fullShape.part(args.part).shape : fullShape,
       state = saved.state,
       [root, , task] = this.locate(key),
-      name = `${cleanName(task.title)}-v${Number(args.revision)}`;
+      name = `${cleanName(task.title)}-v${Number(args.revision)}${args.part ? "-" + cleanName(fullShape.part(args.part).name) + "-" + createHash("sha256").update(args.part).digest("hex").slice(0, 8) : ""}`;
     let bytes,
       mediaType = "application/octet-stream";
     switch (args.format) {
       case "step":
       case "stl":
+      case "smp":
       case "smb":
         bytes = api.exportShape(shape, args.format);
         break;
       case "zip": {
+        if (args.part) throw new Error("零件导出请选择 STEP、STL 或 SMP / use STEP, STL or SMP for a part");
         const sourceFile = state.sourceFile || task.sourceFile;
         const archive = {
           [sourceFile]: strToU8(state.source),
           [`${stem(sourceFile)}.parameters.json`]: jsonBytes(state.parameters),
-          [`${stem(sourceFile)}.smb`]: fs.readFileSync(
-            join(saved.folder, "model.smb"),
+          [`${stem(sourceFile)}.smp`]: fs.readFileSync(
+            join(saved.folder, "model.smp"),
           ),
           "project.json": jsonBytes({
             title: task.title,
@@ -703,6 +684,7 @@ export class Store {
             kernel: state.kernel,
             geometryIds: state.geometryIds || defaultIdFormats,
             validation: state.validation || null,
+            parts: state.parts,
           }),
         };
         for (const asset of state.assets || [])
@@ -727,6 +709,51 @@ export class Store {
       revision: Number(args.revision),
       sourceFile: state.sourceFile || task.sourceFile,
     };
+  }
+  async variants(key, args) {
+    const base = this.snapshot(key, undefined, args.sourceFile, false);
+    this.expect(base?.state.revision || 0, args);
+    if (!base) throw new Error("请先完成建模 / build a model first");
+    if (this.project(key, false, args.sourceFile).workingTreeChanged)
+      throw new Conflict("请先构建工作文件 / build working changes first");
+    if (!Array.isArray(args.variants) || !args.variants.length || args.variants.length > 20)
+      throw new Error("请提供 1 至 20 个规格 / provide 1–20 variants");
+    const [root, , task] = this.locate(key), directory = this.taskRoot(root, task), seen = new Set();
+    for (const variant of args.variants) {
+      const name = portable(relative(directory, modelPath(directory, variant.sourceFile)));
+      const normalized = process.platform === "win32" ? name.toLowerCase() : name;
+      if (seen.has(normalized) || task.models[name] || paths(directory, name).some(path => fs.existsSync(path)))
+        throw new Error(`规格文件已存在或重复 / variant file exists or is duplicated: ${name}`);
+      seen.add(normalized);
+    }
+    // Evaluate every specification before publishing any. Commits and optional exports
+    // remain individually durable; errors report which files were already saved.
+    const candidates = [];
+    for (const variant of args.variants) {
+      const result = await this.build(key, { sourceFile: variant.sourceFile, expectedRevision: 0,
+        source: base.state.source, parameters: { ...base.state.parameters, ...variant.parameters },
+        checks: variant.checks, summary: variant.name || variant.sourceFile, commit: false, preserveSelection: true });
+      if (result.validation.passed === false) throw new Error(`规格检查失败 / variant checks failed: ${variant.sourceFile}`);
+      candidates.push({ ...variant, runId: result.runId });
+    }
+    const items = [];
+    try {
+      for (const variant of candidates) {
+        const result = await this.commitCandidate(key, { sourceFile: variant.sourceFile, expectedRevision: 0,
+          runId: variant.runId, summary: variant.name || variant.sourceFile, preserveSelection: true });
+        const item = { sourceFile: variant.sourceFile, revision: result.head, name: variant.name,
+          parameters: result.parameters, metrics: result.design.metrics, exports: [] };
+        items.push(item);
+        for (const format of args.formats || []) {
+          const { path, name } = await this.export(key, { sourceFile: variant.sourceFile, revision: result.head, format });
+          item.exports.push({ path, name, format });
+        }
+      }
+    } catch (error) {
+      error.message += `\n已保存规格 / saved variants: ${JSON.stringify(items)}`;
+      throw error;
+    }
+    return { sourceFile: args.sourceFile, revision: args.expectedRevision, items };
   }
   async dispatch(method, args = {}) {
     if (method === "api") return readApi(args);
@@ -775,6 +802,7 @@ export class Store {
       if (method === "process_history") return journal.runs().toReversed();
       if (method === "checkpoint_file") return journal.preview(args.runId, args.sequence);
     }
+    if (method === "variants") return this.variants(key, { ...args, sourceFile });
     if (method === "get") return this.project(key, false, sourceFile);
     if (method === "compare") {
       const base = this.snapshot(key, args.baseRevision, sourceFile, false);
@@ -853,6 +881,14 @@ export class Store {
       return this.build(key, { ...args, parameterMode: args.mode ?? "merge" });
     if (method === "set_geometry_id_format")
       return this.setGeometryIdFormat(key, sourceFile, row.head, args);
+    if (method === "fit") {
+      this.expect(row.head, args);
+      const saved = this.snapshot(key, undefined, sourceFile, false);
+      if (!saved) throw new Error("请先完成建模 / build a model first");
+      const api = await this.kernel(), shape = await this.shape(saved);
+      try { return { sourceFile, revision: row.head, items: api.inspectFit(shape, args.pairs, args.tolerance) }; }
+      finally { shape.dispose(); }
+    }
     if (["query", "measure", "check", "geometry_annotation"].includes(method)) {
       this.expect(row.head, args);
       const candidate = args.runId ? new ProcessJournal(directory, sourceFile).candidate(args.runId) : null;
@@ -867,6 +903,8 @@ export class Store {
         scope = api.modelScope(key, candidate ? `${sourceFile}@${args.runId}` : sourceFile);
       const revision = candidate ? candidateRevision(candidate.run) : row.head;
       const result = { sourceFile, revision, ...(candidate ? { runId: args.runId, committed: false } : {}) };
+      if (method === "query" && args.kind === "parts")
+        return { ...result, kind: "parts", items: saved.state.parts || [] };
       if (method === "geometry_annotation") {
         const describe = reference => {
           const { kind, geometry: item } = api.describeReference(
@@ -920,7 +958,7 @@ export class Store {
         if (this.project(key, false, sourceFile).workingTreeChanged)
           throw new Conflict("源码、参数或资源有未构建的修改，请先构建再切换版本 / build working changes before switching versions");
         const changes = new Map(paths(directory, sourceFile).map((file, index) => [
-          file, fs.readFileSync(join(saved.folder, ["model.js", "parameters.json", "model.smb"][index])),
+          file, fs.readFileSync(join(saved.folder, ["model.js", "parameters.json", "model.smp"][index])),
         ]));
         for (const name of saved.state.assets || [])
           changes.set(inside(directory, name), fs.readFileSync(inside(saved.folder, name)));

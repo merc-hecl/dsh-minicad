@@ -33,6 +33,8 @@ Inspect referenced files and actual drawing pages, reconcile views and dimension
 
 Use cad_edit for supported operations, cad_build for custom logic, cad_api for unfamiliar signatures. Apply only new operations to an existing solid and group one coherent change into one revision. For experiments, use commit:false; inspect that candidate with its runId and returned head as expectedRevision, then publish with cad_commit when ready.
 
+For multiple independent parts, return cad.assembly([{id:"base",name:"Base",shape:base},{id:"lid",name:"Lid",shape:lid}]) from cad_build. Keep IDs stable when rebuilding; position shapes in world coordinates. Do not fuse separate components. Repeated components may share construction code, but each placed instance has its own ID. Use cad_query(kind:"parts") for the part list, cad_edit operations with part:"id" to edit one, cad_fit for clearance/interference, cad_export with part:"id" for individual files. cad_variants generates separate parameter specifications; the workbench model picker opens each result.
+
 Verify the requested properties, not just whether a solid builds. Choose measurements that match the dimension's meaning and attach requirement-based checks to the published change. cad_check is read-only: pass the reviewed checks to build/edit/commit to record them. When results disagree, revisit the evidence, measurement and geometry; keep the requirement intact. Preserve the saved model while resolving failed trials.
 
 Reply in the user's language with the saved revision, what changed, what was checked and what remains uncertain. Let the user inspect the model in the workbench. Export only on request; include model, source or export links only when explicitly requested.
@@ -111,13 +113,13 @@ Reply in the user's language with the saved revision, what changed, what was che
     );
     if (!["build", "edit", "update_parameters", "commit"].includes(method) || !result.committed) return result;
     return { sourceFile: result.sourceFile, head: result.head, committed: true,
-      metrics: result.design.metrics, validation: result.design.validation,
+      metrics: result.design.metrics, parts: result.design.parts, validation: result.design.validation,
       diagnostics: result.diagnostics,
       note: "Only the listed checks are verified; valid geometry does not establish full drawing compliance." };
   };
   register(
     "cad_build",
-    "Custom JavaScript modeling: source defines build(parameters,cad) returning a valid cad.Part; cad exposes SMLib exports; commit:false evaluates without publishing.",
+    "Custom JavaScript modeling: source defines build(parameters,cad) returning a valid cad.Part or cad.assembly([{id,name,shape}]); cad exposes SMLib exports; commit:false evaluates without publishing.",
     schema({ ...target, ...buildOptions, source: string, parameters, summary: string }, [
       "sourceFile",
       "expectedRevision",
@@ -131,7 +133,7 @@ Reply in the user's language with the saved revision, what changed, what was che
     schema(
       {
         ...readTarget,
-        kind: { type: "string", enum: ["faces", "edges", "solids", "holes", "vertices"] },
+        kind: { type: "string", enum: ["faces", "edges", "solids", "holes", "vertices", "parts"] },
         selector: reference,
         edgeParameters: { ...edgeParameters, description: "For kind:edges only. Fractions of arc length in [0,1]: 0=start, 1=end, 0.5=halfway; not raw curve parameters." },
       },
@@ -148,7 +150,7 @@ Reply in the user's language with the saved revision, what changed, what was che
   );
   register(
     "cad_edit",
-    "Create a model or edit the saved solid incrementally; changed parameters rebuild existing features; commit:false evaluates without publishing.",
+    "Create a model or edit the saved solid incrementally; assembly operations must specify part (the stable part ID); changed parameters rebuild existing features; commit:false evaluates without publishing.",
     schema(
       { ...target, ...buildOptions, operations: operationsSchema, parameters, summary: string },
       ["sourceFile", "expectedRevision", "operations", "summary"],
@@ -210,12 +212,13 @@ Reply in the user's language with the saved revision, what changed, what was che
     "Export a saved revision of a specified model.",
     schema({
       sourceFile,
+      part: string,
       revision: { type: "integer", minimum: 1 },
       format: {
         type: "string",
-        enum: ["step", "stl", "smb", "zip"],
+        enum: ["step", "stl", "smp", "smb", "zip"],
       },
-    }),
+    }, ["sourceFile", "revision", "format"]),
     async (project, args, signal) => {
       const { name, revision, path, sourceFile } = await ctx.minicad.call(
         "export",
@@ -227,10 +230,25 @@ Reply in the user's language with the saved revision, what changed, what was che
         revision,
         path,
         sourceFile,
-        downloadUrl: `/api/minicad/download?${new URLSearchParams({ projectId: project.id, sourceFile, revision, format: args.format })}`,
+        downloadUrl: `/api/minicad/download?${new URLSearchParams({ projectId: project.id, sourceFile, revision, format: args.format, ...(args.part ? { part: args.part } : {}) })}`,
         note: "File saved. Report the returned filename and path as plain text or inline code, and use the native directory button at the top right of the workbench to find it. Include file or download links only when explicitly requested by the user.",
       };
     },
+  );
+  register(
+    "cad_fit",
+    "Measure clearance and interference between named assembly parts. Reports minimum distance (mm), overlap volume (mm3), and contact/separated/interference. Does not modify geometry.",
+    schema({ ...target, pairs: { type: "array", minItems: 1, maxItems: 100,
+      items: schema({ from: string, to: string }) }, tolerance: { type: "number", minimum: 0 } },
+      ["sourceFile", "expectedRevision", "pairs"]), call("fit"),
+  );
+  register(
+    "cad_variants",
+    "Generate 1–20 new model files from the saved source with top-level parameter overrides, optionally export each. Keeps the original unchanged. Each output must be a new .js path. Checks are only those supplied for that variant. All variants are evaluated first; commits/exports are individually durable.",
+    schema({ ...target, variants: { type: "array", minItems: 1, maxItems: 20,
+      items: schema({ sourceFile, name: string, parameters, checks: checksSchema }, ["sourceFile", "parameters"]) },
+      formats: { type: "array", minItems: 1, maxItems: 4, items: { type: "string", enum: ["step", "stl", "smp", "zip"] } } },
+      ["sourceFile", "expectedRevision", "variants"]), call("variants"),
   );
   register(
     "cad_restore",

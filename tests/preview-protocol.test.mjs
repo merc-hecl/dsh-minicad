@@ -82,7 +82,7 @@ test(
       );
       for (const name of ["mesh", "edges"])
         assert.equal(saved[name], undefined);
-      const solid = await readFile(join(task.directory, "model.smb"));
+      const solid = await readFile(join(task.directory, "model.smp"));
       const sourceFile = join(task.directory, args.sourceFile);
       const draft = "// Unbuilt source";
       await writeFile(sourceFile, draft);
@@ -117,7 +117,7 @@ test(
       assert.equal(state.workingTreeChanged, true);
       assert.equal(await readFile(sourceFile, "utf8"), draft);
       assert.deepEqual(
-        await readFile(join(task.directory, "model.smb")),
+        await readFile(join(task.directory, "model.smp")),
         solid,
       );
     } finally {

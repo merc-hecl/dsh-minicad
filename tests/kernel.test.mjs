@@ -108,7 +108,7 @@ test(
       assert.ok(
         decodePreview(await readFile(previewFile.path)).indices.length > 60,
       );
-      const original = await readFile(join(p.directory, "model.smb"));
+      const original = await readFile(join(p.directory, "model.smp"));
       await assert.rejects(
         worker.call("build", {
           projectId: p.id,
@@ -126,7 +126,7 @@ test(
         /封闭实体/,
       );
       assert.deepEqual(
-        await readFile(join(p.directory, "model.smb")),
+        await readFile(join(p.directory, "model.smp")),
         original,
       );
       await rm(join(p.directory, "model.js"));
@@ -160,7 +160,7 @@ test(
         if (format === "zip") {
           const files = unzipSync(bytes);
           assert.equal(strFromU8(files["model.js"]), source);
-          assert.ok(files["model.smb"].length);
+          assert.ok(files["model.smp"].length);
         }
       }
       const second = await worker.call("build", {
@@ -184,7 +184,7 @@ test(
       assert.equal(persisted.design.checks, undefined);
       const cad = await import("@classcad/smlibwasm");
       near(
-        cad.fromSmb(await readFile(join(p.directory, "model.smb"))).volume,
+        cad.fromSmp(await readFile(join(p.directory, "model.smp"))).volume,
         built.design.metrics.volume,
       );
       const base = { projectId: p.id, sourceFile: "model.js", expectedRevision: 1 };

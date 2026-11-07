@@ -14,6 +14,20 @@ const COMPOSER_SLOTS = { views: WorkbenchViews };
 const EMPTY_TODOS = [];
 const EMPTY_SOURCE = { subscribe: () => () => {}, getSnapshot: () => null };
 
+function latestAssistantOutput(chat, turnId) {
+  for (let i = chat.order.length - 1; i >= 0; i--) {
+    const node = chat.nodes.get(chat.order[i]);
+    if (node?.kind !== "assistant-step" || node.location.turn?.turn !== turnId) continue;
+    for (let j = node.data.blocks.length - 1; j >= 0; j--) {
+      const block = node.data.blocks[j];
+      if (block.kind !== "text" && block.kind !== "reasoning") continue;
+      const text = block.text.replace(/^<signature>[\s\S]*?<\/signature>\s*/, "");
+      if (text.trim() && !text.startsWith("<signature>")) return text;
+    }
+  }
+  return "";
+}
+
 function latestLiveTool(members, nodes) {
   let latest;
   function visit(call) {
@@ -51,8 +65,8 @@ export function Composer({ renderFactorySlot, useSession, useInput, useSessionSt
   const activity = retry?.retryState === "scheduled" ? minicadT("agentRetry", { current: retry.retry, total: retry.mode === "normal" ? retry.maxRetries : "∞" })
     : tool?.name ? minicadT(tool.phase === "preparing" ? "agentPreparingTool" : "agentRunningTool", { tool: tool.name })
       : summary && !groupState.data.closed ? chatT(`message.stepProcess.${summary.preparing ? `prepare.${activityKind === "thinking" ? "tools" : activityKind}` : activityKind}`) : "";
-  // DSH's tool detail can contain arguments. Keep its detail only for reasoning.
-  const activityDetail = summary?.running ? "" : summary?.runningDetail || "";
+  // Keep the current turn's prose visible while tools and todos change.
+  const activityDetail = latestAssistantOutput(chat, turnId);
   const callbacks = useRef(null);
   callbacks.current = { onSubmitted, onSessionState, onRestored };
   const previous = useRef({ ids: new Set(), draft: input.draft, sent: false });

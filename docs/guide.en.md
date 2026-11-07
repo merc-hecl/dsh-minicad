@@ -41,6 +41,10 @@ To update an npm installation on Desktop, uninstall it through **Plugins**, then
 - **Revision comparison** shows exact volume differences of the base relative to the target: green for added, red for removed, gray for shared volume. It does not change the model; selection and measurement pause during comparison.
 - Ask the agent to export STEP, STL or a project ZIP. The native navigation menu at the top right opens the design directory or the current saved model in FreeCAD. External edits are not written back automatically.
 
+- In **Model inspection**, the eye button toggles each part's visibility. The isolate button on the right shows only that part; click it again to restore the previous visibility. **Show all** restores every part, and the transparency switch controls transparent display. Display changes do not affect geometry, revisions or exports.
+- When a design contains multiple model files or variants, select them in **Model inspection**. Ask the agent to generate parameter variants and export a whole model or an individual part.
+- The agent creates and names independent parts. Contact does not fuse components; ask the agent to check clearance and interference.
+
 Valid geometry and dimensional checks do not establish structural strength or manufacturability.
 
 ### FreeCAD path
@@ -56,6 +60,8 @@ MiniCAD detects FreeCAD through PATH, Windows app registration or the macOS app 
 An empty string enables automatic detection. Non-PATH Linux installations such as AppImage can use an absolute path. A patch replaces the whole row configuration; preserve any other settings you already use.
 
 ## Data and runtime boundaries
+
+Native solids now use `.smp`. Old `.smb` revision snapshots are no longer read or automatically migrated; rebuild old source for a new revision. Use a new design folder for acceptance.
 
 - Design folders contain source, parameters, exact solids, `.cad-design.json` and `.cad-history/`. Copy the whole folder to preserve models and versions. DSH stores conversations separately.
 - `.cad-process/` stores modeling steps, `references/` stores drawings and `exports/` stores exports. **Save as** excludes uncommitted trials.

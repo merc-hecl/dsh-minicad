@@ -16,7 +16,9 @@ Agents are encouraged to use `cad_edit` first when existing operations express t
 | `cad_check` | Check measured values against targets and tolerances or limits without changing the model |
 | `cad_update_parameters` | Merge top-level parameters and rebuild by default; `mode: "replace"` replaces the entire parameter object |
 | `cad_api` | Locate installed declarations by symbol or `Class.member`, with `offset` / `limit` paging |
-| `cad_export` | Export a saved revision of a specified model file |
+| `cad_fit` | Check clearance and interference between named parts without changing geometry |
+| `cad_variants` | Generate independent parameter specifications with optional exports |
+| `cad_export` | Export a saved revision of a specified model file, optionally one part |
 | `cad_restore` | Make an existing revision current without creating a revision |
 
 Read model file names and revisions with `cad_read_project` first. All model tools except reading and API lookup require an explicit task-relative `sourceFile`; mutations, queries, measurements and checks also require that file's `expectedRevision`. Explicit agent targets do not change the UI selection. Revisions are independent per file; new files start at revision 0.
@@ -147,3 +149,51 @@ Checks return overall `passed` and each measured value, unit and result. Use `ex
 Geometry IDs bind the task, model file and revision. Stale and foreign references are rejected. `faces` / `edges` accept arrays of IDs. IDs resolve through topology positions and kernel derivation, never nearest-center guessing. A reference removed, split or no longer traceable after an earlier operation fails explicitly. Query again after edits; use geometry selectors for later steps in a batch. Replaying stored references requires unchanged topology, so prefer geometric selectors for parametric edits expected to change topology.
 
 Exports are written to the task's `exports/<model path without .js>/`, preventing equal revision numbers in different files from overwriting one another. Existing export files remain available.
+
+
+## Multipart models
+
+`cad_build` may return `cad.assembly([{id,name,shape}])`. Each ID is stable and unique within the model; name is the display label and shape is a valid `cad.Part` placed in world coordinates. Contact and overlap never fuse components. Assembly volume sums member volumes, including overlapping material. Repeated instances may share construction code but each placed instance needs its own ID.
+
+```javascript
+function build(p, cad) {
+  return cad.assembly([
+    { id: "base", name: "Base", shape: cad.Box(p.length, 40, 8) },
+    { id: "lid", name: "Lid", shape: cad.Box(p.length, 40, 2).translate(0, 0, 5) }
+  ]);
+}
+```
+
+- `cad_query(kind:"parts")` lists IDs, labels, dimensions, volumes and preview ranges. Geometry selectors accept `part:"lid"`; geometry results include `part` and `partName`. Geometry IDs remain scoped to the model file and revision.
+- Each `cad_edit` operation specifies `part:"lid"`, e.g. `{op:"translate",part:"lid",by:[0,0,10]}`. Existing operations edit that member without merging other parts. Use `cad_build` to add/remove members or change the parts list.
+- Measurements can target `{part:"lid",one:true}`. Thickness requires a single solid target.
+- `cad_fit` takes `sourceFile`, `expectedRevision`, `pairs:[{from:"base",to:"lid"}]` and optional `tolerance` (default 0.001 mm). It reports minimum surface distance, interference volume and `contact`, `separated` or `interference`; it neither solves constraints nor changes geometry.
+- `cad_export` optionally takes `part:"lid"`. Omit it for the whole model. Whole models support STEP, STL, SMP and project ZIP; SMB is a single-body exchange format. Individual exports retain world placement. STEP round trips check solid count, volume and bounding dimensions/placement, without claiming to retain assembly constraints or a hierarchy tree.
+- Revision comparison compares occupied material volume; renaming, ID changes and regrouping alone have no volume difference.
+
+The plugin's `cad.assembly` supports whole-model `translate` and `rotate`, plus `parts` and `part(id)` member access. It is not a SMLib `cad.Part`. Apply custom Boolean operations to member shapes and compose a new assembly.
+
+## Parameter variants
+
+`cad_variants` evaluates saved source with top-level parameter overrides into new model files, leaving the original model, revision and UI selection unchanged. Output paths must be new task-relative `.js` files.
+
+```json
+{
+  "sourceFile": "model.js",
+  "expectedRevision": 1,
+  "variants": [
+    { "name": "60 mm", "sourceFile": "sizes/box-60.js", "parameters": { "length": 60 } },
+    { "name": "80 mm", "sourceFile": "sizes/box-80.js", "parameters": { "length": 80 } },
+    { "name": "100 mm", "sourceFile": "sizes/box-100.js", "parameters": { "length": 100 } }
+  ],
+  "formats": ["step", "stl"]
+}
+```
+
+A batch contains 1–20 specifications. Each can supply its own `checks`; checks from previous revisions are not inherited. Optional formats are STEP, STL, SMP and ZIP. All variants are evaluated and checked before any are published. Publication and export are individually durable; failures report already saved variants rather than promising a whole-batch rollback. Each output is independent and does not automatically track future source changes. Use `cad.readModel` for task-relative resources; custom relative `require` paths are the source author's responsibility when creating files in different directories.
+
+**Model inspection** switches between files/specifications and shows, hides or isolates parts. Transparency and visibility only affect display, not geometry, revisions or exports.
+
+## Native storage
+
+Working solids, saved revisions and trial candidates now use `.smp` multipart containers, with part IDs and labels in revision state. Legacy design-registry migration has been removed. Old `.smb` revision snapshots are not read or migrated; rebuild old source to create a current-format revision. External SMB remains supported as a single-body exchange format.

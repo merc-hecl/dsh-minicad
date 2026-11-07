@@ -52,7 +52,7 @@ test("revision diff reads saved solids and preserves working files, head and pro
     await worker.call("build", { projectId: project.id, expectedRevision: 0, source, parameters: { hole: false } });
     const built = await worker.call("build", { projectId: project.id, expectedRevision: 1, parameters: { hole: true } });
     await writeFile(join(project.directory, "model.js"), `${source}\n// unsaved working changes\n`);
-    const files = ["model.js", "model.parameters.json", "model.smb", ".cad-design.json"];
+    const files = ["model.js", "model.parameters.json", "model.smp", ".cad-design.json"];
     const before = await Promise.all(files.map(file => readFile(join(project.directory, file))));
     const history = await worker.call("process_history", { projectId: project.id });
     const args = { projectId: project.id, sourceFile: "model.js", baseRevision: 2, targetRevision: 1 };

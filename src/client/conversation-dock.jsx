@@ -63,9 +63,8 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
     wasRunning.current = alive;
   }, [alive, native.terminal, native.failure, latestRevision]);
   const completed = native.todos.filter(todo => todo.status === "completed").length;
-  const currentTask = native.todos.find(todo => todo.status === "in_progress");
   const saved = latestRevision > baseline.current;
-  const label = phase === "working" ? [native.activity || t("agentWorking"), currentTask?.content].filter(Boolean).join(" · ")
+  const label = phase === "working" ? native.activity || t("agentWorking")
     : phase === "waiting" ? t(native.interaction === "approval" ? "agentApproval" : native.interaction === "plan-review" ? "agentPlanReview" : "taskStatus.waiting")
       : phase === "done" ? saved ? t("agentSaved", { version: latestRevision }) : t("agentDone")
         : phase ? t(`taskStatus.${phase}`) : t("openInput");
@@ -88,7 +87,7 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
     {expanded && phase && !native.waiting && <section className="mc-task-status-details mc-panel" aria-label={label}>
       <div className="mc-status-detail-heading"><strong>{label}</strong><Button variant="ghost" size="sm" aria-label={t("closeStatus")}
         icon={<IconCloseOutlineRegular size={14} />} onClick={closeExpanded} /></div>
-      {phase === "working" && <p className="mc-status-current">{currentTask?.content || native.activityDetail}</p>}
+      {native.activityDetail && <p className="mc-status-current">{native.activityDetail}</p>}
       {failure && <p className="mc-task-status-error">{failure}</p>}
       {(phase === "stopped" || phase === "error") && <p className="mc-muted">{t(revision > 0 ? "agentRetained" : "agentNoVersion", { version: revision })}</p>}
       {native.todos.length > 0 && <><div className="mc-task-list-heading"><span>{t("agentTasks")}</span><span>{completed}/{native.todos.length}</span></div>

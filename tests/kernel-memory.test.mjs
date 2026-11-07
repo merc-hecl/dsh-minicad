@@ -168,7 +168,7 @@ test(
         const folder = join(task.directory, built.revisions[0].folder);
         const stateFile = join(folder, "state.json"),
           summaryFile = join(folder, "summary.json");
-        const binary = await readFile(join(task.directory, "model.smb"));
+        const binary = await readFile(join(task.directory, "model.smp"));
         await writeFile(summaryFile, "corrupt cache");
         near((await worker.call("get", args)).design.metrics.volume, 6000);
         assert.equal(
@@ -194,7 +194,7 @@ test(
         await worker.call("get", { projectId: task.id });
         assert.equal(starts, 2);
         assert.deepEqual(
-          await readFile(join(task.directory, "model.smb")),
+          await readFile(join(task.directory, "model.smp")),
           binary,
         );
         assert.equal(

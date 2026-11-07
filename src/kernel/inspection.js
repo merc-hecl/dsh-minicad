@@ -1,3 +1,4 @@
+import { Assembly } from "./assembly.js";
 import {
   defaultIdFormats,
   geometryLabel,
@@ -18,6 +19,7 @@ import { nearestPair, farthestPair } from "./distances.js";
 export const vector = (v) => [v.x, v.y, v.z];
 // Keep existing edge indices stable; seam edges are appended to the query list.
 export function topologyItems(shape, kind) {
+  if (shape instanceof Assembly) return new cad.ShapeList(...shape.parts.flatMap(p => [...topologyItems(p.shape, kind)]));
   const items = shape[kind]();
   if (kind !== "edges") return items;
   return items.union(shape.edges({ seams: true }));
@@ -117,6 +119,17 @@ export function select(part, kind, selector = {}, base = part, items, allowEmpty
       );
     return list;
   }
+  if (selector.part) {
+    const owner = part instanceof Assembly ? part.part(selector.part).shape : part;
+    if (!(part instanceof Assembly) && owner.name !== selector.part) throw new Error("零件不存在 / unknown part");
+    if (part instanceof Assembly && kind === "solids") {
+      const start = part.parts.slice(0, part.parts.findIndex(p => p.id === selector.part)).reduce((n, p) => n + p.shape.solids().length, 0);
+      list = list.slice(start, start + owner.solids().length);
+    } else {
+      const owned = topologyItems(owner, kind);
+      list = list.filter(item => owned.some(candidate => candidate.equals(item)));
+    }
+  }
   if (selector.name) list = list.filter((item) => item.name === selector.name);
   if (selector.geomType) list = list.ofType(selector.geomType);
   if (selector.radius !== undefined) list = list.filter(item =>
@@ -181,10 +194,22 @@ export function queryShape(
   const resolved = typeof selector === "string" ? bindReference(selector, topologyKind, shape, scope, revision) : selector;
   return select(shape, topologyKind, resolved, shape, items, kind === "holes").map((item) => {
     const index = all.findIndex((candidate) => candidate.equals(item));
+    const owner = owningPart(shape, topologyKind, index);
     return { ...describeItem(item, index, topologyKind, scope, revision, idFormats),
+      ...(owner ? { part: owner.id, partName: owner.name } : {}),
       ...(edgeParameters ? { samples: edgeParameters.map(t => ({ t, point: vector(item.pointAt(t)) })) } : {}),
       ...(kind === "holes" ? { hole: cylindricalHole(shape, item) } : {}) };
   });
+}
+function owningPart(shape, kind, index) {
+  if (!(shape instanceof Assembly)) return null;
+  let start = 0;
+  for (const part of shape.parts) {
+    const count = topologyItems(part.shape, kind).length;
+    if (index >= start && index < start + count) return part;
+    start += count;
+  }
+  return null;
 }
 export function describeReference(
   shape,
@@ -194,16 +219,17 @@ export function describeReference(
   idFormats = defaultIdFormats,
 ) {
   const { kind, index } = bindReference(id, null, shape, scope, revision).$ref;
+  const owner = owningPart(shape, kind, index);
   return {
     kind,
-    geometry: describeItem(
+    geometry: { ...describeItem(
       topologyItems(shape, kind)[index],
       index,
       kind,
       scope,
       revision,
       idFormats,
-    ),
+    ), ...(owner ? { part: owner.id, partName: owner.name } : {}) },
   };
 }
 function describeItem(item, index, kind, scope, revision, idFormats) {
@@ -260,6 +286,10 @@ function naturalCenter(item) {
 // stay distinguishable from complete cylindrical walls and through bores.
 const boreCache = new WeakMap();
 function cylindricalHole(shape, face) {
+  if (shape instanceof Assembly) {
+    const owner = shape.parts.find(p => p.shape.faces().some(candidate => candidate.equals(face)));
+    return owner ? cylindricalHole(owner.shape, face) : null;
+  }
   if (!(face instanceof cad.Face) || face.geomType !== "cylinder") return null;
   let entries = boreCache.get(shape);
   if (!entries) { entries = []; boreCache.set(shape, entries); }
@@ -331,6 +361,7 @@ function orientation(shape, input, scope, revision) {
   );
 }
 function thickness(shape, request) {
+  if (shape instanceof Assembly) throw new Error("测厚请指定零件实体 target / thickness requires a target solid in an assembly");
   const unit = direction(request.direction),
     point = request.point;
   if (shape.classify(point)[0] === "outside")

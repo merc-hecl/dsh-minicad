@@ -523,7 +523,7 @@ test(
         operations: [{ op: "import", file: "resources/part.smb" }],
       });
       near(built.design.metrics.volume, 6000);
-      const original = await readFile(join(task.directory, "model.smb"));
+      const original = await readFile(join(task.directory, "model.smp"));
       const invalidOperations = [
         { op: "box", size: [1, 2] },
         { op: "box", size: [-1, 2, 3] },
@@ -555,7 +555,7 @@ test(
       );
       assert.equal((await worker.call("get", args)).head, 1);
       assert.deepEqual(
-        await readFile(join(task.directory, "model.smb")),
+        await readFile(join(task.directory, "model.smp")),
         original,
       );
       const step = await worker.call("export", {

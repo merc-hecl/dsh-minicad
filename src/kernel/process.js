@@ -31,7 +31,7 @@ export class ProcessJournal {
   saveCandidate(run, state, binary, inputs, assets) {
     const folder = join(this.root, run.id, "candidate"), preview = encodePreview(state.preview);
     atomicWrite(join(folder, "preview.bin"), preview);
-    atomicWrite(join(folder, "model.smb"), binary);
+    atomicWrite(join(folder, "model.smp"), binary);
     atomicWrite(join(folder, "state.json"), jsonBytes({
       ...state, preview: previewInfo(preview),
       inputs: [...inputs].map(([path, bytes]) => [relative(this.directory, path).split(sep).join("/"), bytes?.toString("base64") ?? null]),
@@ -63,7 +63,7 @@ export class ProcessJournal {
     if (run.steps.at(-1)?.digest === digest) return;
     const step = { sequence: run.steps.length + 1, label: String(label || "").slice(0, 200),
       operation: operation || null, created: Date.now() / 1000,
-      metrics: description.metrics, digest, byteLength: bytes.length };
+      metrics: description.metrics, parts: description.parts, digest, byteLength: bytes.length };
     atomicWrite(join(this.root, run.id, `${step.sequence}.bin`), bytes);
     run.steps.push(step);
     run.updated = step.created;
@@ -80,7 +80,7 @@ export class ProcessJournal {
     const step = run?.steps.find(item => item.sequence === Number(sequence));
     if (!step) throw new Error("过程步骤不存在 / process checkpoint does not exist");
     return { path: join(this.root, run.id, `${step.sequence}.bin`), byteLength: step.byteLength,
-      design: { metrics: step.metrics, geometryIds: run.geometryIds, sourceFile: run.sourceFile,
+      design: { metrics: step.metrics, parts: step.parts, geometryIds: run.geometryIds, sourceFile: run.sourceFile,
         revision: run.baseRevision, checkpoint: { runId: run.id, sequence: step.sequence } } };
   }
 }

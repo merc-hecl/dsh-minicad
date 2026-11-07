@@ -120,7 +120,7 @@ test("worker measurements preserve saved files and revisions and reject stale re
   try {
     const task = await worker.call("create"), args = { projectId: task.id, sourceFile: "model.js" };
     const built = await worker.call("build", { ...args, expectedRevision: 0, source: "function build(p, cad) { return cad.Box(20, 10, 4); }" });
-    const file = join(built.workspaceDirectory, "model.smb"), before = await readFile(file);
+    const file = join(built.workspaceDirectory, "model.smp"), before = await readFile(file);
     const { items } = await worker.call("query", { ...args, expectedRevision: 1, kind: "faces" });
     const from = items.find(f => f.normal[2] > .9).id, to = items.find(f => f.normal[2] < -.9).id;
     const result = await worker.call("measure", { ...args, expectedRevision: 1, measurements: [

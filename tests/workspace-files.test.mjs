@@ -81,11 +81,11 @@ test("workspace rename preserves all sessions and geometry; metadata failures an
   const task=await worker.call("create",{title:"original"});
   await worker.call("bind",{projectId:task.id,sessionId:"chat-a"}); await worker.call("bind",{projectId:task.id,sessionId:"chat-b"});
   await worker.call("build",{projectId:task.id,expectedRevision:0,source:box,parameters:{width:12}});
-  const before=await readFile(join(task.directory,"model.smb"));
+  const before=await readFile(join(task.directory,"model.smp"));
   const renamed=await worker.call("rename",{projectId:task.id,title:"plate-renamed"});
   assert.equal(renamed.title,"plate-renamed"); assert.ok(renamed.directory.endsWith("plate-renamed"));
   for(const sessionId of ["chat-a","chat-b"]) assert.equal((await worker.call("by_session",{sessionId})).directory,renamed.directory);
-  assert.deepEqual(await readFile(join(renamed.directory,"model.smb")),before);
+  assert.deepEqual(await readFile(join(renamed.directory,"model.smp")),before);
   await worker.dispose();
   let fail=true;
   const store=new Store(settings,{write:(file,bytes)=>{
@@ -101,7 +101,7 @@ test("workspace rename preserves all sessions and geometry; metadata failures an
   const recovered=new Store(settings);
   const state=await recovered.dispatch("get",{projectId:task.id});
   assert.equal(state.title,"plate-renamed"); near(state.design.metrics.volume,600);
-  assert.deepEqual(await readFile(join(state.directory,"model.smb")),before);
+  assert.deepEqual(await readFile(join(state.directory,"model.smp")),before);
 }));
 
 test(
@@ -118,7 +118,7 @@ test(
         source: box,
         parameters: { width: 20 },
       });
-      const before = await readFile(join(task.directory, "model.smb"));
+      const before = await readFile(join(task.directory, "model.smp"));
       await worker.dispose();
       let failed = false;
       const store = new Store(temporary, {
@@ -166,7 +166,7 @@ test(
         box,
       );
       assert.deepEqual(
-        await readFile(join(task.directory, "model.smb")),
+        await readFile(join(task.directory, "model.smp")),
         before,
       );
       assert.ok(!(await readdir(temporary)).includes("pending-files.json"));

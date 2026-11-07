@@ -31,7 +31,7 @@ const clientMethods = new Set([
   "process_state", "process_history",
   "geometry_annotation", "query", "measure", "compare",
   "list",
-  "get",
+  "get", "select_model",
   "rename",
   "attach",
   "reference_file",
@@ -53,7 +53,7 @@ export async function apply(ctx, config = {}) {
     measurements = new Map();
   let disposed = false;
   const call = async (method, args, signal) => {
-    if (!["build", "edit", "restore", "update_parameters", "commit", "set_geometry_id_format"].includes(method)) return worker.call(method, args, signal);
+    if (!["build", "edit", "restore", "update_parameters", "commit", "variants", "set_geometry_id_format"].includes(method)) return worker.call(method, args, signal);
     if (active.has(args.projectId))
       throw new Error("当前设计正在构建，请稍后重试");
     const controller = new AbortController();
@@ -288,6 +288,7 @@ export async function apply(ctx, config = {}) {
       if (!inFlight) await alignDirectory(p, signal);
       return {
         head: p.head,
+        models: p.models,
         sourceVersion: p.sourceVersion,
         workspaceDirectory: p.workspaceDirectory,
         sourceFile: p.sourceFile,
@@ -360,7 +361,7 @@ export async function apply(ctx, config = {}) {
     }
     if (!clientMethods.has(method))
       throw Object.assign(new Error("不支持的操作"), { status: 404 });
-    if (method === "restore") {
+    if (method === "restore" || method === "select_model") {
       const project = building.get(args.projectId) || await call("get", { projectId: args.projectId, geometry: false }, signal);
       if (designBusy(project)) throw new Error("当前设计正在构建，请稍后重试");
     }
