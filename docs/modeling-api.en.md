@@ -2,7 +2,7 @@
 
 [Back to README](../README.en.md) · [简体中文](modeling-api.md)
 
-Agents are encouraged to use `cad_edit` first when existing operations express the geometry directly, batching related changes. Use `cad_build` for algorithms, custom geometry or work the operations cannot express conveniently, and mix both when useful. This is guidance, not a restriction. Both paths share exact solids, trials, dimensional checks, revisions, failure preservation and exports.
+For both new models and incremental edits, assess the existing `cad_edit` operations first. Prefer `cad_edit` when a coherent operation batch expresses the result clearly and reliably. Combinations of standard solids, booleans, profiles, holes, fillets, patterns, naming and colors usually fit this path; coordinate calculations or repeated features alone do not call for code-based modeling. Choose `cad_build` when a needed geometry or operation is missing, or a specialized algorithm offers a clear reliability or efficiency advantage. Base the choice on the specific gap or benefit; there is no need to attempt an unsuitable `cad_edit` call first. Both tools can still be combined as the task requires and share exact solids, trials, dimensional checks, revisions, failure preservation and exports.
 
 | Tool | Purpose |
 | --- | --- |
