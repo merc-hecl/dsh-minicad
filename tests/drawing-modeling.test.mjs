@@ -30,7 +30,7 @@ const check = (name, measurement, expected, basis) => ({ name, measurement, expe
 
 test("PM-03: four structured operations preserve arc outline, all through holes and thickness; inspect candidate then publish once", { timeout: 90000 }, () => setup(async worker => {
   const task = await worker.call("create");
-  const target = { projectId: task.id, sourceFile: "model.js", geometry: false, expectedRevision: 0 };
+  const target = { projectId: task.id, sourceFile: "model.js", expectedRevision: 0 };
   const radius = 50.8, half = 44.45;
   const area = Math.PI * radius ** 2 - 4 * (radius ** 2 * Math.acos(half / radius) - half * Math.sqrt(radius ** 2 - half ** 2));
   const volume = (area - Math.PI * 19.05 ** 2 - 8 * Math.PI * 4.7625 ** 2) * 12.7;
@@ -87,7 +87,7 @@ test("PM-03: four structured operations preserve arc outline, all through holes 
 
 test("trial diagnostics use the task cwd; failed checks and changed working files cannot replace the saved model", { timeout: 90000 }, () => setup(async worker => {
   const task = await worker.call("create");
-  const target = { projectId: task.id, sourceFile: "parts/model.js", geometry: false };
+  const target = { projectId: task.id, sourceFile: "parts/model.js" };
   await mkdir(join(task.directory, "resources"));
   await writeFile(join(task.directory, "resources", "note.txt"), "drawing resource");
   const source = `function build(p,cad){
@@ -150,7 +150,7 @@ test("candidate resources remain portable across restart and workspace rename, a
   await mkdir(join(task.directory, "resources"));
   const resource = cad.toSmb(cad.Box(2, 3, 4));
   await writeFile(join(task.directory, "resources", "input.smb"), resource);
-  const target = { projectId: task.id, sourceFile: "model.js", geometry: false, expectedRevision: 0 };
+  const target = { projectId: task.id, sourceFile: "model.js", expectedRevision: 0 };
   const trial = await worker.call("edit", { ...target, commit: false,
     operations: [{ op: "import", file: "resources/input.smb", name: "导入块" }],
     checks: [check("resource volume", { kind: "volume" }, 24, "input resource")],

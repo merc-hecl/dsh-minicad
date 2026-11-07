@@ -84,7 +84,7 @@ test("coordinate queries preserve saved state, isolate candidates and survive re
   let worker = createWorker({ dataDir });
   try {
     const project = await worker.call("create");
-    const args = { projectId: project.id, sourceFile: "model.js", geometry: false };
+    const args = { projectId: project.id, sourceFile: "model.js" };
     await worker.call("edit", { ...args, expectedRevision: 0, operations: [{ op: "box", size: [10, 20, 6], name: "坐标校验块" }] });
     const files = ["model.js", "model.parameters.json", "model.smp", ".cad-design.json"];
     const before = await Promise.all(files.map(file => readFile(join(project.directory, file))));

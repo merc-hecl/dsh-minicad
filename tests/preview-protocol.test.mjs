@@ -29,13 +29,6 @@ test("binary previews retain indexed normals and BREP lines with shared array-bu
     bounds[1] = Math.max(bounds[1], decoded.positions[i]);
   }
   assert.deepEqual(bounds, [-10, 10]);
-  const legacy = JSON.stringify({
-    vertices: Array.from(raw.positions),
-    normals: Array.from(raw.normals),
-    triangles: Array.from(raw.indices),
-    edges: Array.from(raw.edges),
-  });
-  assert.ok(bytes.length < Buffer.byteLength(legacy));
   shape.dispose();
 });
 

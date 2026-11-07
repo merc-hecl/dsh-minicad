@@ -63,7 +63,7 @@ An empty string enables automatic detection. Non-PATH Linux installations such a
 
 ## Data and runtime boundaries
 
-Native solids now use `.smp`. Old `.smb` revision snapshots are no longer read or automatically migrated; rebuild old source for a new revision. Use a new design folder for acceptance.
+Native solids use `.smp`. Old `.smb` revision snapshots are no longer read or automatically migrated; rebuild old source for a new revision.
 
 - Design folders contain source, parameters, exact solids, `.cad-design.json` and `.cad-history/`. Copy the whole folder to preserve models and versions. DSH stores conversations separately.
 - `.cad-process/` stores modeling steps, `references/` stores drawings and `exports/` stores exports. **Save as** excludes uncommitted trials.
@@ -116,4 +116,4 @@ Create `dist` before packing. `npm pack` builds automatically and includes runti
 
 `check` validates syntax and builds; `test` runs kernel tests serially. UI and live agent interactions are accepted by the user. See [AGENTS.md](../AGENTS.md).
 
-Maintainers: see the [release handbook](https://github.com/merc-hecl/dsh-minicad/blob/main/.github/RELEASING.md).
+Maintainers: see the [release instructions in AGENTS.md](../AGENTS.md#发布).

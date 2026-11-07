@@ -18,7 +18,6 @@ const localMethods = new Set([
   "select_session",
   "rename",
   "open_design", "close_design",
-  "model_selection",
   "select_model",
   "restore",
   "message",

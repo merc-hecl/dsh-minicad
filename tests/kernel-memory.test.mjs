@@ -34,7 +34,7 @@ async function setup(fn, options = {}) {
 }
 
 test(
-  "idle reads start no processes, reuse small summaries and retain isolated serialized builds",
+  "idle reads start no processes and retain isolated serialized builds",
   { timeout: 60000 },
   async () => {
     let starts = 0,
@@ -50,7 +50,6 @@ test(
         const target = {
           projectId: task.id,
           sourceFile: "model.js",
-          geometry: false,
         };
         assert.equal(starts, 0);
         const source =
@@ -67,53 +66,23 @@ test(
           undefined,
           "model source must never run inside the caller",
         );
-        const stateFile = join(
-          task.directory,
-          built.revisions[0].folder,
-          "state.json",
-        );
-        const summaryFile = join(
-          task.directory,
-          built.revisions[0].folder,
-          "summary.json",
-        );
-        const summary = JSON.parse(await readFile(summaryFile, "utf8"));
-        assert.ok(!Object.hasOwn(summary.state, "mesh"));
-        let fullReads = 0;
-        const original = fs.readFileSync;
-        const reads = mock.method(fs, "readFileSync", function (path, ...args) {
-          if (resolve(String(path)) === resolve(stateFile)) fullReads++;
-          return original.call(this, path, ...args);
-        });
-        try {
-          for (let i = 0; i < 10; i++) {
-            await worker.call("list");
-            const state = await worker.call("get", target);
-            near(state.design.metrics.volume, 6000);
-            assert.equal(state.design.mesh, undefined);
-            await worker.call("by_session", { sessionId: "memory-session" });
-          }
-          assert.equal(
-            fullReads,
-            0,
-            "metadata must not parse the full mesh snapshot",
-          );
-          const shown = await worker.call("get", { ...target, geometry: true });
-          assert.equal(shown.design.mesh, undefined);
-          const preview = await worker.call("preview_file", {
-            ...target,
-            revision: 1,
-          });
-          assert.ok(decodePreview(await readFile(preview.path)).indices.length);
-          assert.equal(fullReads, 0, "saved previews do not parse mesh JSON");
-          assert.equal(
-            starts,
-            1,
-            "40 idle calls and opening a saved preview start no process",
-          );
-        } finally {
-          reads.mock.restore();
+        for (let i = 0; i < 10; i++) {
+          await worker.call("list");
+          const state = await worker.call("get", target);
+          near(state.design.metrics.volume, 6000);
+          assert.equal(state.design.mesh, undefined);
+          await worker.call("by_session", { sessionId: "memory-session" });
         }
+        const preview = await worker.call("preview_file", {
+          ...target,
+          revision: 1,
+        });
+        assert.ok(decodePreview(await readFile(preview.path)).indices.length);
+        assert.equal(
+          starts,
+          1,
+          "idle metadata calls and opening a saved preview start no process",
+        );
         await writeFile(
           join(task.directory, "model.parameters.json"),
           JSON.stringify({ width: 12 }),
@@ -151,14 +120,14 @@ test(
 );
 
 test(
-  "summary caches are disposable and stale previews refresh only in an isolated process",
+  "stale previews refresh only in an isolated process without changing committed geometry",
   { timeout: 60000 },
   async () => {
     let starts = 0;
     await setup(
       async (worker) => {
         const task = await worker.call("create");
-        const args = { projectId: task.id, geometry: false };
+        const args = { projectId: task.id };
         const built = await worker.call("build", {
           ...args,
           expectedRevision: 0,
@@ -166,15 +135,8 @@ test(
           parameters: {},
         });
         const folder = join(task.directory, built.revisions[0].folder);
-        const stateFile = join(folder, "state.json"),
-          summaryFile = join(folder, "summary.json");
+        const stateFile = join(folder, "state.json");
         const binary = await readFile(join(task.directory, "model.smp"));
-        await writeFile(summaryFile, "corrupt cache");
-        near((await worker.call("get", args)).design.metrics.volume, 6000);
-        assert.equal(
-          JSON.parse(await readFile(summaryFile, "utf8")).state.revision,
-          1,
-        );
         const old = JSON.parse(await readFile(stateFile, "utf8"));
         delete old.previewVersion;
         await writeFile(stateFile, JSON.stringify(old));
@@ -182,7 +144,7 @@ test(
         assert.equal(
           metadata.design.previewVersion,
           undefined,
-          "a stale cache must not hide changed state files",
+          "metadata reads must reflect changed state files",
         );
         assert.equal(starts, 1);
         await worker.call("preview_file", { projectId: task.id, revision: 1 });
@@ -196,10 +158,6 @@ test(
         assert.deepEqual(
           await readFile(join(task.directory, "model.smp")),
           binary,
-        );
-        assert.equal(
-          JSON.parse(await readFile(summaryFile, "utf8")).state.previewVersion,
-          4,
         );
       },
       {
@@ -311,7 +269,6 @@ test(
           expectedRevision: 0,
           source: "function build(p,cad){return cad.Box(1,2,3).named('长方体')}",
           parameters: {},
-          geometry: false,
         });
         const controller = new AbortController();
         const pending = worker.call(
@@ -332,7 +289,6 @@ test(
         assert.ok(helper.killed);
         const saved = await worker.call("get", {
           projectId: task.id,
-          geometry: false,
         });
         assert.equal(saved.head, 1);
         near(saved.design.metrics.volume, 6);

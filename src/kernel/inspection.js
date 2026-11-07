@@ -18,7 +18,7 @@ import {
 
 import { nearestPair, farthestPair } from "./distances.js";
 
-export const vector = (v) => [v.x, v.y, v.z];
+const vector = (v) => [v.x, v.y, v.z];
 // Keep existing edge indices stable; seam edges are appended to the query list.
 export function topologyItems(shape, kind) {
   if (shape instanceof Assembly) return new cad.ShapeList(...shape.parts.flatMap(p => [...topologyItems(p.shape, kind)]));
@@ -44,7 +44,7 @@ export const modelScope = (projectId, sourceFile) =>
 const round = (n) => Math.round(n * 1e6) / 1e6;
 // Structural checks protect parameter replay; positional nearest-neighbour guessing is never used for IDs.
 const topologyCache = new WeakMap();
-export function topology(shape) {
+function topology(shape) {
   if (topologyCache.has(shape)) return topologyCache.get(shape);
   const signature = JSON.stringify([
     shape.solids().length,
@@ -65,7 +65,7 @@ export function topology(shape) {
   topologyCache.set(shape, hash);
   return hash;
 }
-export function parseReference(id, kind, scope, revision) {
+function parseReference(id, kind, scope, revision) {
   const match = /^m([a-f0-9]{24}):v(\d+):(faces|edges|solids|vertices):(\d+)$/.exec(id);
   if (
     !match ||

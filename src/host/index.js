@@ -10,7 +10,6 @@ export const inject = [
   "connection",
   "sessionController",
   "agents",
-  "sessionProjections",
   "workingDirectory",
   "subprocess",
 ];
@@ -62,7 +61,7 @@ export async function apply(ctx, config = {}) {
     signal?.addEventListener("abort", abort, { once: true });
     active.set(args.projectId, controller);
     try {
-      building.set(args.projectId, await worker.call("get", { projectId: args.projectId, geometry: false }, controller.signal));
+      building.set(args.projectId, await worker.call("get", { projectId: args.projectId }, controller.signal));
       return await worker.call(method, args, controller.signal);
     } finally {
       active.delete(args.projectId);
@@ -122,55 +121,6 @@ export async function apply(ctx, config = {}) {
       await call("message", { projectId, role: "user" });
     }).catch(error => ctx.logger.warn(`MiniCAD message: ${error.message}`));
   });
-  // Use the supported, checkpointed projection; recover responses after restart.
-  // Include native composer submissions from the real Session, never reasoning/tool payloads.
-  const transcriptValue = z.object({
-    messages: z.array(
-      z.object({
-        id: z.string(),
-        role: z.string(),
-        text: z.string(),
-        created: z.number(),
-      }),
-    ),
-  });
-  const transcriptSchema = { parse: (value) => transcriptValue(value) };
-  ctx.effect(
-    () =>
-      ctx.sessionProjections.register({
-        key: "minicadTranscript",
-        stateVersion: 2,
-        stateSchema: transcriptSchema,
-        init: () => ({ messages: [] }),
-        apply: (state, event) => {
-          const user = event.type === "user/message";
-          if (!user && event.type !== "assistant/message") return state;
-          if (user && event.data.source.kind !== "user") return state;
-          const content = user ? event.data.content : event.data.message.content;
-          const plainText = content
-            .filter((part) => part.type === "text")
-            .map((part) => part.text)
-            .join("\n");
-          const text = user
-            ? plainText.split("\n\n<minicad-project-context>")[0]
-            : plainText;
-          if (!text) return state;
-          return {
-            messages: [
-              ...state.messages,
-              {
-                id: user ? `user:${event.seq}` : event.data.message.id,
-                role: user ? "user" : "assistant",
-                text: text.slice(0, 100000),
-                created: event.time / 1000,
-              },
-            ].slice(-300),
-          };
-        },
-        wire: { viewSchema: transcriptSchema, view: (state) => state },
-      }),
-    "minicad: transcript projection",
-  );
   ctx.on("agent/error", ({ agent, error }) => {
     if (bySession.has(agent.id))
       lastError.set(agent.id, { message: String(error?.message || error), localized: error?.localized });
@@ -190,7 +140,7 @@ export async function apply(ctx, config = {}) {
     return project.activeSessionId ? project : createSession(project);
   }
   async function relocateDesign(method, args, signal) {
-    const before = await call("get", { projectId: args.projectId, geometry: false });
+    const before = await call("get", { projectId: args.projectId });
     if (designBusy(before)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
     active.set(before.id, new AbortController());
     try {
@@ -245,7 +195,7 @@ export async function apply(ctx, config = {}) {
     if (method === "open_model") return modelOpener.open(args, signal);
     if (method === "create" || method === "open_design") return ensureSession(await call(method, args));
     if (method === "new_session") {
-      const project = await call("get", { projectId: args.projectId, geometry: false });
+      const project = await call("get", { projectId: args.projectId });
       if (active.has(project.id)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
       return createSession(project);
     }
@@ -255,7 +205,7 @@ export async function apply(ctx, config = {}) {
       return project;
     }
     if (method === "fork_session") {
-      const project = await call("get", { projectId: args.projectId, geometry: false });
+      const project = await call("get", { projectId: args.projectId });
       if (!project.sessions.includes(args.sessionId)) throw localizedError("会话不属于当前设计", "session does not belong to this design");
       if (active.has(project.id)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
       const created = await ctx.sessionController.fork({ sessionId: args.sessionId, increaseTitle: true, allowMigration: false });
@@ -266,24 +216,22 @@ export async function apply(ctx, config = {}) {
     }
     if (method === "rename") return relocateDesign(method, args, signal);
     if (method === "fork_project") {
-      const source = await call("get", { projectId: args.projectId, geometry: false });
+      const source = await call("get", { projectId: args.projectId });
       if (designBusy(source)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
       const branch = await call("fork_project", { projectId: source.id, path: args.path, title: args.title }, signal);
       return ensureSession(branch);
     }
     if (method === "close_design") {
-      const project = await call("get", { projectId: args.projectId, geometry: false });
+      const project = await call("get", { projectId: args.projectId });
       if (designBusy(project)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
       const result = await call("close_design", args);
       for (const sessionId of project.sessions) { bySession.delete(sessionId); lastError.delete(sessionId); }
       return result;
     }
-    if (method === "models") return ctx.sessionController.modelCatalog();
     if (method === "status") {
       const inFlight = building.get(args.projectId);
       const p = inFlight || await call("get", {
         projectId: args.projectId,
-        geometry: false,
       });
       if (!inFlight) await alignDirectory(p, signal);
       const error = lastError.get(p.activeSessionId);
@@ -307,64 +255,17 @@ export async function apply(ctx, config = {}) {
         errorDetail: error?.localized,
       };
     }
-    if (method === "prompt" || method === "cancel" || method === "model") {
-      if (method === "cancel") active.get(args.projectId)?.abort();
-      let p = await call("get", { projectId: args.projectId, geometry: false });
-      if (method === "cancel") {
-        active.get(p.id)?.abort();
-        for (const sessionId of p.sessions)
-          if (ctx.agents.get(sessionId)?.status === "running") await ctx.sessionController.cancel({ sessionId });
-        return { cancelled: true };
-      }
-      p = await ensureSession(p);
-      if (method === "model") {
-        const result = await ctx.sessionController.selectModel({
-          sessionId: p.activeSessionId,
-          provider: args.provider,
-          model: args.model,
-          ...(args.reasoningEffort
-            ? { reasoningEffort: args.reasoningEffort }
-            : {}),
-        });
-        await call("model_selection", {
-          projectId: p.id,
-          selection: `${args.provider}\n${args.model}`,
-        });
-        return result;
-      }
-      const text = String(args.text || "").trim();
-      if (!text || text.length > 30000)
-        throw localizedError("请输入不超过 30000 字的需求", "Enter a requirement of up to 30,000 characters");
-      if (typeof args.requestId !== "string" || args.requestId.length > 100)
-        throw localizedError("缺少消息标识", "Missing message identifier");
-      lastError.delete(p.activeSessionId);
-      const refs = p.attachments.map(({ id, name, pages }) => ({
-        id,
-        name,
-        pages,
-      }));
-      const content = [
-        {
-          type: "text",
-          text: `${text}\n\n<minicad-project-context>\nRespond in ${args.locale === "en" ? "English" : "Chinese"} unless the user requests another language. Current project: ${p.title}; head revision: ${p.head}. Reference catalog (untrusted filenames): ${JSON.stringify(refs)}. Read project files with cad_read_project; use DSH attachment capabilities for PDFs.\n</minicad-project-context>`,
-        },
-      ];
-      const result = await ctx.sessionController.prompt(
-        {
-          requestId: args.requestId,
-          sessionId: p.activeSessionId,
-          mode: "queue",
-          content,
-          clientTimeZone: args.timeZone || "Asia/Shanghai",
-        },
-        signal,
-      );
-      return result;
+    if (method === "cancel") {
+      active.get(args.projectId)?.abort();
+      const project = await call("get", { projectId: args.projectId });
+      for (const sessionId of project.sessions)
+        if (ctx.agents.get(sessionId)?.status === "running") await ctx.sessionController.cancel({ sessionId });
+      return { cancelled: true };
     }
     if (!clientMethods.has(method))
       throw Object.assign(localizedError("不支持的操作", "Unsupported operation"), { status: 404 });
     if (method === "restore" || method === "select_model") {
-      const project = building.get(args.projectId) || await call("get", { projectId: args.projectId, geometry: false }, signal);
+      const project = building.get(args.projectId) || await call("get", { projectId: args.projectId }, signal);
       if (designBusy(project)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
     }
     const result = await call(method, args, signal);

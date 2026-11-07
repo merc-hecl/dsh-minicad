@@ -60,9 +60,9 @@ test("current STEP models preserve exact geometry and file scope with unsaved wo
   await worker.call("select_model", { projectId: task.id, sourceFile: "other.js" });
   const dirtySource = 'throw new Error("unsaved source must not be used for a saved revision");';
   await writeFile(join(directory, target.sourceFile), dirtySource);
-  const before = await worker.call("get", { projectId: task.id, geometry: false });
+  const before = await worker.call("get", { projectId: task.id });
   for (const [sourceFile, volume] of [[target.sourceFile, 800], ["other.js", 1200]]) {
-    const current = await worker.call("get", { projectId: task.id, sourceFile, geometry: false });
+    const current = await worker.call("get", { projectId: task.id, sourceFile });
     const exported = await worker.call("export", { projectId: task.id, sourceFile, revision: current.head, format: "step" });
     assert.equal(exported.sourceFile, sourceFile);
     assert.equal(exported.revision, current.head);
@@ -70,7 +70,7 @@ test("current STEP models preserve exact geometry and file scope with unsaved wo
     try { assert.ok(shape.isValid()); near(shape.volume, volume); }
     finally { shape.dispose(); }
   }
-  const after = await worker.call("get", { projectId: task.id, geometry: false });
+  const after = await worker.call("get", { projectId: task.id });
   assert.equal(after.sourceFile, before.sourceFile);
   assert.equal(after.head, before.head);
   assert.deepEqual(after.revisions, before.revisions);

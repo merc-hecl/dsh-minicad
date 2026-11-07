@@ -27,11 +27,11 @@ const array = (items, minItems = 1, maxItems = 100) => ({
   maxItems,
 });
 const tuple = (length) => array(scalar, length, length);
-export const vector = tuple(3);
+const vector = tuple(3);
 const rotation = object({ axis: vector, angle: scalar });
 const placement = { center: vector, rotate: rotation };
 const choices = (items) => ({ type: "string", enum: items });
-export const selector = object(
+const selector = object(
   {
     part: text,
     geomType: text,
@@ -83,7 +83,7 @@ const profileShape = (shape, fields) =>
     },
     ["shape", ...Object.keys(fields)],
   );
-export const profile = {
+const profile = {
   anyOf: [
     profileShape("rectangle", { size: array(positive, 2, 2) }),
     profileShape("circle", { radius: positive }),
@@ -141,7 +141,7 @@ const primitiveOptions = {
     twist: scalar,
   },
 };
-export const primitiveSchema = {
+const primitiveSchema = {
   anyOf: Object.entries(primitives).map(([shape, fields]) =>
     object(
       {
@@ -267,7 +267,7 @@ export const operationSchema = {
   anyOf: operationGroups.flatMap(group => group.operations),
 };
 export const operationsSchema = array(operationSchema);
-export const entity = object({
+const entity = object({
   kind: choices(["faces", "edges", "solids"]),
   selector: reference,
 });
@@ -278,7 +278,7 @@ const measure = (kind, fields = {}, optional = {}) =>
     "kind",
     ...Object.keys(fields),
   ]);
-export const measurementSchema = {
+const measurementSchema = {
   anyOf: [
     measure("distance", { from: endpoint, to: endpoint }),
     measure("max_distance", { from: endpoint, to: endpoint }),

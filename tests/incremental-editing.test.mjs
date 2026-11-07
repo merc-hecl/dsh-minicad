@@ -13,7 +13,7 @@ test("initial structured modeling records all operations; an incremental chamfer
   let worker = createWorker({ dataDir });
   try {
     const project = await worker.call("create");
-    const args = { projectId: project.id, sourceFile: "model.js", geometry: false };
+    const args = { projectId: project.id, sourceFile: "model.js" };
     const trial = await worker.call("edit", { ...args, expectedRevision: 0, commit: false,
       parameters: { length: 80, thickness: 6 }, operations: [
         { op: "box", size: [{ parameter: "length" }, 50, { parameter: "thickness" }], name: "四孔底板" },
@@ -70,7 +70,7 @@ test("editing a saved custom model skips its source, imports new resources and r
   const worker = createWorker({ dataDir });
   try {
     const project = await worker.call("create");
-    const args = { projectId: project.id, sourceFile: "model.js", geometry: false };
+    const args = { projectId: project.id, sourceFile: "model.js" };
     const counter = join(project.directory, "base-runs.txt");
     const source = `function build(p,cad) {
       const fs=require('node:fs'), path=require('node:path').join(__dirname,'base-runs.txt');
@@ -117,7 +117,7 @@ test("first edit uses unbuilt working source when present and treats a blank fil
         [{ op: "cut", tool: { shape: "cylinder", radius: 1, height: 10 } }], 1200 - 6 * Math.PI],
     ]) {
       await writeFile(join(project.directory, sourceFile), source);
-      const args = { projectId: project.id, sourceFile, geometry: false };
+      const args = { projectId: project.id, sourceFile };
       const built = await worker.call("edit", { ...args, expectedRevision: 0, operations });
       assert.equal(built.head, 1); near(built.design.metrics.volume, volume);
       await worker.call("build", { ...args, expectedRevision: 1 });

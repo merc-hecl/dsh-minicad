@@ -94,12 +94,10 @@ Reply in the user's language with the saved revision, what changed, what was che
               {
                 projectId: project.id,
                 sourceFile: args.sourceFile,
-                geometry: false,
               },
               signal,
             );
-      const { messages, ...state } = selected;
-      return state;
+      return selected;
     },
   );
   const call = (method) => async (project, args, signal) => {
@@ -108,7 +106,6 @@ Reply in the user's language with the saved revision, what changed, what was che
       {
         ...args,
         projectId: project.id,
-        geometry: false,
         preserveSelection: true,
       },
       signal,

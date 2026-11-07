@@ -57,7 +57,7 @@ export function createModelOpener(ctx, config, call) {
       if (args.application !== "freecad") throw localizedError("不支持的模型应用", "unsupported model application");
       const executable = await freecad();
       if (!executable) throw localizedError("未检测到 FreeCAD，请安装或配置应用路径", "FreeCAD not found; install it or configure its executable");
-      const project = await call("get", { projectId: args.projectId, sourceFile: args.sourceFile, geometry: false }, signal);
+      const project = await call("get", { projectId: args.projectId, sourceFile: args.sourceFile }, signal);
       if (!project.head) throw localizedError("请先完成建模", "Build a model first");
       const model = await call("export", { projectId: project.id, sourceFile: project.sourceFile,
         revision: project.head, format: "step" }, signal);

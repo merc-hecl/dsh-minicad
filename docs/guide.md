@@ -63,7 +63,7 @@ npx @deepseek-ai/dsh@0.2.2-rc.1 plugin --profile web add dsh-minicad -w
 
 ## 数据与运行边界
 
-- 原生实体统一使用 `.smp`。旧 `.smb` 历史快照不再读取或自动迁移；旧源码需重新构建。本轮验收请使用新设计文件夹。
+- 原生实体统一使用 `.smp`。旧 `.smb` 历史快照不再读取或自动迁移；旧源码需重新构建。
 - 设计目录保存源码、参数、精确实体、`.cad-design.json` 和 `.cad-history/`；复制整个文件夹可带走模型与版本。聊天记录由 DSH 保存。
 - `.cad-process/` 保存建模过程，`references/` 保存参考图纸，`exports/` 保存导出结果。未提交试算不随「另存为」复制。
 - 已打开设计的索引位于 `$DSH_HOME/storages/minicad/designs.json`；默认 DSH_HOME 为 `~/.dsh`，`dataDir` 可覆盖索引目录。
@@ -115,4 +115,4 @@ npm pack --pack-destination dist
 
 `check` 只做语法与构建检查；`test` 串行运行建模内核测试。界面与真实 agent 交互由用户验收，约定见 [AGENTS.md](../AGENTS.md)。
 
-维护者发布步骤见[发布手册](https://github.com/merc-hecl/dsh-minicad/blob/main/.github/RELEASING.md)。
+维护者发布步骤见 [AGENTS.md 的发布约定](../AGENTS.md#发布)。

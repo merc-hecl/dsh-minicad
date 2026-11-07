@@ -341,7 +341,6 @@ test(
         projectId,
         sourceFile: "a.js",
         preserveSelection: true,
-        geometry: false,
       };
       const b = { ...a, sourceFile: "b.js" };
       const source =
@@ -509,7 +508,6 @@ test(
       const args = {
         projectId: task.id,
         sourceFile: "model.js",
-        geometry: false,
       };
       await mkdir(join(task.directory, "resources"));
       const imported = cad.Box(10, 20, 30);

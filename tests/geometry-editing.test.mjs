@@ -66,7 +66,6 @@ test(
         projectId: task.id,
         sourceFile: "model.js",
         preserveSelection: true,
-        geometry: false,
       };
       await worker.call("build", {
         ...args,
@@ -166,7 +165,7 @@ test("selected face and edge batches measure and edit the same saved geometry in
   let worker = createWorker({ dataDir: root });
   try {
     const task = await worker.call("create");
-    const args = { projectId: task.id, sourceFile: "model.js", geometry: false };
+    const args = { projectId: task.id, sourceFile: "model.js" };
     const built = await worker.call("build", { ...args, expectedRevision: 0, source: "function build(p,cad){return cad.Box(20,10,4).named('底板');}" });
     const faces = (await worker.call("query", { ...args, expectedRevision: 1, kind: "faces" })).items;
     const top = faces.find(face => face.normal[2] > .9), bottom = faces.find(face => face.normal[2] < -.9);
@@ -201,7 +200,7 @@ test("agent edit trials preserve saved files and commit a checked replayable bat
   const worker = createWorker({ dataDir: root });
   try {
     const task = await worker.call("create");
-    const args = { projectId: task.id, sourceFile: "model.js", geometry: false, expectedRevision: 1 };
+    const args = { projectId: task.id, sourceFile: "model.js", expectedRevision: 1 };
     const built = await worker.call("build", { ...args, expectedRevision: 0,
       source: "function build(p,cad){return cad.Box(20,10,p.thickness).named('底板');}", parameters: { thickness: 4 } });
     const before = await readFile(join(built.workspaceDirectory, "model.smp"));

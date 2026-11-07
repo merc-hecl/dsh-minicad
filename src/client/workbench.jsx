@@ -137,9 +137,7 @@ export function Workbench({
   const selection = useRef(""),
     projectRef = useRef(null),
     alive = useRef(true);
-  const languageRef = useRef(language),
-    lastStatusError = useRef("");
-  languageRef.current = language;
+  const lastStatusError = useRef("");
   selection.current = selected;
   projectRef.current = project;
   const previewCache = useRef(null), previewRequest = useRef(null);
@@ -149,12 +147,9 @@ export function Workbench({
     if (alive.current) setError({ key: e.uiKey || errorKey(e.message || ""), detail: errorDetail(e) });
   };
   const api = async (method, params = {}) => {
-    const render = method === "get" && params.geometry !== false;
+    const render = method === "get";
     const controller = loadController.current;
-    const data = await request(method, {
-      ...params, ...(render ? { geometry: false } : {}),
-      locale: languageRef.current === "zh" ? "zh" : "en",
-    }, method === "get" ? controller.signal : undefined);
+    const data = await request(method, params, render ? controller.signal : undefined);
     return render ? withPreview(data, controller) : data;
   };
   const withPreview = async (data, controller) => {
@@ -391,7 +386,7 @@ export function Workbench({
     return action(async () => {
       const data = await api("restore", {
         projectId: captured.id, sourceFile: captured.sourceFile,
-        revision, expectedRevision: captured.head, geometry: false,
+        revision, expectedRevision: captured.head,
       });
       if (controller.signal.aborted || selection.current !== captured.id || projectRef.current?.sourceFile !== captured.sourceFile) return;
       controller.abort();

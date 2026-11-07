@@ -1,6 +1,6 @@
 import { localizedError } from "../shared/errors.js";
 import { Assembly, assembly, partInfo, inspectFit } from "./assembly.js";
-export { Assembly, inspectFit };
+export { inspectFit };
 import * as cad from "@classcad/smlibwasm";
 import { Color } from "three/src/math/Color.js";
 import { readFileSync } from "node:fs";

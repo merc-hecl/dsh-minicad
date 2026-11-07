@@ -51,8 +51,6 @@ const rules = [
   ["workerStopped", /服务已退出|操作已取消/],
   ["setupRequired", /无法启动建模服务/],
   ["buildBusy", /正在构建/],
-  ["promptLength", /30000/],
-  ["messageId", /缺少消息标识/],
   ["requestLarge", /请求过大/],
   ["modelCredentials", /no API key|API_KEY|unauthorized|401/i],
 ];

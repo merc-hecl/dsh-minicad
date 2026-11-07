@@ -86,7 +86,7 @@ test(
   "SMLib: real parametric geometry, exports and immutable restore",
   { timeout: 90000 },
   async () =>
-    setup(async (worker, dataDir) => {
+    setup(async (worker) => {
       assert.match((await worker.call("health")).kernel, /SMLib.*0\.6\.2/);
       const p = await worker.call("create", { title: "参数化底板" });
       const source =
