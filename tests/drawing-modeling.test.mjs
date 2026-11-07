@@ -20,7 +20,7 @@ async function setup(fn) {
   }
 }
 const operations = [
-  { op: "box", size: [88.9, 88.9, 12.7] },
+  { op: "box", size: [88.9, 88.9, 12.7], name: "法兰盘" },
   { op: "intersect", tool: { shape: "cylinder", radius: 50.8, height: 14.7 } },
   { op: "circular_pattern", axis: [0, 0, 1], angle: 45, count: 8, mode: "cut",
     tool: { shape: "cylinder", radius: 4.7625, height: 14.7, center: [34.925, 0, 0] } },
@@ -95,7 +95,7 @@ test("trial diagnostics use the task cwd; failed checks and changed working file
     console.log(fs.readFileSync('resources/note.txt','utf8'));
     cad.log('cwd=%s dirname=%s',process.cwd(),__dirname);
     const part=cad.Box(20,20,10);
-    return cad.checkpoint(part,'diagnostic label');
+    return cad.checkpoint(part.named('诊断块'),'diagnostic label');
   }`;
   const first = await worker.call("build", { ...target, expectedRevision: 0, source });
   const original = await readFile(join(task.directory, "parts/model.smp"));
@@ -152,7 +152,7 @@ test("candidate resources remain portable across restart and workspace rename, a
   await writeFile(join(task.directory, "resources", "input.smb"), resource);
   const target = { projectId: task.id, sourceFile: "model.js", geometry: false, expectedRevision: 0 };
   const trial = await worker.call("edit", { ...target, commit: false,
-    operations: [{ op: "import", file: "resources/input.smb" }],
+    operations: [{ op: "import", file: "resources/input.smb", name: "导入块" }],
     checks: [check("resource volume", { kind: "volume" }, 24, "input resource")],
   });
   await worker.dispose();

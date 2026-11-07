@@ -93,7 +93,7 @@ test(
       const task = await worker.call("create");
       const args = { projectId: task.id, sourceFile: "model.js" };
       const source =
-        "function build(p,cad){return cad.Box(p.width,20,8).cut(cad.Cylinder(3,10));}";
+        "function build(p,cad){return cad.Box(p.width,20,8).cut(cad.Cylinder(3,10)).named('孔板');}";
       const built = await worker.call("build", {
         ...args,
         source,
@@ -216,7 +216,7 @@ test("numbering changes commit a restorable revision without rebuilding the mode
   });
   const task = await worker.call("create");
   const args = { projectId: task.id, sourceFile: "model.js" };
-  const source = "function build(p,cad){return cad.Box(p.width,20,8);}";
+  const source = "function build(p,cad){return cad.Box(p.width,20,8).named('底板');}";
   const built = await worker.call("build", { ...args, source, parameters: { width: 30 }, expectedRevision: 0 });
   const workingFile = join(built.directory, args.sourceFile);
   const draft = "// Unfinished draft";

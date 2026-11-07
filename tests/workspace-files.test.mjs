@@ -8,7 +8,7 @@ import { createWorker } from "../src/host/worker.js";
 import { Store } from "../src/kernel/store.js";
 import { atomicWrite, jsonBytes } from "../src/kernel/files.js";
 const referencePdf = (await readFile(new URL("./fixtures/reference.pdf", import.meta.url))).toString("base64");
-const box = "function build(p, cad) { return cad.Box(p.width,10,5); }";
+const box = "function build(p, cad) { return cad.Box(p.width,10,5).named('底板'); }";
 const near = (a,b) => assert.ok(Math.abs(a-b)<1e-5, `${a} != ${b}`);
 async function setup(fn) {
   const root = await mkdtemp(join(tmpdir(), "minicad-documents-")), settings = join(root, "settings");

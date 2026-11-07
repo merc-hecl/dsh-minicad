@@ -119,7 +119,7 @@ test("worker measurements preserve saved files and revisions and reject stale re
   const worker = createWorker({ dataDir: directory });
   try {
     const task = await worker.call("create"), args = { projectId: task.id, sourceFile: "model.js" };
-    const built = await worker.call("build", { ...args, expectedRevision: 0, source: "function build(p, cad) { return cad.Box(20, 10, 4); }" });
+    const built = await worker.call("build", { ...args, expectedRevision: 0, source: "function build(p, cad) { return cad.Box(20, 10, 4).named('底板'); }" });
     const file = join(built.workspaceDirectory, "model.smp"), before = await readFile(file);
     const { items } = await worker.call("query", { ...args, expectedRevision: 1, kind: "faces" });
     const from = items.find(f => f.normal[2] > .9).id, to = items.find(f => f.normal[2] < -.9).id;
@@ -131,7 +131,7 @@ test("worker measurements preserve saved files and revisions and reject stale re
     assert.deepEqual(result.items[2].projections, result.items[0].projections);
     assert.deepEqual(result.items[2].point, result.items[0].point);
     assert.equal((await worker.call("get", args)).head, 1); assert.deepEqual(await readFile(file), before);
-    await worker.call("build", { ...args, expectedRevision: 1, source: "function build(p, cad) { return cad.Box(20, 10, 6); }" });
+    await worker.call("build", { ...args, expectedRevision: 1, source: "function build(p, cad) { return cad.Box(20, 10, 6).named('底板'); }" });
     await assert.rejects(worker.call("measure", { ...args, expectedRevision: 1, measurements: [{ kind: "distance", from, to }] }), /设计已更新/);
     await assert.rejects(worker.call("measure", { ...args, expectedRevision: 2, measurements: [{ kind: "max_distance", from, to }] }), /几何引用已过期/);
     assert.equal((await worker.call("get", args)).head, 2);

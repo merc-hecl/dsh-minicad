@@ -1,5 +1,6 @@
 import { localizedError } from "../shared/errors.js";
 import { Assembly } from "./assembly.js";
+import { solidNames, entityInfo } from "./naming.js";
 import {
   defaultIdFormats,
   geometryLabel,
@@ -22,6 +23,10 @@ export const vector = (v) => [v.x, v.y, v.z];
 export function topologyItems(shape, kind) {
   if (shape instanceof Assembly) return new cad.ShapeList(...shape.parts.flatMap(p => [...topologyItems(p.shape, kind)]));
   const items = shape[kind]();
+  if (kind === "solids") {
+    const names = solidNames(shape);
+    items.forEach((solid, i) => { solid.name = names[i]; });
+  }
   if (kind !== "edges") return items;
   return items.union(shape.edges({ seams: true }));
 }
@@ -193,10 +198,13 @@ export function queryShape(
   const all = topologyItems(shape, topologyKind);
   const items = kind === "holes" ? all.filter(item => cylindricalHole(shape, item)) : all;
   const resolved = typeof selector === "string" ? bindReference(selector, topologyKind, shape, scope, revision) : selector;
+  const entities = entityInfo(shape);
   return select(shape, topologyKind, resolved, shape, items, kind === "holes").map((item) => {
     const index = all.findIndex((candidate) => candidate.equals(item));
     const owner = owningPart(shape, topologyKind, index);
+    const entity = entities.find(entity => topologyKind === "solids" ? entity.index === index : entity[topologyKind]?.includes(index));
     return { ...describeItem(item, index, topologyKind, scope, revision, idFormats),
+      ...(entity ? { entityName: entity.name } : {}),
       ...(owner ? { part: owner.id, partName: owner.name } : {}),
       ...(edgeParameters ? { samples: edgeParameters.map(t => ({ t, point: vector(item.pointAt(t)) })) } : {}),
       ...(kind === "holes" ? { hole: cylindricalHole(shape, item) } : {}) };
@@ -221,6 +229,7 @@ export function describeReference(
 ) {
   const { kind, index } = bindReference(id, null, shape, scope, revision).$ref;
   const owner = owningPart(shape, kind, index);
+  const entity = entityInfo(shape).find(entity => kind === "solids" ? entity.index === index : entity[kind]?.includes(index));
   return {
     kind,
     geometry: { ...describeItem(
@@ -230,7 +239,7 @@ export function describeReference(
       scope,
       revision,
       idFormats,
-    ), ...(owner ? { part: owner.id, partName: owner.name } : {}) },
+    ), ...(entity ? { entityName: entity.name } : {}), ...(owner ? { part: owner.id, partName: owner.name } : {}) },
   };
 }
 function describeItem(item, index, kind, scope, revision, idFormats) {

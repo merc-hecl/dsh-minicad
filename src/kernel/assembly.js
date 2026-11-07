@@ -1,5 +1,6 @@
 import { localizedError } from "../shared/errors.js";
 import * as cad from "@classcad/smlibwasm";
+import { namedShape, solidNames, setSolidNames } from "./naming.js";
 
 // An assembly is a collection, never a Boolean union. IDs belong to the design,
 // while face/edge indices remain revision-local like ordinary model references.
@@ -8,13 +9,13 @@ export class Assembly {
     if (!Array.isArray(parts) || !parts.length || parts.length > 100)
       throw localizedError("请提供 1 至 100 个零件", "provide 1–100 parts");
     const ids = new Set();
-    this.parts = parts.map(({ id, name = id, shape }) => {
+    this.parts = parts.map(({ id, shape, name = shape?.name || "" }) => {
       if (typeof id !== "string" || !id.trim() || ids.has(id))
         throw localizedError("零件 ID 必须非空且唯一", "part IDs must be nonempty and unique");
       if (typeof name !== "string" || !(shape instanceof cad.Part) || !shape.isValid() || !(shape.volume > 0))
         throw localizedError("零件无效", "invalid part", `: ${id}`);
       ids.add(id);
-      return { id, name, shape: shape.named(id) };
+      return { id, name, shape: namedShape(shape, name, id) };
     });
   }
   part(id) {
@@ -22,8 +23,8 @@ export class Assembly {
     if (!item) throw localizedError("零件不存在", "unknown part", `: ${id}`);
     return item;
   }
-  translate(...args) { return assembly(this.parts.map(p => ({ ...p, shape: p.shape.translate(...args) }))); }
-  rotate(...args) { return assembly(this.parts.map(p => ({ ...p, shape: p.shape.rotate(...args) }))); }
+  translate(...args) { return assembly(this.parts.map(p => ({ ...p, shape: setSolidNames(p.shape.translate(...args), solidNames(p.shape)) }))); }
+  rotate(...args) { return assembly(this.parts.map(p => ({ ...p, shape: setSolidNames(p.shape.rotate(...args), solidNames(p.shape)) }))); }
   faces() { return new cad.ShapeList(...this.parts.flatMap(p => [...p.shape.faces()])); }
   edges(options) { return new cad.ShapeList(...this.parts.flatMap(p => [...p.shape.edges(options)])); }
   vertices() { return new cad.ShapeList(...this.parts.flatMap(p => [...p.shape.vertices()])); }

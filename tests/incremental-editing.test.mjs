@@ -16,7 +16,7 @@ test("initial structured modeling records all operations; an incremental chamfer
     const args = { projectId: project.id, sourceFile: "model.js", geometry: false };
     const trial = await worker.call("edit", { ...args, expectedRevision: 0, commit: false,
       parameters: { length: 80, thickness: 6 }, operations: [
-        { op: "box", size: [{ parameter: "length" }, 50, { parameter: "thickness" }] },
+        { op: "box", size: [{ parameter: "length" }, 50, { parameter: "thickness" }], name: "四孔底板" },
         ...[[-32, -17], [32, -17], [-32, 17], [32, 17]].map(([x, y]) => ({
           op: "cut", tool: { shape: "cylinder", radius: 2.5, height: 10, center: [x, y, 0] },
         })),
@@ -75,7 +75,7 @@ test("editing a saved custom model skips its source, imports new resources and r
     const source = `function build(p,cad) {
       const fs=require('node:fs'), path=require('node:path').join(__dirname,'base-runs.txt');
       fs.writeFileSync(path,String((fs.existsSync(path)?Number(fs.readFileSync(path,'utf8')):0)+1));
-      const part=cad.Box(p.width,10,p.thickness); cad.checkpoint(part,'base'); return part;
+      const part=cad.Box(p.width,10,p.thickness).named('参数底板'); cad.checkpoint(part,'base'); return part;
     }`;
     await worker.call("build", { ...args, expectedRevision: 0, source, parameters: { width: 20, thickness: 6 } });
     assert.equal(await readFile(counter, "utf8"), "1");
@@ -112,8 +112,8 @@ test("first edit uses unbuilt working source when present and treats a blank fil
   try {
     const project = await worker.call("create");
     for (const [sourceFile, source, operations, volume] of [
-      ["blank.js", " \n", [{ op: "box", size: [10, 20, 6] }], 1200],
-      ["custom.js", "function build(p,cad){return cad.Box(10,20,6);}",
+      ["blank.js", " \n", [{ op: "box", size: [10, 20, 6], name: "底板" }], 1200],
+      ["custom.js", "function build(p,cad){return cad.Box(10,20,6).named('底板');}",
         [{ op: "cut", tool: { shape: "cylinder", radius: 1, height: 10 } }], 1200 - 6 * Math.PI],
     ]) {
       await writeFile(join(project.directory, sourceFile), source);

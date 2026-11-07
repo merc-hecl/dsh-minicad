@@ -35,6 +35,8 @@ Start with cad_edit for standard solids, holes, fillets, chamfers, face edits, t
 
 For multiple independent parts, return cad.assembly([{id:"base",name:"Base",shape:base},{id:"lid",name:"Lid",shape:lid}]) from cad_build. Keep IDs stable when rebuilding; position shapes in world coordinates. Do not fuse separate components. Repeated components may share construction code, but each placed instance has its own ID. Use cad_query(kind:"parts") for the part list, cad_edit operations with part:"id" to edit one, cad_fit for clearance/interference, cad_export with part:"id" for individual files. cad_variants generates separate parameter specifications; the workbench model picker opens each result.
 
+Every final solid MUST have a meaningful name describing its purpose, in the user's language unless requested otherwise. An assembly is only a collection: name each independent member, not the whole assembly. A standalone solid returned by cad_build must use .named("Base plate"); for cad_edit, set name on the initial creation operation or include {op:"rename",name:"Base plate"} before publishing a new solid. Use part:"id" to rename one assembly member; use target to name one solid in a multi-solid Part. Repeated instances must still have useful names. Do not use fabricated default labels to satisfy this requirement. Unnamed intermediate construction and commit:false trials are allowed, but publishing an unnamed final solid is rejected. Preserve names during edits and explicitly name new, split or merged solids.
+
 Verify the requested properties, not just whether a solid builds. Choose measurements that match the dimension's meaning and attach requirement-based checks to the published change. cad_check is read-only: pass the reviewed checks to build/edit/commit to record them. When results disagree, revisit the evidence, measurement and geometry; keep the requirement intact. Preserve the saved model while resolving failed trials.
 
 Reply in the user's language with the saved revision, what changed, what was checked and what remains uncertain. Let the user inspect the model in the workbench. Export only on request; include model, source or export links only when explicitly requested.
@@ -119,7 +121,7 @@ Reply in the user's language with the saved revision, what changed, what was che
   };
   register(
     "cad_build",
-    "Custom JavaScript modeling: source defines build(parameters,cad) returning a valid cad.Part or cad.assembly([{id,name,shape}]); cad exposes SMLib exports; commit:false evaluates without publishing.",
+    "Custom JavaScript modeling: source defines build(parameters,cad) returning a valid cad.Part or cad.assembly([{id,name,shape}]). Every final solid requires a meaningful name: use .named(name) for a standalone solid and name each assembly member. The assembly collection needs no name. cad exposes SMLib exports; commit:false evaluates without publishing.",
     schema({ ...target, ...buildOptions, source: string, parameters, summary: string }, [
       "sourceFile",
       "expectedRevision",
@@ -150,7 +152,7 @@ Reply in the user's language with the saved revision, what changed, what was che
   );
   register(
     "cad_edit",
-    "First choice for standard modeling and edits. Create or combine solids, drill holes, change faces and edges, transform or pattern geometry, and color parts or faces. Mix these operations in one ordered batch. Assembly operations require the stable part ID in part. Changed parameters rebuild existing features. Use commit:false to try the batch before publishing.",
+    "First choice for standard modeling and edits. Create or combine solids, drill holes, change faces and edges, transform or pattern geometry, name solids, and color parts or faces. Every final solid must have a meaningful name: include rename when creating unnamed solids. Assembly operations require the stable part ID in part. Mix operations in one ordered batch. Changed parameters rebuild existing features. Use commit:false to try the batch before publishing.",
     schema(
       { ...target, ...buildOptions, operations: operationsSchema, parameters, summary: string },
       ["sourceFile", "expectedRevision", "operations", "summary"],

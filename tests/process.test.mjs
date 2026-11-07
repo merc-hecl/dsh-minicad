@@ -14,7 +14,7 @@ test("real checkpoints stream before commit, persist on failure/cancel, and reta
     const project = await worker.call("create", { title: "process" });
     const args = { projectId: project.id, sourceFile: "model.js", geometry: false };
     const slowSource = `async function build(p,cad) {
-      let part=cad.Box(10,20,30); cad.checkpoint(part,'blank');
+      let part=cad.Box(10,20,30).named('孔板'); cad.checkpoint(part,'blank');
       await new Promise(resolve=>setTimeout(resolve,1800));
       part=part.cut(cad.Cylinder(2,40)); cad.checkpoint(part,'hole');
       return part;

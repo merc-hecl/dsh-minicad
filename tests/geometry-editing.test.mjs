@@ -71,7 +71,7 @@ test(
       await worker.call("build", {
         ...args,
         expectedRevision: 0,
-        source: "function build(p,cad){return cad.Box(p.width,20,30);}",
+        source: "function build(p,cad){return cad.Box(p.width,20,30).named('参数块');}",
         parameters: { width: 10 },
       });
       const top = (
@@ -167,7 +167,7 @@ test("selected face and edge batches measure and edit the same saved geometry in
   try {
     const task = await worker.call("create");
     const args = { projectId: task.id, sourceFile: "model.js", geometry: false };
-    const built = await worker.call("build", { ...args, expectedRevision: 0, source: "function build(p,cad){return cad.Box(20,10,4);}" });
+    const built = await worker.call("build", { ...args, expectedRevision: 0, source: "function build(p,cad){return cad.Box(20,10,4).named('底板');}" });
     const faces = (await worker.call("query", { ...args, expectedRevision: 1, kind: "faces" })).items;
     const top = faces.find(face => face.normal[2] > .9), bottom = faces.find(face => face.normal[2] < -.9);
     const edge = (await worker.call("query", { ...args, expectedRevision: 1, kind: "edges", selector: { parallelTo: [1, 0, 0] } })).items[0];
@@ -203,7 +203,7 @@ test("agent edit trials preserve saved files and commit a checked replayable bat
     const task = await worker.call("create");
     const args = { projectId: task.id, sourceFile: "model.js", geometry: false, expectedRevision: 1 };
     const built = await worker.call("build", { ...args, expectedRevision: 0,
-      source: "function build(p,cad){return cad.Box(20,10,p.thickness);}", parameters: { thickness: 4 } });
+      source: "function build(p,cad){return cad.Box(20,10,p.thickness).named('底板');}", parameters: { thickness: 4 } });
     const before = await readFile(join(built.workspaceDirectory, "model.smp"));
     const sourceBefore = await readFile(join(built.workspaceDirectory, "model.js"));
     const top = (await worker.call("query", { ...args, kind: "faces", selector: { position: "top" } })).items[0];

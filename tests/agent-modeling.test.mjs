@@ -345,7 +345,7 @@ test(
       };
       const b = { ...a, sourceFile: "b.js" };
       const source =
-        "function build(p,cad){return cad.Box(p.length,p.width,p.height);}";
+        "function build(p,cad){return cad.Box(p.length,p.width,p.height).named('参数块');}";
       await worker.call("build", {
         ...a,
         expectedRevision: 0,
@@ -520,7 +520,7 @@ test(
       const built = await worker.call("edit", {
         ...args,
         expectedRevision: 0,
-        operations: [{ op: "import", file: "resources/part.smb" }],
+        operations: [{ op: "import", file: "resources/part.smb", name: "导入零件" }],
       });
       near(built.design.metrics.volume, 6000);
       const original = await readFile(join(task.directory, "model.smp"));

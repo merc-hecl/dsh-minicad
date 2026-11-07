@@ -10,6 +10,8 @@ import { Script } from "node:vm";
 import { inside } from "./files.js";
 import { validate, operationSchema } from "../shared/cad-schema.js";
 import { PREVIEW_VERSION } from "../shared/preview.js";
+import { solidNames, setSolidNames, validName, inheritNames, entityInfo, restoreNames } from "./naming.js";
+export { requireNames } from "./naming.js";
 import {
   select,
   bindReference,
@@ -26,15 +28,15 @@ export {
 
 export const kernelName = `SMLib / smlibwasm ${cad.version}`;
 const vector = (v) => [v.x, v.y, v.z];
-export function readShape(bytes, name, parts) {
+export function readShape(bytes, name, parts, entities) {
   const shape = cad.fromFile(bytes, name);
   if (parts) {
     const bodies = shape instanceof cad.Part ? [shape] : [...shape];
     if (bodies.length !== parts.length) throw localizedError("零件存储不完整", "incomplete assembly storage");
-    return assembly(parts.map((part, i) => ({ ...part, shape: bodies[i] })));
+    return restoreNames(assembly(parts.map((part, i) => ({ ...part, shape: bodies[i] }))), entities);
   }
-  if (shape instanceof cad.ShapeList) return assembly(shape.map((body, i) => ({ id: `part-${i + 1}`, name: body.name || `Part ${i + 1}`, shape: body })));
-  return shape;
+  if (shape instanceof cad.ShapeList) return restoreNames(assembly(shape.map((body, i) => ({ id: `part-${i + 1}`, name: body.name || "", shape: body }))), entities);
+  return restoreNames(shape, entities);
 }
 export const saveShape = (shape) =>
   Buffer.from(cad.toSmp(shape instanceof Assembly ? shape.parts.map(p => p.shape.named(p.id)) : shape, { ascii: false }));
@@ -230,8 +232,12 @@ const primitiveOps = new Set([
 ]);
 function applyOperation(part, op, base, context) {
   if (primitiveOps.has(op.op)) {
-    const next = primitive(op, context);
-    return part ? part[op.mode || "fuse"](next) : next;
+    const shape = primitive(op, context);
+    const next = op.name === undefined ? shape : shape.named(validName(op.name));
+    if (!part) return next;
+    const result = part[op.mode || "fuse"](next);
+    if (op.name !== undefined && result.solids().length === 1) return result.named(validName(op.name));
+    return inheritNames(result, op.name !== undefined && (!op.mode || op.mode === "fuse") ? [part, next] : [part]);
   }
   if (!part) throw localizedError("请先创建实体", "create a solid first");
   switch (op.op) {
@@ -327,6 +333,10 @@ function publicOperation(value) {
   }
   return value;
 }
+function nameEditedShape(previous, next, operation) {
+  return ["translate", "rotate", "scale", "mirror", "color"].includes(operation)
+    ? setSolidNames(next, solidNames(previous)) : inheritNames(next, [previous]);
+}
 export function editShape(part, operations, parameters = {}, context = {}) {
   const base = context.referenceBase || part;
   for (const [index, raw] of operations.entries()) {
@@ -337,17 +347,33 @@ export function editShape(part, operations, parameters = {}, context = {}) {
         const selected = part.part(op.part);
         const { part: partId, ...local } = op;
         const next = editShape(selected.shape, [local], {}, { ...context, checkpoint: undefined, referenceBase: base });
-        part = assembly(part.parts.map(item => item.id === partId ? { ...item, shape: next } : item));
+        part = assembly(part.parts.map(item => item.id === partId ? { ...item, shape: next,
+          ...(op.op === "rename" && next.solids().length === 1 ? { name: validName(op.name) } : {}),
+        } : item));
       } else if (op.part !== undefined) {
         throw localizedError("此模型不是多零件模型", "part requires an assembly");
+      } else if (op.op === "rename") {
+        if (!part) throw localizedError("请先创建实体", "create a solid first");
+        const name = validName(op.name), solids = topologyItems(part, "solids"), values = solidNames(part);
+        if (op.target === undefined && solids.length !== 1)
+          throw localizedError("多个独立实体需用 target 指定待命名实体", "Use target to name one solid in a multi-solid Part");
+        const selected = op.target === undefined ? solids[0] : select(part, "solids", op.target, base, solids).one();
+        values[solids.indexOf(selected)] = name;
+        part = setSolidNames(solids.length === 1 ? part.named(name) : part, values);
       } else if (op.target !== undefined) {
         if (!part) throw localizedError("请先创建实体", "create a solid first");
-        const solids = part.solids();
+        const solids = topologyItems(part, "solids");
         const selected = select(part, "solids", op.target, base, solids).one();
+        const values = solidNames(part);
+        solids.forEach((solid, i) => setSolidNames(solid, [values[i]]));
         const rest = solids.filter((item) => item !== selected);
-        const next = applyOperation(selected, op, base, context);
-        part = rest.length ? next.fuse(rest) : next;
-      } else part = applyOperation(part, op, base, context);
+        const next = nameEditedShape(selected, applyOperation(selected, op, base, context), op.op);
+        part = rest.length ? inheritNames(next.fuse(rest), [next, ...rest]) : next;
+      } else {
+        const previous = part;
+        part = applyOperation(part, op, base, context);
+        if (previous && !primitiveOps.has(op.op)) nameEditedShape(previous, part, op.op);
+      }
       // Structured solid operations publish valid solids; UDFs can choose their
       // own meaningful checkpoints instead of publishing open construction.
       if (context.checkpoint && part?.solids().length && part.isValid() && part.volume > 0)
@@ -430,6 +456,7 @@ export function describeShape(shape) {
   return {
     metrics,
     parts: partInfo(shape),
+    entities: entityInfo(shape),
     preview: previewShape(shape),
     previewVersion: PREVIEW_VERSION,
     kernel: kernelName,
@@ -593,10 +620,13 @@ export function previewShape(shape) {
   };
 }
 export function exportShape(shape, format) {
-  if (format === "smp") return saveShape(shape);
-  const parts = shape instanceof Assembly ? shape.parts.map(p => p.shape.named(p.name)) : [shape];
+  const parts = shape instanceof Assembly ? shape.parts.map(p => p.shape) : [shape];
+  const solids = parts.flatMap(part => {
+    const names = solidNames(part);
+    return part.solids().map((solid, i) => solid.named(names[i]));
+  });
+  if (format === "smp") return Buffer.from(cad.toSmp(solids, { ascii: false }));
   if (format === "step") {
-    const solids = parts.flatMap(part => [...part.solids()].map(solid => solid.named(part.name)));
     const text = cad.toStep(solids), back = cad.fromStep(text);
     const bodies = back instanceof cad.Part ? [back] : [...back];
     try {

@@ -48,7 +48,7 @@ test("revision diff reads saved solids and preserves working files, head and pro
   const worker = createWorker({ dataDir });
   try {
     const project = await worker.call("create", { title: "Diff" });
-    const source = "function build(p,cad) { const block=cad.Box(20,20,8); return p.hole ? block.cut(cad.Cylinder(2,12)) : block; }";
+    const source = "function build(p,cad) { const block=cad.Box(20,20,8).named('底板'); return p.hole ? block.cut(cad.Cylinder(2,12)) : block; }";
     await worker.call("build", { projectId: project.id, expectedRevision: 0, source, parameters: { hole: false } });
     const built = await worker.call("build", { projectId: project.id, expectedRevision: 1, parameters: { hole: true } });
     await writeFile(join(project.directory, "model.js"), `${source}\n// unsaved working changes\n`);

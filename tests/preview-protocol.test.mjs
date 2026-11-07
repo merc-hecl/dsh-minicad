@@ -74,7 +74,7 @@ test(
         expectedRevision: 0,
         parameters: { width: 60 },
         source:
-          "function build(p,cad){return cad.Box(p.width,40,8).cut(cad.Cylinder(4,10))}",
+          "function build(p,cad){return cad.Box(p.width,40,8).cut(cad.Cylinder(4,10)).named('孔板')}",
       });
       const folder = join(task.directory, built.revisions[0].folder);
       const saved = JSON.parse(

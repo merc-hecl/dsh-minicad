@@ -90,7 +90,7 @@ test(
       assert.match((await worker.call("health")).kernel, /SMLib.*0\.6\.2/);
       const p = await worker.call("create", { title: "参数化底板" });
       const source =
-        "function build(p,cad) { return cad.Box(p.width,40,8).cut(cad.Cylinder(4,10)).translate(70,-20,30); }";
+        "function build(p,cad) { return cad.Box(p.width,40,8).cut(cad.Cylinder(4,10)).translate(70,-20,30).named('孔板'); }";
       const built = await worker.call("build", {
         projectId: p.id,
         expectedRevision: 0,
@@ -219,7 +219,7 @@ test(
         expectedRevision: 0,
         parameters: { length: 30 },
         operations: [
-          { op: "box", size: [{ parameter: "length" }, 10, 5] },
+          { op: "box", size: [{ parameter: "length" }, 10, 5], name: "底板" },
           { op: "fillet", edges: { parallelTo: [0, 0, 1] }, radius: 0.5 },
           { op: "cut", tool: { shape: "cylinder", radius: 1, height: 7 } },
         ],
@@ -297,7 +297,7 @@ test(
         expectedRevision: 0,
         sourceFile: "parts/plate.js",
         source:
-          'function build(p,cad) { return cad.readModel("resources/input.step"); }',
+          'function build(p,cad) { return cad.readModel("resources/input.step").named("导入零件"); }',
         parameters: {},
       });
       near(result.design.metrics.volume, 1260);
@@ -369,7 +369,7 @@ test(
         await worker.call("build", {
           projectId: p.id,
           expectedRevision: 0,
-          source: "function build(p,cad){ return cad.Box(10,20,30); }",
+          source: "function build(p,cad){ return cad.Box(10,20,30).named('长方体'); }",
           parameters: {},
         });
         const controller = new AbortController(),

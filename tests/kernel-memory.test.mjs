@@ -54,7 +54,7 @@ test(
         };
         assert.equal(starts, 0);
         const source =
-          "function build(p,cad){ globalThis.__minicadMemoryProbe = true; return cad.Box(p.width,20,30); }";
+          "function build(p,cad){ globalThis.__minicadMemoryProbe = true; return cad.Box(p.width,20,30).named('参数块'); }";
         const built = await worker.call("build", {
           ...target,
           expectedRevision: 0,
@@ -162,7 +162,7 @@ test(
         const built = await worker.call("build", {
           ...args,
           expectedRevision: 0,
-          source: "function build(p,cad){return cad.Box(10,20,30)}",
+          source: "function build(p,cad){return cad.Box(10,20,30).named('长方体')}",
           parameters: {},
         });
         const folder = join(task.directory, built.revisions[0].folder);
@@ -247,7 +247,7 @@ test(
           worker.call("build", {
             projectId: task.id,
             expectedRevision: 0,
-            source: "function build(p,cad){return cad.Box(1,2,3)}",
+            source: "function build(p,cad){return cad.Box(1,2,3).named('长方体')}",
             parameters: {},
           }),
           /VirtualAlloc/,
@@ -309,7 +309,7 @@ test(
         await worker.call("build", {
           projectId: task.id,
           expectedRevision: 0,
-          source: "function build(p,cad){return cad.Box(1,2,3)}",
+          source: "function build(p,cad){return cad.Box(1,2,3).named('长方体')}",
           parameters: {},
           geometry: false,
         });

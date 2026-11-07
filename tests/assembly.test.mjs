@@ -97,7 +97,7 @@ test("assembly bore queries and face edits retain component ownership; STEP acce
   await worker.call("build", { ...target, expectedRevision: 0, source: `function build(p,cad) {
     const base = cad.Box(40,30,10).cut(cad.Cylinder(2,6).translate(0,0,3));
     const lid = cad.Box(40,30,2).cut(cad.Cylinder(2,4)).translate(0,0,6);
-    return cad.assembly([{id:'base',shape:base},{id:'lid',shape:lid}]);
+    return cad.assembly([{id:'base',name:'底座',shape:base},{id:'lid',name:'盖板',shape:lid}]);
   }` });
   const holes = await worker.call("query", { ...target, expectedRevision: 1, kind: "holes" });
   assert.equal(holes.items.length, 2);

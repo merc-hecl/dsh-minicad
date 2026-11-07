@@ -340,7 +340,7 @@ export class Store {
   async shape(saved) {
     return (await this.kernel()).readShape(
       fs.readFileSync(join(saved.folder, "model.smp")),
-      "model.smp", saved.state.parts,
+      "model.smp", saved.state.parts, saved.state.entities,
     );
   }
   prepareInputs(directory, sourceFile) {
@@ -566,6 +566,7 @@ export class Store {
       operations: operations || [],
       assets: [...assets.keys()],
     };
+    if (args.commit !== false) api.requireNames(shape);
     journal.capture(run, state, "", "result");
     journal.finish(run, "validating");
     const scope = args.commit === false ? api.modelScope(key, `${sourceFile}@${run.id}`) : api.modelScope(key, sourceFile);
@@ -609,8 +610,10 @@ export class Store {
     const api = await this.kernel();
     const checks = [...new Map([...(state.validation?.checks || []), ...(args.checks || [])]
       .map(check => [JSON.stringify(check), check])).values()];
+    const shape = api.readShape(fs.readFileSync(join(folder, "model.smp")), "model.smp", state.parts, state.entities);
+    api.requireNames(shape);
     state.validation = checks.length ? { checks, ...api.checkShape(
-      api.readShape(fs.readFileSync(join(folder, "model.smp")), "model.smp", state.parts),
+      shape,
       api.values(checks, state.parameters), api.modelScope(key, `${args.sourceFile}@${run.id}`), candidateRevision(run),
     ) } : { passed: null, checks: [], results: [] };
     if (state.validation.passed === false)
@@ -689,6 +692,7 @@ export class Store {
             geometryIds: state.geometryIds || defaultIdFormats,
             validation: state.validation || null,
             parts: state.parts,
+            entities: state.entities,
           }),
         };
         for (const asset of state.assets || [])

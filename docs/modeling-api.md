@@ -81,6 +81,7 @@
 | `rotate_faces` | `faces`、世界坐标 `axis`、`angle`，可选 `origin`；旋转选中面并重建相邻面 |
 | `scale` | 正数 `factor` 或三个正数的 XYZ 比例，可选缩放中心 `origin` |
 | `color` | `color` 接受 `"#RRGGBB"` 或 `null`。省略 `faces` 修改工件颜色，提供 `faces` 修改指定面的覆盖色。多零件模型用 `part` 指定零件 ID |
+| `rename` | `name` 为实体的非空用途名称。单实体可直接命名，装配成员用 `part` 指定；普通 Part 内含多个独立实体时用 `target` 指定一个。命名不改变几何或编号 |
 | `import` | 从任务内 `file` 读取精确资源，如 `resources/input.step`、`.brep`、`.smb`；资源随版本快照和 ZIP 保存 |
 
 轮廓 `profile` 支持 `rectangle`、`circle`、`polygon` 和 `wire`。默认在 XY 平面，可用 `plane: "XZ"` / `"YZ"`、`rotate`、`center` 放置轮廓。整体生成结果也可用 `rotate`、`center` 放置。
@@ -98,6 +99,7 @@
 ```json
 {
   "op": "extrude",
+  "name": "D 形支座",
   "amount": 8,
   "profile": {
     "shape": "wire",
@@ -126,7 +128,7 @@
   "parameters": { "length": 40 },
   "summary": "创建三孔底板",
   "operations": [
-    { "op": "box", "size": [{ "parameter": "length" }, 20, 8] },
+    { "op": "box", "size": [{ "parameter": "length" }, 20, 8], "name": "孔板" },
     { "op": "linear_pattern", "step": [8, 0, 0], "count": 3, "mode": "cut",
       "tool": { "shape": "cylinder", "radius": 1, "height": 10 } }
   ]
@@ -139,11 +141,13 @@
 
 ```javascript
 function build(parameters, cad) {
-  return cad.Box(parameters.length, 40, 8).cut(cad.Cylinder(4, 10));
+  return cad.Box(parameters.length, 40, 8).cut(cad.Cylinder(4, 10)).named("孔板");
 }
 ```
 
 `cad.readModel("resources/input.step")` 也可导入精确资源。局部编辑会记录在源码中，参数重算重新执行整个模型。`cad_update_parameters` 默认只合并顶层键，嵌套对象整体替换；完整替换或删除参数可用 `mode: "replace"`。`cad_build` / `cad_edit` 的 `parameters` 若提供则为完整对象，省略则沿用工作参数。
+
+所有最终独立实体必须按用途命名，装配体集合不需要整体名称。创建独立实体时可在生成操作上填写 `name`，或在同一批次最后使用 `rename`；已有装配成员用 `{op:"rename",part:"lid",name:"检修盖板"}` 重命名。中间构造和 `commit:false` 试算可以暂不命名，但 `cad_build`、`cad_edit` 和 `cad_commit` 发布时会拒绝未命名实体，并保留上一版。编辑延续可明确继承的名称，拆分、合并产生无法确定名称的实体时需显式命名。名称随版本、查询和工作台预览保存；STEP、SMP 导出保留实体名称，SMB 和 STL 不保存这些名称。
 
 ### 测量、检查和几何引用
 

@@ -60,11 +60,11 @@ export class ProcessJournal {
   }
   capture(run, description, label, operation) {
     const bytes = encodePreview(description.preview);
-    const digest = createHash("sha256").update(bytes).digest("hex");
+    const digest = createHash("sha256").update(bytes).update(JSON.stringify(description.entities)).digest("hex");
     if (run.steps.at(-1)?.digest === digest) return;
     const step = { sequence: run.steps.length + 1, label: String(label || "").slice(0, 200),
       operation: operation || null, created: Date.now() / 1000,
-      metrics: description.metrics, parts: description.parts, digest, byteLength: bytes.length };
+      metrics: description.metrics, parts: description.parts, entities: description.entities, digest, byteLength: bytes.length };
     atomicWrite(join(this.root, run.id, `${step.sequence}.bin`), bytes);
     run.steps.push(step);
     run.updated = step.created;
@@ -81,7 +81,7 @@ export class ProcessJournal {
     const step = run?.steps.find(item => item.sequence === Number(sequence));
     if (!step) throw localizedError("过程步骤不存在", "process checkpoint does not exist");
     return { path: join(this.root, run.id, `${step.sequence}.bin`), byteLength: step.byteLength,
-      design: { metrics: step.metrics, parts: step.parts, geometryIds: run.geometryIds, sourceFile: run.sourceFile,
+      design: { metrics: step.metrics, parts: step.parts, entities: step.entities, geometryIds: run.geometryIds, sourceFile: run.sourceFile,
         revision: run.baseRevision, checkpoint: { runId: run.id, sequence: step.sequence } } };
   }
 }

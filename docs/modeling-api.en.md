@@ -83,6 +83,7 @@ The MiniCAD preset includes the standard DSH filesystem, search, shell, skill an
 | `rotate_faces` | `faces`, world `axis`, `angle`, optional `origin`; rotate selected faces and rebuild their neighbors |
 | `scale` | A positive `factor` or three positive XYZ factors; optional scale center `origin` |
 | `color` | `color` accepts `"#RRGGBB"` or `null`. Omit `faces` to color the whole part, or supply `faces` to change the selected face overrides. In an assembly, use `part` to specify the part ID |
+| `rename` | `name` is a nonempty purpose-based solid name. Name a standalone solid directly, use `part` for an assembly member, or `target` for one solid in a multi-solid Part. Geometry and IDs are unchanged |
 | `import` | Read a task-relative `file`, such as `resources/input.step`, `.brep` or `.smb`; resources travel with snapshots and ZIP exports |
 
 A `profile` can be a `rectangle`, `circle`, `polygon` or `wire`. It starts on XY. Use `plane: "XZ"` / `"YZ"`, `rotate` and `center` to place it. The generated solid also accepts `rotate` and `center`.
@@ -100,6 +101,7 @@ This operation extrudes a D-shaped profile.
 ```json
 {
   "op": "extrude",
+  "name": "D-shaped bracket",
   "amount": 8,
   "profile": {
     "shape": "wire",
@@ -128,7 +130,7 @@ For example, create a plate and cut three holes in one batch:
   "parameters": { "length": 40 },
   "summary": "Create a three-hole plate",
   "operations": [
-    { "op": "box", "size": [{ "parameter": "length" }, 20, 8] },
+    { "op": "box", "size": [{ "parameter": "length" }, 20, 8], "name": "Drilled plate" },
     { "op": "linear_pattern", "step": [8, 0, 0], "count": 3, "mode": "cut",
       "tool": { "shape": "cylinder", "radius": 1, "height": 10 } }
   ]
@@ -141,11 +143,13 @@ Custom source defines `build(parameters, cad)` and returns a valid `cad.Part` wi
 
 ```javascript
 function build(parameters, cad) {
-  return cad.Box(parameters.length, 40, 8).cut(cad.Cylinder(4, 10));
+  return cad.Box(parameters.length, 40, 8).cut(cad.Cylinder(4, 10)).named("Drilled plate");
 }
 ```
 
 `cad.readModel("resources/input.step")` also imports exact resources. Local edits are stored in source and replayed when parameters change. `cad_update_parameters` merges top-level keys by default; nested values replace as a whole. Use `mode: "replace"` to replace the full object or remove parameters. For `cad_build` / `cad_edit`, supplied `parameters` are the complete object; omitting them retains working parameters.
+
+Every final independent solid must have a meaningful purpose-based name. The assembly collection needs no overall name. Set `name` on an initial creation operation or finish the batch with `rename`; rename an existing assembly member with `{op:"rename",part:"lid",name:"Inspection cover"}`. Intermediate construction and `commit:false` trials may be unnamed, but publishing through `cad_build`, `cad_edit` or `cad_commit` rejects unnamed solids and preserves the saved revision. Edits retain unambiguous inherited names; split or merged solids with ambiguous ownership require explicit names. Names persist with revisions, queries and workbench previews. STEP and SMP exports retain solid names; SMB and STL do not store these names.
 
 ### Measurements, checks and geometry references
 

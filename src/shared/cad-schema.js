@@ -195,13 +195,16 @@ const operationDescriptions = {
   linear_pattern: "Repeat at multiples of step, with count including the original. Supply tool and mode for repeated cuts or additions. Omit tool to copy the selected solid.",
   circular_pattern: "Repeat about axis through origin. angle is the per-copy increment in degrees and count includes the original. Supply tool and mode to combine repeated tools.",
   color: "Set a whole-part color or selected face overrides using #RRGGBB. null clears the selected color. Clearing a face override restores its inherited part color.",
+  rename: "Assign a mandatory, meaningful name to one solid. Use part for an assembly member or target for one solid in a multi-solid Part. Name every final solid before publishing. An assembly is only a collection and needs no overall name. Geometry and IDs are unchanged.",
 };
 const operationGroups = [
   {
     description: 'Create and combine solids. Use a wire profile for a closed outline made of lines and circular arcs. For a round hole, use {"op":"cut","tool":{"shape":"cylinder","radius":2.5,"height":12}}.',
     operations: [
       ...Object.entries(primitives).map(([op, fields]) =>
-        operation(op, fields, { ...primitiveOptions[op], ...placement, mode }),
+        operation(op, fields, { ...primitiveOptions[op], ...placement, mode,
+          name: { ...text, description: "Required meaningful name when creating a standalone final solid. Use rename for an existing solid." },
+        }),
       ),
       ...["cut", "fuse", "intersect"].map((op) =>
         operation(op, { tool: primitiveSchema }),
@@ -253,8 +256,9 @@ const operationGroups = [
     ],
   },
   {
-    description: 'Change appearance. Use {"op":"color","color":"#CD7F32"} for the whole part or supply faces for a face override. Use null to clear the selected color.',
+    description: 'Name solids and change appearance. Every final solid must have a meaningful name. Use {"op":"rename","name":"Base plate"} after creating a solid. Use {"op":"color","color":"#CD7F32"} for the whole part or supply faces for a face override. Use null to clear the selected color.',
     operations: [
+      operation("rename", { name: text }),
       object({ op: { const: "color" }, color, faces: references, part: text }, ["op", "color"]),
     ],
   },
