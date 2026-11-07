@@ -55,6 +55,19 @@ html[data-platform="darwin"] .mc-workbench {
   touch-action: none;
 }
 .mc-selecting canvas { cursor: crosshair; }
+.mc-viewport .mc-part-hover {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  max-width: min(320px, calc(100% - 24px));
+  padding: 6px 10px;
+  border-radius: var(--dsw-radius-md);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
 .mc-selection-context {
   position: absolute;
   z-index: 1;
@@ -72,7 +85,7 @@ html[data-platform="darwin"] .mc-workbench {
   flex: none;
   min-height: 44px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 4px;
   padding: 5px;
   border: 1px solid var(--mc-border);
@@ -84,6 +97,8 @@ html[data-platform="darwin"] .mc-workbench {
   transform-origin: var(--mc-bar-origin, left top);
   transition: opacity 125ms var(--mc-ease-out), transform 125ms var(--mc-ease-out), visibility 0s linear 125ms;
 }
+.mc-selection-actions { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 32px; }
+.mc-selection-part-names { width: 100%; padding: 3px 6px 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mc-selection-context[data-panel-side="top"] .mc-selection-bar { transform: translateY(3px) scale(.97); }
 .mc-selection-context[data-open][data-placed] .mc-selection-bar {
   opacity: 1;

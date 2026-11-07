@@ -61,6 +61,7 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
   const runtime = useRef(null);
   const cube = useRef(null);
   const coordinates = useRef(null);
+  const partHover = useRef(null);
   const [scale, setScale] = useState(null);
   const floating = useRef(null);
   const selectionProps = useRef(null);
@@ -187,7 +188,7 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
     const cursorValues = coordinates.current?.querySelectorAll("[data-coordinate]");
     const cursorHits = [], gridPoint = new THREE.Vector3();
     const xyPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1));
-    let cursorOnCanvas = false;
+    let cursorOnCanvas = false, hoverAllowed = true;
     function setPointerRay(x, y, rect) {
       ndc.set((x - rect.left) / rect.width * 2 - 1, 1 - (y - rect.top) / rect.height * 2);
       raycaster.setFromCamera(ndc, camera);
@@ -202,6 +203,41 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
     function clearCoordinates() {
       cursorOnCanvas = false;
       showCoordinates(null);
+      if (partHover.current) partHover.current.hidden = true;
+    }
+    state.clearCursor = clearCoordinates;
+    function pickTarget(surfaceHit, rect) {
+      const { design } = selectionProps.current;
+      const preview = design?.previewData;
+      if (!preview || !state.surface) return null;
+      let index, kind, point;
+      if (surfaceHit) { index = preview.faceIndices[surfaceHit.faceIndex]; kind = "faces"; point = surfaceHit.point; }
+      if (state.edgePicker) {
+        const mmPerPixel = (camera.top-camera.bottom)/camera.zoom/rect.height;
+        raycaster.params.Line.threshold = mmPerPixel * 6;
+        const hit = raycaster.intersectObject(state.edgePicker, false).find(hit => state.wire || !surfaceHit || hit.distance <= surfaceHit.distance + mmPerPixel * 6);
+        if (hit) { index = preview.edgeIndices[Math.floor(hit.index / 2)]; kind = "edges"; point = hit.point; }
+      }
+      if (index === undefined) return null;
+      const entity = design.entities?.find(entity => entity[kind].includes(index));
+      return { kind, index, point: point.toArray(), entityName: entity?.name,
+        label: geometryLabel(kind, index, design.geometryIds || defaultIdFormats),
+        reference: geometryReference(design.geometryScope, design.revision, kind, index),
+      };
+    }
+    function showPartName(surfaceHit, rect) {
+      const element = partHover.current;
+      if (!element) return;
+      const name = hoverAllowed && !state.diffActive ? pickTarget(surfaceHit, rect)?.entityName : "";
+      element.hidden = !name;
+      if (!name) return;
+      if (element.textContent !== name) element.textContent = name;
+      const viewport = el.getBoundingClientRect();
+      const width = element.offsetWidth, height = element.offsetHeight;
+      const x = pointer.x - viewport.left, y = pointer.y - viewport.top;
+      const left = Math.max(12, Math.min(x + 14, viewport.width - width - 12));
+      const top = Math.max(12, Math.min(y + 18 + height <= viewport.height - 12 ? y + 18 : y - height - 12, viewport.height - height - 12));
+      element.style.transform = `translate3d(${left}px, ${top}px, 0)`;
     }
     function updateCoordinates() {
       if (!cursorOnCanvas) return;
@@ -223,9 +259,12 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
       const gridHit = !hit && Math.abs(raycaster.ray.direction.z) > 0.04
         ? raycaster.ray.intersectPlane(xyPlane, gridPoint) : null;
       showCoordinates(hit?.point ?? gridHit);
+      showPartName(hit, rect);
     }
     let clickStart = null;
     const startPick = (event) => {
+      hoverAllowed = false;
+      if (partHover.current) partHover.current.hidden = true;
       if (event.button === 0 && selectionProps.current.selecting && !selectionProps.current.pickingDisabled)
         clickStart = { x: event.clientX, y: event.clientY, id: event.pointerId, extend: event.ctrlKey };
     };
@@ -239,19 +278,7 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
       const rect = renderer.domElement.getBoundingClientRect();
       setPointerRay(event.clientX, event.clientY, rect);
       const surfaceHit = raycaster.intersectObject(state.surface, false)[0];
-      let index, kind, point;
-      if (surfaceHit) { index = preview.faceIndices[surfaceHit.faceIndex]; kind = "faces"; point = surfaceHit.point; }
-      if (state.edgePicker) {
-        const mmPerPixel = (camera.top-camera.bottom)/camera.zoom/rect.height;
-        raycaster.params.Line.threshold = mmPerPixel * 6;
-        const hit = raycaster.intersectObject(state.edgePicker, false).find(hit => state.wire || !surfaceHit || hit.distance <= surfaceHit.distance + mmPerPixel * 6);
-        if (hit) { index = preview.edgeIndices[Math.floor(hit.index / 2)]; kind = "edges"; point = hit.point; }
-      }
-      onPick(index === undefined ? null : {
-        kind, index, point: point.toArray(),
-        label: geometryLabel(kind, index, design.geometryIds || defaultIdFormats),
-        reference: geometryReference(design.geometryScope, design.revision, kind, index),
-      }, start.extend);
+      onPick(pickTarget(surfaceHit, rect), start.extend);
     };
     state.highlightPicks = targets => {
       state.clearPick();
@@ -328,13 +355,15 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
       panel.dataset.panelSide = above ? "top" : "bottom";
       const py = Math.max(top, Math.min(above ? y - 12 - height : y + 12, bottom - height));
       panel.style.transform = `translate3d(${px}px, ${py}px, 0)`;
-      panel.style.setProperty("--mc-bar-origin", `${Math.max(0, Math.min(width, x - px))}px ${above ? 44 : 0}px`);
+      const barHeight = panel.querySelector(".mc-selection-bar")?.offsetHeight || 44;
+      panel.style.setProperty("--mc-bar-origin", `${Math.max(0, Math.min(width, x - px))}px ${above ? barHeight : 0}px`);
       panel.dataset.placed = "true";
     };
     const cancelPointer = () => { clickStart = null; clearCoordinates(); };
     const movePointer = event => {
       if (clickStart && Math.hypot(event.clientX-clickStart.x,event.clientY-clickStart.y) > 4) clickStart = null;
       if (!cursorValues || event.pointerType !== "mouse") return;
+      hoverAllowed = !event.buttons;
       cursorOnCanvas = true;
       pointer.set(event.clientX, event.clientY);
       scheduleFrame();
@@ -740,6 +769,7 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
     const s = runtime.current;
     if (!s) return;
     s.clearPick();
+    s.clearCursor();
     s.surface = null;
     s.setSurfaceColor = null;
     s.edgePicker = null;
@@ -871,6 +901,7 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
   }, [wire, design?.previewData]);
   return (
     <div id={id} ref={mount} aria-hidden={!active} className={`mc-viewport ${selecting ? "mc-selecting" : ""}`} aria-label="3D">
+      {presentation === "workbench" && <div ref={partHover} className="mc-part-hover mc-panel" hidden />}
       <div ref={floating} className="mc-selection-context" data-open={selecting && targets.length > 0 || undefined}
         data-instant={selectionInstant || !pointerModality() || undefined} aria-hidden={!selecting || !targets.length} inert={!selecting || !targets.length ? "" : undefined}>
         {selectionTools}

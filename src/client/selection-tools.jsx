@@ -14,6 +14,7 @@ export function SelectionTools({ targets, tool, onToolChange, onClear, onRemove,
   const lastTargets = useRef(targets);
   if (targets.length) lastTargets.current = targets;
   const summary = lastTargets.current.length === 1 ? lastTargets.current[0].label : t("selectionCount", { count: lastTargets.current.length });
+  const partNames = [...new Set(lastTargets.current.map(target => target.entityName).filter(Boolean))].join(" · ");
   const actions = [
     { key: "measure", label: "measureGeometry", Icon: Ruler, disabled: !targets.length || targets.length > 2, hint: "measurementSelectionLimit" },
     { key: "annotation", label: "referenceGeometry", Icon: IconContextInjectionOutlineRegular, disabled: referenceDisabled },
@@ -27,7 +28,9 @@ export function SelectionTools({ targets, tool, onToolChange, onClear, onRemove,
       event.preventDefault();
       buttons[event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
     }}>
-      <span className="mc-selection-summary" title={lastTargets.current.map(target => `${target.label}\n${target.reference}`).join("\n")}>{summary}</span>
+      {partNames && <div className="mc-selection-part-names" title={partNames}>{partNames}</div>}
+      <div className="mc-selection-actions">
+      <span className="mc-selection-summary" title={lastTargets.current.map(target => [target.entityName, target.label, target.reference].filter(Boolean).join("\n")).join("\n")}>{summary}</span>
       <span className="mc-selection-divider" aria-hidden="true" />
       {actions.map(({ key, label, Icon, disabled, hint }) => {
         const action = <span key={key} className="mc-selection-action"><Button type="button" variant="ghost" size="sm" icon={<Icon size={16} />} aria-label={t(label)} aria-pressed={tool === key} disabled={busy || disabled}
@@ -35,6 +38,7 @@ export function SelectionTools({ targets, tool, onToolChange, onClear, onRemove,
         return disabled && hint ? <Tooltip key={key} label={t(hint)} portal>{action}</Tooltip> : action;
       })}
       <Button variant="ghost" size="sm" className="mc-selection-clear" icon={<IconCloseOutlineRegular size={14} />} aria-label={t("clearSelection")} disabled={busy} onClick={onClear} />
+      </div>
     </div>
     {targets.length > 0 && tool && <div className="mc-selection-body">
       {tool === "measure" && targets.length <= 2 ? <MeasurementPanel targets={targets} onClose={() => onToolChange(null)} project={project} request={request} onResult={onResult} t={t} />

@@ -344,7 +344,7 @@ export function Workbench({
             const previewData = await request("checkpoint", { projectId: selected, sourceFile: current.sourceFile, runId: state.progress.id, sequence: step.sequence }, loadController.current.signal);
             if (!disposed && selection.current === selected && projectRef.current?.sourceFile === current.sourceFile) {
               processKey.current = key;
-              setProcessDesign({ previewData, metrics: step.metrics, geometryIds: state.progress.geometryIds,
+              setProcessDesign({ previewData, metrics: step.metrics, parts: step.parts, entities: step.entities, geometryIds: state.progress.geometryIds,
                 sourceFile: current.sourceFile, checkpoint: { runId: state.progress.id, sequence: step.sequence } });
             }
           }
