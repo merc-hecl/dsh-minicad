@@ -165,50 +165,102 @@ const operation = (op, fields, optional = {}) =>
     "op",
     ...Object.keys(fields),
   ]);
+const operationDescriptions = {
+  box: "Create a centered box with size [X,Y,Z]. Use center and rotate to place it, and mode to combine it with the current solid.",
+  cylinder: "Create a centered Z-axis cylinder. Use radius and height for its dimensions, and mode cut for a cylindrical hole.",
+  sphere: "Create a sphere of the given radius, with center and mode controlling placement and combination.",
+  cone: "Create a centered Z-axis cone or frustum. bottomRadius is at negative Z and topRadius at positive Z. One radius may be zero.",
+  torus: "Create a torus around the Z axis. majorRadius locates the tube's center circle and minorRadius sets the tube radius.",
+  extrude: "Extend a closed profile along its plane normal by signed amount. Use a wire profile for joined lines and circular arcs.",
+  revolve: "Rotate a closed profile about the world-space axis through origin, which defaults to [0,0,0]. angle is the signed total rotation in degrees.",
+  loft: "Connect the profiles in sections in their listed order. Set ruled true for straight transitions between sections.",
+  sweep: "Carry a closed profile along a line, polyline, spline, arc or helix path to form a solid.",
+  import: "Read an exact model resource from the task-relative file path. Use center, rotate and mode to place and combine it.",
+  cut: "Subtract the solid defined by tool from the current solid to make holes, pockets or cutouts.",
+  fuse: "Union the solid defined by tool with the current solid to add material.",
+  intersect: "Keep only the volume shared by the current solid and the solid defined by tool.",
+  fillet: "Round the selected edges with the given radius.",
+  chamfer: "Bevel the selected edges with the given distance.",
+  shell: "Hollow the solid inward to the given wall thickness. faces selects openings. Omit faces for a closed internal cavity.",
+  offset: "Offset the entire solid by distance. Positive values grow the material and negative values shrink it.",
+  move_faces: "Translate selected faces by the world-space vector by, extending or trimming adjacent faces to meet them.",
+  rotate_faces: "Rotate selected faces about the world-space axis through origin by angle degrees, rebuilding adjacent faces.",
+  offset_faces: "Move selected faces along their outward normals by distance. Positive values add material and narrow holes. Tangent face chains move together.",
+  remove_faces: "Remove selected feature faces, such as a hole, boss or pocket, and close the gap using the surrounding faces.",
+  remove_fillets: "Remove the selected fillet faces and restore the sharp intersections of the neighboring faces.",
+  translate: "Move the selected solid or part by the world-space vector by.",
+  scale: "Scale by one positive factor or [X,Y,Z] factors about origin, which defaults to [0,0,0].",
+  rotate: "Rotate the selected solid or part about the world-space axis through origin by angle degrees.",
+  mirror: "Reflect the selected solid or part across the plane defined by normal and origin.",
+  linear_pattern: "Repeat at multiples of step, with count including the original. Supply tool and mode for repeated cuts or additions. Omit tool to copy the selected solid.",
+  circular_pattern: "Repeat about axis through origin. angle is the per-copy increment in degrees and count includes the original. Supply tool and mode to combine repeated tools.",
+  color: "Set a whole-part color or selected face overrides using #RRGGBB. null clears the selected color. Clearing a face override restores its inherited part color.",
+};
+const operationGroups = [
+  {
+    description: 'Create and combine solids. Use a wire profile for a closed outline made of lines and circular arcs. For a round hole, use {"op":"cut","tool":{"shape":"cylinder","radius":2.5,"height":12}}.',
+    operations: [
+      ...Object.entries(primitives).map(([op, fields]) =>
+        operation(op, fields, { ...primitiveOptions[op], ...placement, mode }),
+      ),
+      ...["cut", "fuse", "intersect"].map((op) =>
+        operation(op, { tool: primitiveSchema }),
+      ),
+    ],
+  },
+  {
+    description: 'Edit local geometry using face or edge IDs from cad_query, or use a geometric selector. To bevel the top straight edges, use {"op":"chamfer","edges":{"position":"top","geomType":"line"},"distance":1}.',
+    operations: [
+      operation("fillet", { edges: references, radius: positive }),
+      operation("chamfer", { edges: references, distance: positive }),
+      operation("shell", { thickness: positive }, { faces: references }),
+      operation("offset", { distance: scalar }),
+      operation("move_faces", { faces: references, by: vector }),
+      operation("rotate_faces", { faces: references, axis: vector, angle: scalar }, { origin: vector }),
+      operation("offset_faces", { faces: references, distance: scalar }),
+      operation("remove_faces", { faces: references }),
+      operation("remove_fillets", { faces: references }),
+    ],
+  },
+  {
+    description: 'Transform or repeat geometry. Pattern count includes the first copy. For a row of holes, use {"op":"linear_pattern","step":[12,0,0],"count":4,"tool":{"shape":"cylinder","radius":2,"height":10},"mode":"cut"}.',
+    operations: [
+      operation("translate", { by: vector }),
+      operation("scale", { factor: { anyOf: [positive, array(positive, 3, 3)] } }, { origin: vector }),
+      operation("rotate", { axis: vector, angle: scalar }, { origin: vector }),
+      operation("mirror", { normal: vector }, { origin: vector }),
+      operation(
+        "linear_pattern",
+        {
+          step: vector,
+          count: {
+            anyOf: [{ type: "integer", minimum: 2, maximum: 100 }, parameter],
+          },
+        },
+        { tool: primitiveSchema, mode },
+      ),
+      operation(
+        "circular_pattern",
+        {
+          axis: vector,
+          angle: scalar,
+          count: {
+            anyOf: [{ type: "integer", minimum: 2, maximum: 100 }, parameter],
+          },
+        },
+        { origin: vector, tool: primitiveSchema, mode },
+      ),
+    ],
+  },
+  {
+    description: 'Change appearance. Use {"op":"color","color":"#CD7F32"} for the whole part or supply faces for a face override. Use null to clear the selected color.',
+    operations: [
+      object({ op: { const: "color" }, color, faces: references, part: text }, ["op", "color"]),
+    ],
+  },
+];
 export const operationSchema = {
-  anyOf: [
-    ...Object.entries(primitives).map(([op, fields]) =>
-      operation(op, fields, { ...primitiveOptions[op], ...placement, mode }),
-    ),
-    ...["cut", "fuse", "intersect"].map((op) =>
-      operation(op, { tool: primitiveSchema }),
-    ),
-    operation("fillet", { edges: references, radius: positive }),
-    operation("chamfer", { edges: references, distance: positive }),
-    operation("shell", { thickness: positive }, { faces: references }),
-    operation("offset", { distance: scalar }),
-    operation("move_faces", { faces: references, by: vector }),
-    operation("rotate_faces", { faces: references, axis: vector, angle: scalar }, { origin: vector }),
-    operation("offset_faces", { faces: references, distance: scalar }),
-    operation("remove_faces", { faces: references }),
-    operation("remove_fillets", { faces: references }),
-    object({ op: { const: "color" }, color, faces: references, part: text }, ["op", "color"]),
-    operation("translate", { by: vector }),
-    operation("scale", { factor: { anyOf: [positive, array(positive, 3, 3)] } }, { origin: vector }),
-    operation("rotate", { axis: vector, angle: scalar }, { origin: vector }),
-    operation("mirror", { normal: vector }, { origin: vector }),
-    operation(
-      "linear_pattern",
-      {
-        step: vector,
-        count: {
-          anyOf: [{ type: "integer", minimum: 2, maximum: 100 }, parameter],
-        },
-      },
-      { tool: primitiveSchema, mode },
-    ),
-    operation(
-      "circular_pattern",
-      {
-        axis: vector,
-        angle: scalar,
-        count: {
-          anyOf: [{ type: "integer", minimum: 2, maximum: 100 }, parameter],
-        },
-      },
-      { origin: vector, tool: primitiveSchema, mode },
-    ),
-  ],
+  anyOf: operationGroups.flatMap(group => group.operations),
 };
 export const operationsSchema = array(operationSchema);
 export const entity = object({
@@ -268,20 +320,26 @@ export const checksSchema = array({
 // DSH rc.5 enforces a deliberately smaller JSON Schema subset. Preserve disjoint
 // alternatives as oneOf, and describe bounds that the kernel enforces at runtime.
 export function toDshSchema(rule) {
-  // DSH has no $ref/$defs. Expose typed fields and a required-field matrix,
-  // keeping full conditional validation in the kernel instead of duplicating
-  // the same nested schemas hundreds of times in the agent context.
+  // DSH has no $ref/$defs. Group the operation names while sharing field
+  // definitions. The kernel still validates each operation's exact fields.
   if (rule === operationSchema) {
     const properties = Object.assign(
       {},
       ...rule.anyOf.map((option) => option.properties),
     );
-    properties.op = choices(
-      rule.anyOf.map((option) => option.properties.op.const),
-    );
+    properties.op = {
+      anyOf: operationGroups.map(({ description, operations }) => ({
+        ...choices(operations.map(option => option.properties.op.const)),
+        description: [description, ...operations.map(option => {
+          const op = option.properties.op.const;
+          const required = option.required.filter(key => key !== "op").join(",");
+          return `${op}(${required}). ${operationDescriptions[op]}`;
+        })].join("\n"),
+      })),
+    };
     rule = {
       ...object(properties, ["op"]),
-      description: `Required fields by op (kernel enforced): ${rule.anyOf.map((option) => `${option.properties.op.const}(${option.required.filter((key) => key !== "op").join(",")})`).join("; ")}. Other operation-specific fields are rejected. Numeric values can use {parameter:'name'}.`,
+      description: "Pick an op by its purpose and supply the fields it uses. Use part for an assembly member. Numeric modeling fields can use {parameter:'name'} where the field allows it.",
     };
   } else if (rule === measurementSchema) {
     const properties = Object.assign({}, ...rule.anyOf.map(option => option.properties));

@@ -71,7 +71,7 @@ The MiniCAD preset includes the standard DSH filesystem, search, shell, skill an
 
 ### Ready-made operations and custom code
 
-`cad_edit` supports primitive solids, extrusion, booleans, fillets, chamfers, shells, offsets, face edits and transforms, plus:
+`cad_edit` groups operations by solid creation and combination, local edits, transforms and patterns, and appearance. A single call can mix operations from any group and runs them in array order.
 
 | Operation | Main parameters and semantics |
 | --- | --- |
