@@ -83,7 +83,33 @@
 | `color` | `color` 接受 `"#RRGGBB"` 或 `null`。省略 `faces` 修改工件颜色，提供 `faces` 修改指定面的覆盖色。多零件模型用 `part` 指定零件 ID |
 | `import` | 从任务内 `file` 读取精确资源，如 `resources/input.step`、`.brep`、`.smb`；资源随版本快照和 ZIP 保存 |
 
-轮廓 `profile` 支持 rectangle、circle、polygon，默认在 XY 平面；可用 `plane: "XZ"` / `"YZ"`、`rotate`、`center` 放置轮廓。整体生成结果也可用 `rotate`、`center` 放置。阵列 `count` 包含原始份，范围 2～100；有 `tool` 时把工具阵列按 `mode: "fuse" | "cut" | "intersect"` 作用于实体，没有 `tool` 时复制目标实体。
+轮廓 `profile` 支持 `rectangle`、`circle`、`polygon` 和 `wire`。默认在 XY 平面，可用 `plane: "XZ"` / `"YZ"`、`rotate`、`center` 放置轮廓。整体生成结果也可用 `rotate`、`center` 放置。
+
+`wire` 的 `segments` 由按顺序闭合的边组成，点坐标用截面局部的 `[x,y]`。每段的终点应与下一段的起点重合，最后一段回到起点。可混用下列三种边：
+
+| `shape` | 参数 |
+| --- | --- |
+| `line` | `start`、`end` |
+| `arc` | `start`、弧上的 `through`、`end` |
+| `center_arc` | `center`、`radius`、`startAngle`、`arcSize`。角度从局部 +X 轴量起，单位为度。负 `arcSize` 表示顺时针，取值范围为 -360～360 且不能为零 |
+
+下面的操作拉伸一个 D 形截面：
+
+```json
+{
+  "op": "extrude",
+  "amount": 8,
+  "profile": {
+    "shape": "wire",
+    "segments": [
+      { "shape": "line", "start": [-5, 0], "end": [5, 0] },
+      { "shape": "arc", "start": [5, 0], "through": [0, 5], "end": [-5, 0] }
+    ]
+  }
+}
+```
+
+扫掠轨迹 `sweep.path` 的三点圆弧用空间坐标 `[x,y,z]`。阵列 `count` 包含原始份，范围 2～100。有 `tool` 时把工具阵列按 `mode: "fuse" | "cut" | "intersect"` 作用于实体，省略 `tool` 时复制目标实体。
 
 初始建模从空模型开始，批次中先创建或导入实体，再执行切孔、倒角等操作。已有版本的普通编辑直接读取当前版本保存的精确实体，只执行本次新增操作；不需要重复提供旧操作，制作过程也只记录本次操作。若没有已保存版本但磁盘上已有建模源码，则先执行该源码作为初始实体。
 

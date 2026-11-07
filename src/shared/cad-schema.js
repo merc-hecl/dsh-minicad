@@ -52,6 +52,27 @@ export const selector = object(
 export const reference = { anyOf: [text, selector] };
 export const edgeParameters = array({ type: "number", minimum: 0, maximum: 1 });
 const references = { anyOf: [text, selector, array(text)] };
+const curveShape = (shape, fields, optional = {}) =>
+  object({ shape: { const: shape }, ...fields, ...optional }, [
+    "shape",
+    ...Object.keys(fields),
+  ]);
+const point2 = tuple(2);
+const segments = {
+  ...array({
+    anyOf: [
+      curveShape("line", { start: point2, end: point2 }),
+      curveShape("arc", { start: point2, through: point2, end: point2 }),
+      curveShape("center_arc", {
+        center: point2,
+        radius: positive,
+        startAngle: scalar,
+        arcSize: number({ minimum: -360, maximum: 360 }),
+      }),
+    ],
+  }, 1, 1000),
+  description: "Ordered segments in the profile's local [x,y] plane. Consecutive endpoints must meet and the last segment must end at the first start. center_arc uses degrees from the local +X axis. A negative arcSize runs clockwise.",
+};
 const profileShape = (shape, fields) =>
   object(
     {
@@ -66,25 +87,21 @@ export const profile = {
   anyOf: [
     profileShape("rectangle", { size: array(positive, 2, 2) }),
     profileShape("circle", { radius: positive }),
-    profileShape("polygon", { points: array(tuple(2), 3, 1000) }),
+    profileShape("polygon", { points: array(point2, 3, 1000) }),
+    profileShape("wire", { segments }),
   ],
 };
-const pathShape = (shape, fields, optional = {}) =>
-  object({ shape: { const: shape }, ...fields, ...optional }, [
-    "shape",
-    ...Object.keys(fields),
-  ]);
 const path = {
   anyOf: [
-    pathShape("line", { start: vector, end: vector }),
-    pathShape(
+    curveShape("line", { start: vector, end: vector }),
+    curveShape(
       "polyline",
       { points: array(vector, 2, 1000) },
       { closed: { type: "boolean" } },
     ),
-    pathShape("spline", { points: array(vector, 2, 1000) }),
-    pathShape("arc", { start: vector, through: vector, end: vector }),
-    pathShape(
+    curveShape("spline", { points: array(vector, 2, 1000) }),
+    curveShape("arc", { start: vector, through: vector, end: vector }),
+    curveShape(
       "helix",
       { pitch: positive, height: positive, radius: positive },
       { center: vector, direction: vector, leftHanded: { type: "boolean" } },
@@ -301,17 +318,18 @@ export function toDshSchema(rule) {
     rule = {
       ...object(
         {
-          shape: choices(["rectangle", "circle", "polygon"]),
+          shape: choices(["rectangle", "circle", "polygon", "wire"]),
           size: array(positive, 2, 2),
           radius: positive,
-          points: array(tuple(2), 3, 1000),
+          points: array(point2, 3, 1000),
+          segments,
           plane: choices(["XY", "XZ", "YZ"]),
           ...placement,
         },
         ["shape"],
       ),
       description:
-        "Required fields: rectangle(size:[width,height]); circle(radius); polygon(points:[[x,y],...], at least 3). Shape-specific fields are enforced by the kernel.",
+        "Use rectangle(size), circle(radius), polygon(points), or wire(segments). For a D-shaped profile, use {\"shape\":\"wire\",\"segments\":[{\"shape\":\"line\",\"start\":[-5,0],\"end\":[5,0]},{\"shape\":\"arc\",\"start\":[5,0],\"through\":[0,5],\"end\":[-5,0]}]}.",
     };
   } else if (rule === primitiveSchema) {
     rule = {

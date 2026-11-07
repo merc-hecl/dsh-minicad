@@ -85,7 +85,33 @@ The MiniCAD preset includes the standard DSH filesystem, search, shell, skill an
 | `color` | `color` accepts `"#RRGGBB"` or `null`. Omit `faces` to color the whole part, or supply `faces` to change the selected face overrides. In an assembly, use `part` to specify the part ID |
 | `import` | Read a task-relative `file`, such as `resources/input.step`, `.brep` or `.smb`; resources travel with snapshots and ZIP exports |
 
-A `profile` is a rectangle, circle or polygon on XY by default; use `plane: "XZ"` / `"YZ"`, `rotate` and `center` to place it. The generated solid also accepts `rotate` and `center`. Pattern `count` includes the original, from 2 to 100. With a `tool`, combine its copies using `mode: "fuse" | "cut" | "intersect"`; without one, copy the target body.
+A `profile` can be a `rectangle`, `circle`, `polygon` or `wire`. It starts on XY. Use `plane: "XZ"` / `"YZ"`, `rotate` and `center` to place it. The generated solid also accepts `rotate` and `center`.
+
+A `wire` lists its `segments` in order, with points in local profile coordinates `[x,y]`. Each segment ends where the next begins, and the last returns to the first start. A wire can mix the following segment types.
+
+| `shape` | Parameters |
+| --- | --- |
+| `line` | `start`, `end` |
+| `arc` | `start`, a point on the arc `through`, and `end` |
+| `center_arc` | `center`, `radius`, `startAngle`, `arcSize`. Angles are in degrees from the local +X axis. Negative spans run clockwise. The span is between -360 and 360 degrees and must be nonzero |
+
+This operation extrudes a D-shaped profile.
+
+```json
+{
+  "op": "extrude",
+  "amount": 8,
+  "profile": {
+    "shape": "wire",
+    "segments": [
+      { "shape": "line", "start": [-5, 0], "end": [5, 0] },
+      { "shape": "arc", "start": [5, 0], "through": [0, 5], "end": [-5, 0] }
+    ]
+  }
+}
+```
+
+A three-point arc in `sweep.path` takes world coordinates `[x,y,z]`. Pattern `count` includes the original, from 2 to 100. With a `tool`, combine its copies using `mode: "fuse" | "cut" | "intersect"`. Omit the tool to copy the target body.
 
 Initial modeling starts without a solid: create or import one before applying cuts, chamfers or other modifications. Ordinary edits to an existing revision load its saved exact solid and execute only the new operations. Do not resubmit earlier operations; process checkpoints record only the current operations. If working source exists before the first saved revision, it is evaluated as the initial solid.
 

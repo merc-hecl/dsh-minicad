@@ -117,6 +117,16 @@ function profile(spec) {
     case "polygon":
       sketch = cad.Polygon(...spec.points);
       break;
+    case "wire":
+      sketch = cad.scope(() => {
+        const edges = spec.segments.map(segment => segment.shape === "center_arc"
+          ? cad.CenterArc(segment.center, segment.radius, segment.startAngle, segment.arcSize)
+          : path(segment));
+        if (edges.some((edge, i) => !edge.end.isClose(edges[(i + 1) % edges.length].start, cad.TOLERANCE)))
+          throw localizedError("轮廓各段必须按顺序首尾相接并闭合", "Profile segments must join in order and form a closed loop");
+        return cad.makeFace(new cad.Wire(edges, { sort: false }));
+      });
+      break;
     default:
       throw localizedError("不支持的轮廓", "unsupported profile");
   }
