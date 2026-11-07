@@ -15,7 +15,7 @@ import designNavigatorCss from "./design-navigator.css";
 import directoryOpenCss from "./directory-open-action.css";
 import conversationDockCss from "./conversation-dock.css";
 export const inject = [
-  "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts", "inputTriggers", "uiConversation", "contextMenus",
+  "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts", "inputTriggers", "uiConversation", "contextMenus", "modelDirectories",
 ];
 export function apply(ctx) {
   ctx.effect(
@@ -159,7 +159,9 @@ export function apply(ctx) {
     ),
   );
   ctx.slots.inject("minicad.composer", () =>
-    ctx.slots.register({ name: "minicad.composer" }, props => <Composer {...props} minicadT={t} chatT={chatT} />),
+    ctx.slots.register({ name: "minicad.composer",
+      inject: sessionId => ({ modelDirectory: ctx.modelDirectories.directoryFor(sessionId).store }),
+    }, props => <Composer {...props} minicadT={t} chatT={chatT} />),
   );
   const mirror = (...args) => mirrorNativeSlot(ctx, ...args);
   // This is the same directory control used by the Session header, with an

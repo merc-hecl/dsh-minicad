@@ -64,7 +64,7 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
   }, [alive, native.terminal, native.failure, latestRevision]);
   const completed = native.todos.filter(todo => todo.status === "completed").length;
   const saved = latestRevision > baseline.current;
-  const label = phase === "working" ? native.activity || t("agentWorking")
+  const label = phase === "working" ? native.activity || (native.modelName ? t("agentWorking", { model: native.modelName }) : t("working"))
     : phase === "waiting" ? t(native.interaction === "approval" ? "agentApproval" : native.interaction === "plan-review" ? "agentPlanReview" : "taskStatus.waiting")
       : phase === "done" ? saved ? t("agentSaved", { version: latestRevision }) : t("agentDone")
         : phase ? t(`taskStatus.${phase}`) : t("openInput");

@@ -42,9 +42,12 @@ function latestLiveTool(members, nodes) {
 }
 
 export function Composer({ renderFactorySlot, useSession, useInput, useSessionStatus, useProjection, useChat, useConversation, sessionId,
-  transcriptTarget, onSubmitted, onSessionState, onRestored, minicadT, chatT }) {
+  transcriptTarget, onSubmitted, onSessionState, onRestored, minicadT, chatT, modelDirectory }) {
   const session = useSession(s => s);
   const input = useInput(s => s);
+  const models = useSyncExternalStore(modelDirectory.subscribe, modelDirectory.getSnapshot);
+  const modelName = models.groups.find(group => group.id === models.current?.provider)
+    ?.models.find(model => model.id === models.current?.model)?.name;
   const interaction = useSessionStatus(s => s.get(sessionId)?.pendingInteraction);
   const todos = useProjection("todos") ?? EMPTY_TODOS;
   const chat = useChat(s => s);
@@ -85,14 +88,14 @@ export function Composer({ renderFactorySlot, useSession, useInput, useSessionSt
     callbacks.current.onSessionState?.({ running: session.running, waiting: !!interaction,
       interaction: interaction?.kind, turnId, terminal: reason?.kind,
       failure: session.promptError?.error?.message || (reason?.kind === "error" ? reason.error?.message : ""),
-      todos, activity, activityDetail,
+      todos, activity, activityDetail, modelName,
       activities: (summary?.counts || []).map(item => ({ ...item, label: chatT(`message.stepProcess.done.${item.kind}`) })),
       pending: ids.size > 0,
       inputEmpty: !input.draft.trim() && input.attachmentIds.length === 0 && input.occurrences.length === 0 });
     current.ids = ids;
     current.draft = input.draft;
   }, [session.running, session.pendingSubmissions, session.promptError, input.draft, input.attachmentIds, input.occurrences,
-    interaction, turnId, reason, todos, summary, activity, activityDetail, chatT]);
+    interaction, turnId, reason, todos, summary, activity, activityDetail, modelName, chatT]);
   return <CompactComposerContext.Provider value={minicadT}><TranscriptTarget.Provider value={transcriptTarget}>
     {renderFactorySlot("conversation.content", { variant: "embedded", phase: "active", hero: false }, { slots: COMPOSER_SLOTS })}
   </TranscriptTarget.Provider></CompactComposerContext.Provider>;
