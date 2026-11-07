@@ -25,7 +25,6 @@ import {
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { Viewport } from "./viewport.jsx";
 import { errorDetail, errorKey } from "../shared/errors.js";
-import { PluginIcon } from "./plugin-icon.jsx";
 import { ErrorDetails, WorkbenchDialog } from "./workbench-dialog.jsx";
 import { DesignNavigator } from "./design-navigator.jsx";
 import { ConversationDock } from "./conversation-dock.jsx";
@@ -630,14 +629,6 @@ export function Workbench({
         onCancel: () => setPicker(null),
         onError: message => { setPicker(null); showError(new Error(message)); },
       })}
-      {!displayedDesign && !loading && !running && !nativeRunning && (
-        <div className="mc-empty">
-          <div className="mc-brand-icon">
-            <PluginIcon size={44} />
-          </div>
-          <h1>{t("emptyTitle")}</h1>
-        </div>
-      )}
       {loading && (
         <div className="mc-empty">
           <span role="status" className="mc-loading"><StateDot state="ongoing" />{t("loading")}</span>
