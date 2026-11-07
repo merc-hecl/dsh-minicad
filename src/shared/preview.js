@@ -2,7 +2,12 @@ import { localizedError } from "./errors.js";
 // Revision-local preview transport. All blocks are aligned, little-endian,
 // and can be used directly as GPU attributes without flattening JSON arrays.
 const MAGIC = 0x3156434d; // MCV1
-const HEADER = 32;
+const FORMAT = 3;
+const fields = ["positions", "normals", "indices", "edges", "faceIndices", "edgeIndices", "faceColors"];
+const floatFields = ["positions", "normals", "edges"];
+const HEADER = 8 + fields.length * 4;
+const emptyColors = new Uint32Array();
+export const PREVIEW_VERSION = 4;
 const fail = () => {
   throw localizedError(
     "预览数据无效，请重新加载", "The preview data is invalid. Reload the model.",
@@ -13,12 +18,10 @@ export function previewInfo(input, byteLength = input.byteLength) {
   const bytes = input instanceof ArrayBuffer ? new Uint8Array(input) : input;
   if (bytes.byteLength < HEADER) fail();
   const header = new DataView(bytes.buffer, bytes.byteOffset, HEADER);
-  if (header.getUint32(0, true) !== MAGIC || header.getUint32(4, true) !== 2)
+  if (header.getUint32(0, true) !== MAGIC || header.getUint32(4, true) !== FORMAT)
     fail();
-  const counts = [8, 12, 16, 20, 24, 28].map((offset) =>
-    header.getUint32(offset, true),
-  );
-  const [positions, normals, indices, edges, faceIndices, edgeIndices] = counts;
+  const counts = fields.map((_, i) => header.getUint32(8 + i * 4, true));
+  const [positions, normals, indices, edges, faceIndices, edgeIndices, faceColors] = counts;
   if (
     !positions ||
     positions % 3 ||
@@ -32,7 +35,7 @@ export function previewInfo(input, byteLength = input.byteLength) {
   )
     fail();
   return {
-    format: 2,
+    format: FORMAT,
     byteLength,
     positions,
     normals,
@@ -40,29 +43,23 @@ export function previewInfo(input, byteLength = input.byteLength) {
     edges,
     faceIndices,
     edgeIndices,
+    faceColors,
   };
 }
 export function encodePreview(preview) {
-  const arrays = [
-    preview.positions,
-    preview.normals,
-    preview.indices,
-    preview.edges,
-    preview.faceIndices,
-    preview.edgeIndices,
-  ];
+  const colors = preview.faceColors.some(Boolean) ? preview.faceColors : emptyColors;
+  const arrays = fields.map(name => name === "faceColors" ? colors : preview[name]);
   const size =
     HEADER + arrays.reduce((sum, array) => sum + array.length * 4, 0);
   const result = new Uint8Array(size),
     header = new DataView(result.buffer);
   header.setUint32(0, MAGIC, true);
-  header.setUint32(4, 2, true);
+  header.setUint32(4, FORMAT, true);
   let offset = HEADER;
   arrays.forEach((array, i) => {
     header.setUint32(8 + i * 4, array.length, true);
-    const target = [2, 4, 5].includes(i)
-      ? new Uint32Array(result.buffer, offset, array.length)
-      : new Float32Array(result.buffer, offset, array.length);
+    const Type = floatFields.includes(fields[i]) ? Float32Array : Uint32Array;
+    const target = new Type(result.buffer, offset, array.length);
     target.set(array);
     offset += array.length * 4;
   });
@@ -78,21 +75,12 @@ export function decodePreview(input) {
   const info = previewInfo(bytes);
   let offset = bytes.byteOffset + HEADER;
   const result = {};
-  for (const name of [
-    "positions",
-    "normals",
-    "indices",
-    "edges",
-    "faceIndices",
-    "edgeIndices",
-  ]) {
-    const Type = ["indices", "faceIndices", "edgeIndices"].includes(name)
-      ? Uint32Array
-      : Float32Array;
+  for (const name of fields) {
+    const Type = floatFields.includes(name) ? Float32Array : Uint32Array;
     result[name] = new Type(bytes.buffer, offset, info[name]);
     offset += info[name] * 4;
   }
-  for (const name of ["positions", "normals", "edges"])
+  for (const name of floatFields)
     for (const value of result[name]) if (!Number.isFinite(value)) fail();
   for (const index of result.indices) if (index >= info.positions / 3) fail();
   return result;

@@ -42,6 +42,7 @@ To update an npm installation on Desktop, uninstall it through **Plugins**, then
 - Ask the agent to export STEP, STL or a project ZIP. The native navigation menu at the top right opens the design directory or the current saved model in FreeCAD. External edits are not written back automatically.
 
 - In **Model inspection**, the eye button toggles each part's visibility. The isolate button on the right shows only that part; click it again to restore the previous visibility. **Show all** restores every part, and the transparency switch controls transparent display. Display changes do not affect geometry, revisions or exports.
+- The workbench displays saved part colors, with face colors taking precedence. Ask the agent to color a part or selected faces.
 - When a design contains multiple model files or variants, select them in **Model inspection**. Ask the agent to generate parameter variants and export a whole model or an individual part.
 - The agent creates and names independent parts. Contact does not fuse components; ask the agent to check clearance and interference.
 

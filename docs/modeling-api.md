@@ -80,6 +80,7 @@
 | `circular_pattern` | `axis`、每份之间的 `angle`、`count`，可选 `origin`；角度是步进角，不是总角度 |
 | `rotate_faces` | `faces`、世界坐标 `axis`、`angle`，可选 `origin`；旋转选中面并重建相邻面 |
 | `scale` | 正数 `factor` 或三个正数的 XYZ 比例，可选缩放中心 `origin` |
+| `color` | `color` 接受 `"#RRGGBB"` 或 `null`。省略 `faces` 修改工件颜色，提供 `faces` 修改指定面的覆盖色。多零件模型用 `part` 指定零件 ID |
 | `import` | 从任务内 `file` 读取精确资源，如 `resources/input.step`、`.brep`、`.smb`；资源随版本快照和 ZIP 保存 |
 
 轮廓 `profile` 支持 rectangle、circle、polygon，默认在 XY 平面；可用 `plane: "XZ"` / `"YZ"`、`rotate`、`center` 放置轮廓。整体生成结果也可用 `rotate`、`center` 放置。阵列 `count` 包含原始份，范围 2～100；有 `tool` 时把工具阵列按 `mode: "fuse" | "cut" | "intersect"` 作用于实体，没有 `tool` 时复制目标实体。
@@ -87,6 +88,8 @@
 初始建模从空模型开始，批次中先创建或导入实体，再执行切孔、倒角等操作。已有版本的普通编辑直接读取当前版本保存的精确实体，只执行本次新增操作；不需要重复提供旧操作，制作过程也只记录本次操作。若没有已保存版本但磁盘上已有建模源码，则先执行该源码作为初始实体。
 
 编辑同时追加到源码中，供 `cad_update_parameters` 或显式 `cad_build` 完整重算。`cad_edit` 若传入与已保存版本不同的参数，会先用新参数重算已有特征，再执行新增操作；已有特征的重算不重复记录为本次编辑步骤。源码、参数或导入资源存在未构建的工作文件改动时，仍需先构建工作文件再局部编辑。
+
+例如，`{"op":"color","part":"lid","color":"#4682B4"}` 给盖板上色。再执行 `{"op":"color","part":"lid","faces":{"position":"top"},"color":"#FF8000"}` 将顶面设为橙色。传入 `null` 清除该范围的颜色，清除单面覆盖色后该面继承工件颜色。颜色随版本保存，并可通过 SMP 和 STEP 导出。
 
 例如，创建底板并一次切出三个孔：
 

@@ -150,7 +150,7 @@ Reply in the user's language with the saved revision, what changed, what was che
   );
   register(
     "cad_edit",
-    "Create a model or edit the saved solid incrementally; assembly operations must specify part (the stable part ID); changed parameters rebuild existing features; commit:false evaluates without publishing.",
+    "Create a model or edit the saved solid incrementally. Use op:color with color:'#RRGGBB' (or null to clear) and optional faces for appearance changes. Assembly operations must specify part (the stable part ID). Changed parameters rebuild existing features. commit:false evaluates without publishing.",
     schema(
       { ...target, ...buildOptions, operations: operationsSchema, parameters, summary: string },
       ["sourceFile", "expectedRevision", "operations", "summary"],

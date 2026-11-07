@@ -138,6 +138,10 @@ export const primitiveSchema = {
   ),
 };
 const mode = choices(["fuse", "cut", "intersect"]);
+const color = {
+  anyOf: [text, { type: "null" }],
+  description: "For op:color, use an sRGB hex color #RRGGBB or null to clear it. Omit faces for the whole part. Do not use target.",
+};
 const common = { target: reference, part: text };
 const operation = (op, fields, optional = {}) =>
   object({ op: { const: op }, ...fields, ...optional, ...common }, [
@@ -161,6 +165,7 @@ export const operationSchema = {
     operation("offset_faces", { faces: references, distance: scalar }),
     operation("remove_faces", { faces: references }),
     operation("remove_fillets", { faces: references }),
+    object({ op: { const: "color" }, color, faces: references, part: text }, ["op", "color"]),
     operation("translate", { by: vector }),
     operation("scale", { factor: { anyOf: [positive, array(positive, 3, 3)] } }, { origin: vector }),
     operation("rotate", { axis: vector, angle: scalar }, { origin: vector }),
@@ -446,6 +451,9 @@ export function validate(value, rule, path = "input") {
       break;
     case "boolean":
       if (typeof value !== "boolean") bad();
+      break;
+    case "null":
+      if (value !== null) bad();
       break;
   }
 }

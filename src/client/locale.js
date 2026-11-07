@@ -46,6 +46,7 @@ export const zh = {
 
   referenceInputBusy: "输入框正在提交，请稍后添加引用",
   offset_faces: "偏移面",
+  color: "上色",
   move_faces: "移动面",
   rotate_faces: "旋转面",
   translate: "移动实体", rotate: "旋转实体", scale: "缩放实体",
@@ -211,6 +212,7 @@ export const en = {
 
   referenceInputBusy: "The composer is submitting; add the reference afterwards",
   offset_faces: "Offset face",
+  color: "Color",
   move_faces: "Move face",
   rotate_faces: "Rotate faces",
   translate: "Move solid", rotate: "Rotate solid", scale: "Scale solid",

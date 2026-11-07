@@ -2,12 +2,14 @@ import { localizedError } from "../shared/errors.js";
 import { Assembly, assembly, partInfo, inspectFit } from "./assembly.js";
 export { Assembly, inspectFit };
 import * as cad from "@classcad/smlibwasm";
+import { Color } from "three/src/math/Color.js";
 import { readFileSync } from "node:fs";
 import { dirname, sep } from "node:path";
 import { createRequire } from "node:module";
 import { Script } from "node:vm";
 import { inside } from "./files.js";
 import { validate, operationSchema } from "../shared/cad-schema.js";
+import { PREVIEW_VERSION } from "../shared/preview.js";
 import {
   select,
   bindReference,
@@ -254,6 +256,12 @@ function applyOperation(part, op, base, context) {
       return part.removeFaces(select(part, "faces", op.faces, base));
     case "remove_fillets":
       return part.removeFillets(select(part, "faces", op.faces, base));
+    case "color":
+      if (op.color !== null && !/^#[0-9a-f]{6}$/i.test(op.color))
+        throw localizedError("颜色必须为 #RRGGBB 或 null", "Color must be #RRGGBB or null");
+      return part.colored(op.color, {
+        faces: op.faces === undefined ? undefined : select(part, "faces", op.faces, base),
+      });
     case "translate":
       return part.translate(op.by);
     case "scale":
@@ -413,7 +421,7 @@ export function describeShape(shape) {
     metrics,
     parts: partInfo(shape),
     preview: previewShape(shape),
-    previewVersion: 3,
+    previewVersion: PREVIEW_VERSION,
     kernel: kernelName,
   };
 }
@@ -442,23 +450,41 @@ export function compareShapes(base, target) {
   };
 }
 
+// Encode sRGB as packed RGB + 1 so zero means the viewport's default color.
+function previewColor(color) {
+  if (color == null) return 0;
+  if (typeof color === "string") {
+    const name = color.toLowerCase().replaceAll(" ", "");
+    if (Object.hasOwn(Color.NAMES, name)) return Color.NAMES[name] + 1;
+    const hex = color.replace(/^#+/, "");
+    if (/^[0-9a-f]{6}$/i.test(hex)) return parseInt(hex, 16) + 1;
+    if (/^[0-9a-f]{3}$/i.test(hex)) return parseInt([...hex].map(c => c + c).join(""), 16) + 1;
+    return 0;
+  }
+  const [r, g, b] = [color[0], color[1], color[2]];
+  const scale = Math.max(r, g, b) > 1 ? 1 : 255;
+  const byte = value => Math.round(Math.max(0, Math.min(255, value * scale)));
+  return ((byte(r) << 16) | (byte(g) << 8) | byte(b)) + 1;
+}
+
 export function previewShape(shape) {
   if (shape instanceof Assembly) {
     const previews = shape.parts.map(p => previewShape(p.shape));
-    const lists = { positions: [], normals: [], indices: [], edges: [], faceIndices: [], edgeIndices: [] };
+    const lists = { positions: [], normals: [], indices: [], edges: [], faceIndices: [], edgeIndices: [], faceColors: [] };
     let vertex = 0, face = 0, edge = 0;
     previews.forEach((p, i) => {
-      for (const name of ["positions", "normals", "edges"]) lists[name].push(p[name]);
+      for (const name of ["positions", "normals", "edges", "faceColors"]) lists[name].push(p[name]);
       lists.indices.push(p.indices.map(n => n + vertex));
       lists.faceIndices.push(p.faceIndices.map(n => n + face));
       lists.edgeIndices.push(p.edgeIndices.map(n => n + edge));
       vertex += p.positions.length / 3;
-      face += shape.parts[i].shape.faces().length;
+      face += p.faceColors.length;
       edge += topologyItems(shape.parts[i].shape, "edges").length;
     });
     if (lists.faceIndices.reduce((n, a) => n + a.length, 0) > 500000) throw localizedError("预览网格超过 50 万三角形", "preview exceeds 500,000 triangles");
     return Object.fromEntries(Object.entries(lists).map(([name, blocks]) => {
-      const array = new (name.includes("Indices") || name === "indices" ? Uint32Array : Float32Array)(blocks.reduce((n, a) => n + a.length, 0));
+      const Type = ["positions", "normals", "edges"].includes(name) ? Float32Array : Uint32Array;
+      const array = new Type(blocks.reduce((n, a) => n + a.length, 0));
       let offset = 0;
       for (const block of blocks) { array.set(block, offset); offset += block.length; }
       return [name, array];
@@ -482,6 +508,8 @@ export function previewShape(shape) {
   const normals = new Float32Array(positions.length);
   const indices = new Uint32Array(cornerCount);
   const faceIndices = new Uint32Array(cornerCount / 3);
+  const bodyColor = previewColor(shape.color);
+  const faceColors = Uint32Array.from(shape.faces(), face => previewColor(face.color) || bodyColor);
   let vertices = 0,
     cursor = 0;
   meshes.forEach((raw, faceIndex) => {
@@ -551,6 +579,7 @@ export function previewShape(shape) {
     edges,
     faceIndices,
     edgeIndices,
+    faceColors,
   };
 }
 export function exportShape(shape, format) {

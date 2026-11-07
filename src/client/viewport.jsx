@@ -27,6 +27,31 @@ function surfaceGeometry(preview) {
   return geometry;
 }
 
+function surfaceColorUpdater(mesh, { faceColors, faceIndices, indices, positions }) {
+  if (!faceColors.length) return color => mesh.material.color.setHex(color);
+  const attribute = new THREE.BufferAttribute(new Float32Array(positions.length), 3);
+  mesh.geometry.setAttribute("color", attribute);
+  mesh.material.vertexColors = true;
+  const rgb = new THREE.Color();
+  let lastFallback;
+  return fallback => {
+    if (fallback === lastFallback) return;
+    lastFallback = fallback;
+    let lastColor = -1;
+    for (let i = 0; i < faceIndices.length; i++) {
+      const packed = faceColors[faceIndices[i]];
+      const color = packed ? packed - 1 : fallback;
+      if (color !== lastColor) {
+        rgb.setHex(color);
+        lastColor = color;
+      }
+      for (let corner = 0; corner < 3; corner++)
+        attribute.setXYZ(indices[i * 3 + corner], rgb.r, rgb.g, rgb.b);
+    }
+    attribute.needsUpdate = true;
+  };
+}
+
 const diffColors = {
   added: [0x16834a, 0x61d994], removed: [0xc33a48, 0xff7b86], unchanged: [0x94a0b0, 0x8f9caf],
 };
@@ -623,10 +648,9 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
             : (state.dark ? 0x515e73 : 0x9ca8b8));
           o.material.linewidth = state.wire ? 1.8 : 1;
           o.material.opacity = state.wire ? 1 : 0.65;
-        } else if (o.isMesh) {
-          o.material.color.set(state.dark ? 0xabb3c0 : 0xd8dee8);
         }
       });
+      state.setSurfaceColor?.(state.dark ? 0xabb3c0 : 0xd8dee8);
       diffModel.traverse(o => {
         const kind = o.userData.diffKind;
         if (kind) o.material.color.set(diffColors[kind][state.dark ? 1 : 0]);
@@ -717,6 +741,7 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
     if (!s) return;
     s.clearPick();
     s.surface = null;
+    s.setSurfaceColor = null;
     s.edgePicker = null;
     for (const o of [...s.model.children]) {
       o.geometry.dispose();
@@ -735,7 +760,6 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
     const mesh = new THREE.Mesh(
       geometry,
       new THREE.MeshStandardMaterial({
-        color: 0xd8dee8,
         metalness: 0.22,
         roughness: 0.58,
         polygonOffset: true,
@@ -745,6 +769,7 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
     );
     s.model.add(mesh);
     s.surface = mesh;
+    s.setSurfaceColor = surfaceColorUpdater(mesh, preview);
     if (preview.edges.length) {
       const picker = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(preview.edges, 3)), new THREE.LineBasicMaterial());
       picker.visible = false;

@@ -21,7 +21,7 @@ import {
   jsonBytes,
   readJson,
 } from "./files.js";
-import { encodePreview, previewInfo } from "../shared/preview.js";
+import { encodePreview, previewInfo, PREVIEW_VERSION } from "../shared/preview.js";
 import { ProcessJournal } from "./process.js";
 import { readApi } from "./api.js";
 import { format, isDeepStrictEqual } from "node:util";
@@ -835,7 +835,7 @@ export class Store {
       let valid = false;
       try {
         valid =
-          saved.state.previewVersion === 3 &&
+          saved.state.previewVersion === PREVIEW_VERSION &&
           fs.statSync(path).size === saved.state.preview?.byteLength &&
           hashFile(path) === saved.state.preview.digest;
       } catch {
@@ -846,7 +846,7 @@ export class Store {
         const bytes = encodePreview(api.previewShape(await this.shape(saved)));
         const state = {
           ...summaryOf(saved.state),
-          previewVersion: 3,
+          previewVersion: PREVIEW_VERSION,
           geometryIds: saved.state.geometryIds || { ...defaultIdFormats },
           preview: {
             ...previewInfo(bytes),

@@ -48,11 +48,11 @@ test("preview decoding rejects truncation, invalid numeric values and out-of-ran
     /预览数据无效/,
   );
   const invalidFloat = bytes.slice();
-  new DataView(invalidFloat.buffer).setFloat32(32, NaN, true);
+  new DataView(invalidFloat.buffer).setFloat32(36, NaN, true);
   assert.throws(() => decodePreview(invalidFloat), /预览数据无效/);
   const invalidIndex = bytes.slice();
   new DataView(invalidIndex.buffer).setUint32(
-    32 + (raw.positions.length + raw.normals.length) * 4,
+    36 + (raw.positions.length + raw.normals.length) * 4,
     raw.positions.length,
     true,
   );

@@ -82,6 +82,7 @@ The MiniCAD preset includes the standard DSH filesystem, search, shell, skill an
 | `circular_pattern` | `axis`, per-copy `angle`, `count`, optional `origin`; angle is the increment, not the total span |
 | `rotate_faces` | `faces`, world `axis`, `angle`, optional `origin`; rotate selected faces and rebuild their neighbors |
 | `scale` | A positive `factor` or three positive XYZ factors; optional scale center `origin` |
+| `color` | `color` accepts `"#RRGGBB"` or `null`. Omit `faces` to color the whole part, or supply `faces` to change the selected face overrides. In an assembly, use `part` to specify the part ID |
 | `import` | Read a task-relative `file`, such as `resources/input.step`, `.brep` or `.smb`; resources travel with snapshots and ZIP exports |
 
 A `profile` is a rectangle, circle or polygon on XY by default; use `plane: "XZ"` / `"YZ"`, `rotate` and `center` to place it. The generated solid also accepts `rotate` and `center`. Pattern `count` includes the original, from 2 to 100. With a `tool`, combine its copies using `mode: "fuse" | "cut" | "intersect"`; without one, copy the target body.
@@ -89,6 +90,8 @@ A `profile` is a rectangle, circle or polygon on XY by default; use `plane: "XZ"
 Initial modeling starts without a solid: create or import one before applying cuts, chamfers or other modifications. Ordinary edits to an existing revision load its saved exact solid and execute only the new operations. Do not resubmit earlier operations; process checkpoints record only the current operations. If working source exists before the first saved revision, it is evaluated as the initial solid.
 
 Edits are also appended to source for full replay through `cad_update_parameters` or an explicit `cad_build`. When `cad_edit` supplies parameters that differ from the saved revision, existing features are rebuilt with those parameters before the new operations run; this base rebuild does not duplicate earlier process checkpoints. Unbuilt working-file changes to source, parameters or imported resources still require a build before local editing.
+
+For example, `{"op":"color","part":"lid","color":"#4682B4"}` colors the lid. Follow it with `{"op":"color","part":"lid","faces":{"position":"top"},"color":"#FF8000"}` to make the top face orange. Use `null` to clear the color at the selected scope. A face with its override cleared inherits the part color. Colors are saved with the revision and can be exported in SMP and STEP.
 
 For example, create a plate and cut three holes in one batch:
 
