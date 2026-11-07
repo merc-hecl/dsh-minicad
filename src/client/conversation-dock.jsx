@@ -85,22 +85,24 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
         icon={<IconStopFillRegular size={14} />} onClick={() => { stopped.current = true; onCancel(); }} />}
     </div>
     {expanded && phase && !native.waiting && <section className="mc-task-status-details mc-panel" aria-label={label}>
-      <div className="mc-status-detail-heading"><strong>{label}</strong><Button variant="ghost" size="sm" aria-label={t("closeStatus")}
-        icon={<IconCloseOutlineRegular size={14} />} onClick={closeExpanded} /></div>
-      {native.activityDetail && <p className="mc-status-current">{native.activityDetail}</p>}
-      {failure && <p className="mc-task-status-error">{failure}</p>}
-      {(phase === "stopped" || phase === "error") && <p className="mc-muted">{t(revision > 0 ? "agentRetained" : "agentNoVersion", { version: revision })}</p>}
-      {native.todos.length > 0 && <><div className="mc-task-list-heading"><span>{t("agentTasks")}</span><span>{completed}/{native.todos.length}</span></div>
-        <ol className="mc-agent-tasks">{native.todos.map((todo, index) => <li key={index} data-state={todo.status}>
-          <span role="img" aria-label={t(`agentTask.${todo.status}`)}><StateDot state={todo.status === "completed" ? "done" : todo.status === "in_progress" ? "ongoing" : "idle"} /></span><span>{todo.content}</span>
-        </li>)}</ol></>}
-      {native.activities.length > 0 && <details className="mc-agent-activities"><summary>{t("agentActivities")}</summary>
-        {native.activities.map(item => <div key={item.kind}><span>{item.label}</span><span>{item.count}</span></div>)}
-      </details>}
-      <div className="mc-task-status-actions">
-        <Button variant="ghost" size="sm" onClick={() => native.waiting ? setExpanded(false) : reveal()}>{t(native.waiting ? "answer" : "openInput")}</Button>
-        <Button variant="ghost" size="sm" onClick={() => { closeExpanded(); onRecord(); }}>{t("makingRecord")}</Button>
-        {!alive && !native.waiting && <Button variant="ghost" size="sm" onClick={() => { setFeedback(null); setDismissed(true); closeExpanded(); }}>{t("dismissStatus")}</Button>}
+      <div className="mc-task-status-content mc-panel-scroll">
+        <div className="mc-status-detail-heading"><strong>{label}</strong><Button variant="ghost" size="sm" aria-label={t("closeStatus")}
+          icon={<IconCloseOutlineRegular size={14} />} onClick={closeExpanded} /></div>
+        {native.activityDetail && <p className="mc-status-current">{native.activityDetail}</p>}
+        {failure && <p className="mc-task-status-error">{failure}</p>}
+        {(phase === "stopped" || phase === "error") && <p className="mc-muted">{t(revision > 0 ? "agentRetained" : "agentNoVersion", { version: revision })}</p>}
+        {native.todos.length > 0 && <><div className="mc-task-list-heading"><span>{t("agentTasks")}</span><span>{completed}/{native.todos.length}</span></div>
+          <ol className="mc-agent-tasks">{native.todos.map((todo, index) => <li key={index} data-state={todo.status}>
+            <span role="img" aria-label={t(`agentTask.${todo.status}`)}><StateDot state={todo.status === "completed" ? "done" : todo.status === "in_progress" ? "ongoing" : "idle"} /></span><span>{todo.content}</span>
+          </li>)}</ol></>}
+        {native.activities.length > 0 && <details className="mc-agent-activities"><summary>{t("agentActivities")}</summary>
+          {native.activities.map(item => <div key={item.kind}><span>{item.label}</span><span>{item.count}</span></div>)}
+        </details>}
+        <div className="mc-task-status-actions">
+          <Button variant="ghost" size="sm" onClick={() => native.waiting ? setExpanded(false) : reveal()}>{t(native.waiting ? "answer" : "openInput")}</Button>
+          <Button variant="ghost" size="sm" onClick={() => { closeExpanded(); onRecord(); }}>{t("makingRecord")}</Button>
+          {!alive && !native.waiting && <Button variant="ghost" size="sm" onClick={() => { setFeedback(null); setDismissed(true); closeExpanded(); }}>{t("dismissStatus")}</Button>}
+        </div>
       </div>
     </section>}
   </div>;

@@ -79,10 +79,11 @@ html[data-input-modality="keyboard"] .mc-input-grip > span { transition: none; }
 .mc-task-status[data-expanded] .mc-status-chevron { transform: rotate(180deg); }
 .mc-task-status-details {
   position: absolute; top: calc(100% + 10px); left: 50%; width: 440px; max-width: calc(100cqw - 16px); transform: translateX(-50%);
-  max-height: min(560px, calc(100vh - 120px)); overflow: auto; padding: 14px; transform-origin: center top;
+  max-height: min(560px, calc(100vh - 120px)); overflow: hidden; display: flex; flex-direction: column; transform-origin: center top;
   font-size: 12px; line-height: 20px;
   transition: opacity var(--mc-motion-panel) ease, transform var(--mc-motion-panel) var(--mc-ease-out);
 }
+.mc-task-status-content { padding: 14px; }
 @starting-style { .mc-task-status-details { opacity: 0; transform: translateX(-50%) translateY(-4px) scale(.985); } }
 .mc-status-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .mc-status-detail-heading strong { min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

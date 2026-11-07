@@ -156,7 +156,9 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
           <Viewport presentation="record" design={design} resetToken={reset} t={t} onError={() => setError(t("webglError"))} />
           {loading && <div className="mc-record-placeholder" role="status"><StateDot state="ongoing" />{t("loading")}</div>}
           {!focus && !loading && <div className="mc-record-placeholder">{t(scope === "versions" ? "noSavedVersions" : "noProcessSteps")}</div>}
-          {error && <div className="mc-record-error" role="alert"><span>{t("previewUnavailable")}</span><ErrorDetails detail={error} t={t} /></div>}
+          {error && <div className="mc-record-error" role="alert"><div className="mc-record-error-content mc-panel-scroll">
+            <span>{t("previewUnavailable")}</span><ErrorDetails detail={error} t={t} />
+          </div></div>}
         </div>
         <div className="mc-record-detail">
           {focus && <><p title={focus.title}>{focus.title}</p><span>{date}</span></>}

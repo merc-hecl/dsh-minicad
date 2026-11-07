@@ -16,35 +16,37 @@ export function InspectionPanel({ project, parts, hidden, setHidden, isolation, 
   };
   const showAll = () => { setIsolation(null); setHidden([]); };
   return <section className="mc-inspection mc-panel" aria-label={t("inspectModel")}>
-    <header><strong>{t("inspectModel")}</strong><Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={14} />} aria-label={t("close")} onClick={onClose} /></header>
-    {project.models.length > 1 && <Menu portal open={modelMenu} onClose={() => setModelMenu(false)} selectedIds={[project.sourceFile]}
-      anchor={<Button className="mc-inspection-model-picker" variant="outline" disabled={busy} aria-haspopup="menu" aria-expanded={modelMenu}
-        aria-label={t("modelSpecifications")} onClick={() => setModelMenu(value => !value)}>
-        <span title={project.sourceFile}>{project.sourceFile}</span><IconChevronDownOutlineRegular size={14} />
-      </Button>}
-      items={project.models.map(model => ({ id: model.sourceFile, label: model.sourceFile }))}
-      onSelect={id => { setModelMenu(false); if (id !== project.sourceFile) onModel(id); }} />}
-    <div className="mc-inspection-actions"><span>{t("transparentView")}</span>
-      <Switch checked={transparent} onChange={setTransparent} label={t("transparentView")} />
+    <div className="mc-inspection-content mc-panel-scroll">
+      <header><strong>{t("inspectModel")}</strong><Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={14} />} aria-label={t("close")} onClick={onClose} /></header>
+      {project.models.length > 1 && <Menu portal open={modelMenu} onClose={() => setModelMenu(false)} selectedIds={[project.sourceFile]}
+        anchor={<Button className="mc-inspection-model-picker" variant="outline" disabled={busy} aria-haspopup="menu" aria-expanded={modelMenu}
+          aria-label={t("modelSpecifications")} onClick={() => setModelMenu(value => !value)}>
+          <span title={project.sourceFile}>{project.sourceFile}</span><IconChevronDownOutlineRegular size={14} />
+        </Button>}
+        items={project.models.map(model => ({ id: model.sourceFile, label: model.sourceFile }))}
+        onSelect={id => { setModelMenu(false); if (id !== project.sourceFile) onModel(id); }} />}
+      <div className="mc-inspection-actions"><span>{t("transparentView")}</span>
+        <Switch checked={transparent} onChange={setTransparent} label={t("transparentView")} />
+      </div>
+      {!!parts?.length && <>
+        <div className="mc-inspection-actions mc-inspection-parts-heading"><strong>{t("assemblyParts")}</strong>
+          <Button variant="ghost" size="sm" disabled={!hidden.length && !isolation} onClick={showAll}>{t("showAllParts")}</Button></div>
+        <div className="mc-inspection-parts">{parts.map(part => {
+          const invisible = hidden.includes(part.id), isolated = isolation?.id === part.id;
+          const visibilityLabel = t(invisible ? "showPart" : "hidePart") + " · " + part.name;
+          const isolateLabel = t(isolated ? "exitIsolation" : "isolatePart") + " · " + part.name;
+          return <div key={part.id} className="mc-inspection-part" data-hidden={invisible || undefined} data-isolated={isolated || undefined}>
+            <Tooltip label={visibilityLabel} portal><Button variant="ghost" size="sm" className="mc-part-visibility" aria-label={visibilityLabel}
+              icon={<VisibilityIcon hidden={invisible} />} onClick={() => {
+                setIsolation(null); setHidden(invisible ? hidden.filter(id => id !== part.id) : [...hidden, part.id]);
+              }} /></Tooltip>
+            <span className="mc-part-name" title={part.name + " · " + part.id}>{part.name}</span>
+            {parts.length > 1 && <Tooltip label={isolateLabel} portal><Button variant="ghost" size="sm" aria-label={isolateLabel} aria-pressed={isolated}
+              icon={<IconInspectOutlineRegular size={16} />} onClick={() => isolate(part.id)} /></Tooltip>}
+          </div>;
+        })}</div>
+      </>}
     </div>
-    {!!parts?.length && <>
-      <div className="mc-inspection-actions mc-inspection-parts-heading"><strong>{t("assemblyParts")}</strong>
-        <Button variant="ghost" size="sm" disabled={!hidden.length && !isolation} onClick={showAll}>{t("showAllParts")}</Button></div>
-      <div className="mc-inspection-parts">{parts.map(part => {
-        const invisible = hidden.includes(part.id), isolated = isolation?.id === part.id;
-        const visibilityLabel = t(invisible ? "showPart" : "hidePart") + " · " + part.name;
-        const isolateLabel = t(isolated ? "exitIsolation" : "isolatePart") + " · " + part.name;
-        return <div key={part.id} className="mc-inspection-part" data-hidden={invisible || undefined} data-isolated={isolated || undefined}>
-          <Tooltip label={visibilityLabel} portal><Button variant="ghost" size="sm" className="mc-part-visibility" aria-label={visibilityLabel}
-            icon={<VisibilityIcon hidden={invisible} />} onClick={() => {
-              setIsolation(null); setHidden(invisible ? hidden.filter(id => id !== part.id) : [...hidden, part.id]);
-            }} /></Tooltip>
-          <span className="mc-part-name" title={part.name + " · " + part.id}>{part.name}</span>
-          {parts.length > 1 && <Tooltip label={isolateLabel} portal><Button variant="ghost" size="sm" aria-label={isolateLabel} aria-pressed={isolated}
-            icon={<IconInspectOutlineRegular size={16} />} onClick={() => isolate(part.id)} /></Tooltip>}
-        </div>;
-      })}</div>
-    </>}
   </section>;
 }
 

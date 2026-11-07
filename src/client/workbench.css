@@ -319,6 +319,13 @@ body:has(.mc-workbench[data-native-dialog-open]) [role="dialog"] {
   border-radius: var(--dsw-radius-panel);
   box-shadow: var(--dsw-elevation-panel);
 }
+/* Keep material layers on the outer surface and scroll its content separately. */
+.mc-panel-scroll {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
 /* Share native MenuSurface material across floating surfaces and portals.
    Scope unclassified native dialogs to an active workbench dialog request;
    keep other editable controls on their native solid surfaces. */

@@ -25,7 +25,8 @@
 .mc-record-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .mc-record-stage .mc-viewport { inset: 8px 12px; }
 .mc-record-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--mc-muted); font-size: 12px; pointer-events: none; }
-.mc-record-error { position: absolute; inset: 16px; display: flex; flex-direction: column; justify-content: center; gap: 8px; overflow: auto; isolation: isolate; background: transparent; font-size: 13px; }
+.mc-record-error { position: absolute; inset: 16px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; isolation: isolate; background: transparent; font-size: 13px; }
+.mc-record-error-content { display: flex; flex-direction: column; gap: 8px; }
 .mc-record-detail { flex: none; display: flex; flex-direction: column; gap: 2px; min-height: 48px; padding: 4px 20px 10px; }
 .mc-record-detail p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; }
 .mc-record-detail > span { color: var(--mc-muted); font-size: 11px; line-height: 16px; }
@@ -165,7 +166,8 @@ html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-making-record, .m
   .mc-native-input, .mc-task-status, .mc-task-status::before, .mc-task-status-mark, .mc-task-status-details, .mc-making-record, .mc-version-library, .mc-sidebar { animation: none !important; transition: none !important; }
 }
 
-.mc-inspection { position: absolute; z-index: 12; top: var(--mc-content-top); right: var(--mc-gutter); width: min(300px, calc(100% - 40px)); max-height: calc(100% - var(--mc-content-top) - 170px); overflow: auto; padding: 12px; border-radius: 16px; display: grid; gap: 10px; }
+.mc-inspection { position: absolute; z-index: 12; top: var(--mc-content-top); right: var(--mc-gutter); width: min(300px, calc(100% - 40px)); max-height: calc(100% - var(--mc-content-top) - 170px); overflow: hidden; border-radius: 16px; display: flex; flex-direction: column; }
+.mc-inspection-content { padding: 12px; display: grid; gap: 10px; }
 .mc-inspection header, .mc-inspection-actions { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .mc-inspection strong { font-size: 13px; }
 .mc-inspection-parts { display: grid; gap: 4px; }

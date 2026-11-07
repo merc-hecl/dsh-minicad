@@ -54,7 +54,9 @@ function RevisionDetails({ project, entry, date, request, disabled, onSelect, t 
   return <div className="mc-revision-detail">
     <div className="mc-revision-stage" aria-label={t("revisionPreview", { n: revision })}>
       <Viewport presentation="record" design={design} t={t} onError={() => setWebglFailed(true)} />
-      {error ? <div className="mc-record-error" role="alert"><span>{t("previewUnavailable")}</span><ErrorDetails detail={error} t={t} /></div>
+      {error ? <div className="mc-record-error" role="alert"><div className="mc-record-error-content mc-panel-scroll">
+        <span>{t("previewUnavailable")}</span><ErrorDetails detail={error} t={t} />
+      </div></div>
         : !design && <div className="mc-record-placeholder" role="status"><StateDot state="ongoing" />{t("loading")}</div>}
     </div>
     <div className="mc-revision-information">
