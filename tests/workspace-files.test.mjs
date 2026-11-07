@@ -18,6 +18,46 @@ async function setup(fn) {
     await rm(root, { recursive:true, force:true, maxRetries:3, retryDelay:200 }); }
 }
 
+test("empty folders initialize new designs regardless of previous registration", { timeout: 60000 }, () => setup(async (worker, root, settings) => {
+  const existing = await worker.call("create", { title: "Existing" });
+  const registryFile = join(settings, "designs.json");
+  for (const mode of ["fresh", "registered", "cleared"]) {
+    const directory = join(root, mode), metadataFile = join(directory, ".cad-design.json");
+    await mkdir(directory);
+    let previousId;
+    if (mode === "registered") {
+      const registry = JSON.parse(await readFile(registryFile, "utf8"));
+      registry.paths.unshift(directory);
+      await writeFile(registryFile, JSON.stringify(registry));
+    } else if (mode === "cleared") {
+      const previous = await worker.call("open_design", { path: directory });
+      previousId = previous.id;
+      await worker.call("bind", { projectId: previousId, sessionId: "previous-session" });
+      await rm(metadataFile);
+    }
+    assert.deepEqual(await readdir(directory), []);
+    const opened = await worker.call("open_design", { path: directory });
+    assert.equal(opened.directory, directory);
+    assert.equal(opened.head, 0);
+    assert.deepEqual(opened.sessions, []);
+    if (previousId) assert.notEqual(opened.id, previousId);
+    assert.equal(JSON.parse(await readFile(metadataFile, "utf8")).id, opened.id);
+    const sessionId = `session-${mode}`;
+    await worker.call("bind", { projectId: opened.id, sessionId });
+    const reopened = await worker.call("open_design", { path: directory });
+    assert.equal(reopened.id, opened.id);
+    assert.equal(reopened.activeSessionId, sessionId);
+    assert.equal(JSON.parse(await readFile(registryFile, "utf8")).paths.filter(path => path === directory).length, 1);
+    const built = await worker.call("edit", { projectId: opened.id, modelFile: "model.smp", expectedRevision: 0,
+      operations: [{ op: "box", size: [10, 20, 3], name: "底板" }] });
+    near(built.design.metrics.volume, 600);
+    const shape = cad.fromSmp(await readFile(join(directory, "model.smp")));
+    try { near(shape.volume, 600); assert.ok(shape.isValid()); }
+    finally { shape.dispose(); }
+  }
+  assert.equal((await worker.call("get", { projectId: existing.id })).head, 0);
+}));
+
 test("unreadable registered designs do not block listing, accessing or creating valid designs", { timeout: 60000 }, () => setup(async (worker, root, settings) => {
   const first = await worker.call("create", { title: "First" });
   const second = await worker.call("create", { title: "Second" });

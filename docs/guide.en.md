@@ -68,7 +68,7 @@ Native solids use `.smp`; external SMB is supported as a single-body exchange fo
 - Working models are `<name>.smp` and `<name>.state.json`. `.cad-design.json` manages models and revisions; `.cad-history/` contains complete snapshots and execution materials. Restoring and continuing edits require only SMP and metadata. Copy the whole folder to preserve models and history. DSH stores conversations separately.
 - `.cad-process/` stores modeling steps, `references/` stores drawings and `exports/` stores exports. **Save as** excludes uncommitted trials.
 - The open-design index is `$DSH_HOME/storages/minicad/designs.json`. DSH_HOME defaults to `~/.dsh`; `dataDir` can override the index directory.
-- Catalog reads skip entries with missing folders, damaged metadata or invalid formats while preserving their registration and files. Explicitly opening such a folder reports the underlying error.
+- Catalog reads skip unreadable entries while preserving their registration and files. Opening a folder without `.cad-design.json` initializes a new design even if the path was previously registered. Existing damaged metadata or invalid formats report the underlying error.
 - Renaming a design renames its folder and updates associated conversation working directories. **Remove** only removes its catalog entry; files and conversations remain.
 - The kernel runs in a separate Node process with a default 120-second task timeout. Stopping terminates modeling while preserving committed versions. Process isolation is not a security sandbox; only run trusted design code.
 - Do not let multiple DSH processes write to the same MiniCAD data directory.

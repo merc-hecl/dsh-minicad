@@ -179,10 +179,10 @@ export class Store {
     if (typeof path !== "string" || !isAbsolute(path)) throw localizedError("请选择设计工作文件夹", "choose a design workspace folder");
     const root = fs.realpathSync(path);
     if (!fs.statSync(root).isDirectory()) throw localizedError("设计工作文件夹不存在", "design workspace folder does not exist");
-    const known = this.registered();
-    if (known.includes(root)) return this.project(Object.values(this.readWorkspace(root).projects)[0].id);
-    const file = this.designFile(root), time = now();
-    const task = fs.existsSync(file) ? Object.values(this.readWorkspace(root).projects)[0] : {
+    const known = this.registered(), file = this.designFile(root), hasMetadata = fs.existsSync(file);
+    if (known.includes(root) && hasMetadata) return this.project(Object.values(this.readWorkspace(root).projects)[0].id);
+    const time = now();
+    const task = hasMetadata ? Object.values(this.readWorkspace(root).projects)[0] : {
       version: 2, id: id(), title: title || basename(root), created: time, updated: time,
       models: {}, modelFile: "model.smp", sessions: [], activeSessionId: null, started: false, attachments: [],
     };
@@ -190,7 +190,7 @@ export class Store {
       task.id = id(); task.sessions = []; task.activeSessionId = null;
     }
     this.commit(new Map([[file, jsonBytes(task)],
-      [this.registry, jsonBytes({ version: 1, paths: [root, ...known] })]]));
+      [this.registry, jsonBytes({ version: 1, paths: [root, ...known.filter(path => path !== root)] })]]));
     return this.project(task.id);
   }
   snapshot(key, revision, modelFile) {
