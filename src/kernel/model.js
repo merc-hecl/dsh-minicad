@@ -46,7 +46,7 @@ export function readModel(root, name, assets, onRead) {
   assets[name] = bytes;
   return readShape(bytes, name);
 }
-export function buildShape(
+export async function buildShape(
   source,
   parameters,
   filename,
@@ -55,13 +55,21 @@ export function buildShape(
   root = dirname(filename),
   checkpoint,
   log = (...args) => console.log(...args),
+  current = null,
 ) {
-  const require = createRequire(filename);
+  const nodeRequire = createRequire(filename);
+  const require = Object.assign((name) => {
+    const file = nodeRequire.resolve(name);
+    if (file.startsWith(root + sep) && !file.slice(root.length).split(sep).includes("node_modules"))
+      onRead(file.slice(root.length + 1).split(sep).join("/"), readFileSync(file));
+    return nodeRequire(name);
+  }, nodeRequire);
   for (const file of Object.keys(require.cache))
     if (file.startsWith(dirname(filename) + sep)) delete require.cache[file];
   const api = {
     ...cad,
     assembly,
+    current,
     log,
     edit: (part, operations, parameters) =>
       editShape(part, operations, parameters, { readModel: api.readModel, checkpoint }),
@@ -76,8 +84,14 @@ export function buildShape(
     `(function(parameters,cad,require,__filename,__dirname,console){\n${source}\nif(typeof build !== 'function') throw Object.assign(new Error(${JSON.stringify(missingBuild.zh)}), {localized: ${JSON.stringify(missingBuild)}});\nreturn build(parameters,cad);\n})`,
     { filename, lineOffset: -1 },
   ).runInThisContext();
-  return fn(parameters, api, require, filename, dirname(filename),
-    Object.assign(Object.create(console), { log, info: log, warn: log, error: log, debug: log }));
+  try {
+    return await fn(parameters, api, require, filename, dirname(filename),
+      Object.assign(Object.create(console), { log, info: log, warn: log, error: log, debug: log }));
+  } finally {
+    for (const file of Object.keys(require.cache))
+      if (file.startsWith(root + sep) && !file.slice(root.length).split(sep).includes("node_modules"))
+        onRead(file.slice(root.length + 1).split(sep).join("/"), readFileSync(file));
+  }
 }
 export function values(input, parameters = {}) {
   if (Array.isArray(input)) return input.map((v) => values(v, parameters));
@@ -343,7 +357,17 @@ export function editShape(part, operations, parameters = {}, context = {}) {
     try {
       const op = values(raw, parameters);
       validate(publicOperation(op), operationSchema, `operations[${index}]`);
-      if (part instanceof Assembly) {
+      if (op.op === "add_part") {
+        if (part && !(part instanceof Assembly))
+          throw localizedError("请用零件集合管理独立零件", "use an assembly for independent parts");
+        part = assembly([...(part?.parts || []), { id: op.id, name: validName(op.name), shape: primitive(op.tool, context) }]);
+      } else if (op.op === "remove_part") {
+        part.part(op.part);
+        part = assembly(part.parts.filter(item => item.id !== op.part));
+      } else if (op.op === "copy_part") {
+        const source = part.part(op.part);
+        part = assembly([...part.parts, { id: op.id, name: validName(op.name), shape: placed(source.shape, op) }]);
+      } else if (part instanceof Assembly) {
         const selected = part.part(op.part);
         const { part: partId, ...local } = op;
         const next = editShape(selected.shape, [local], {}, { ...context, checkpoint: undefined, referenceBase: base });
@@ -427,11 +451,13 @@ export function normalizeOperations(operations, shape, revision, scope) {
     }
   });
 }
-export function editSource(source, operations, revision) {
-  const prefix = `build_before_v${revision + 1}`;
-  let name = prefix, index = 1;
-  while (source?.includes(`const ${name} = build;`)) name = `${prefix}_${++index}`;
-  return `${source?.trim() ? source : "function build(parameters, cad) { return null; }"}\n\nconst ${name} = build;\nbuild = async function(parameters, cad) {\n  return cad.edit(await ${name}(parameters, cad), ${JSON.stringify(operations, null, 2)}, parameters);\n};\n`;
+export function replacePart(shape, id, replacement) {
+  if (!(shape instanceof Assembly) || !(replacement instanceof cad.Part))
+    throw localizedError("零件构建必须返回实体", "part builds must return a Part");
+  const previous = shape.part(id);
+  if (replacement.name === previous.shape.name) inheritNames(replacement, [previous.shape]);
+  return assembly(shape.parts.map(part => part.id === id ? { ...part, shape: replacement,
+    name: replacement.solids().length === 1 ? solidNames(replacement)[0] : part.name } : part));
 }
 export function describeShape(shape) {
   if (

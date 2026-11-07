@@ -2,42 +2,42 @@
 
 [Back to README](../README.en.md) · [简体中文](modeling-api.md)
 
-Agents are encouraged to use `cad_edit` first when existing operations express the geometry directly, batching related changes. Use `cad_build` for algorithms, custom geometry or work the operations cannot express conveniently, and mix both when useful. This is guidance, not a restriction. Both paths share exact solids, parameters, trials, dimensional checks, revisions, failure preservation and exports.
+Agents are encouraged to use `cad_edit` first when existing operations express the geometry directly, batching related changes. Use `cad_build` for algorithms, custom geometry or work the operations cannot express conveniently, and mix both when useful. This is guidance, not a restriction. Both paths share exact solids, trials, dimensional checks, revisions, failure preservation and exports.
 
 | Tool | Purpose |
 | --- | --- |
-| `cad_read_project` | Read source, parameters, models, revisions and geometry summaries; optional `sourceFile` does not change the UI selection |
-| `cad_build` | Execute custom source; omit `source` to rebuild working files from disk |
+| `cad_read_project` | Read SMP model metadata, models, revisions and geometry summaries; optional `modelFile` does not change the UI selection |
+| `cad_build` | Execute explicitly supplied source; access the saved exact shape through `cad.current` |
+| `cad_import` | Import an exact file as a model snapshot; optional `metadataFile` restores part IDs and names |
 | `cad_edit` | Create from an empty model or edit the saved solid incrementally; execute 1–100 sequential operations and commit one revision only if all succeed |
 | `cad_query` | Inspect faces, edges, solids, bore segments or vertex coordinates; edges include endpoints and optional arc-length samples, bores include axes and through clearance; supports trial candidates |
 | `cad_set_geometry_id_format` | Change face and edge display numbering and save a new revision |
 | `cad_commit` | Atomically publish an evaluated candidate after checking its base revision, unchanged working files and supplied dimensions |
 | `cad_measure` | Measure geometry in batches without changing the model |
 | `cad_check` | Check measured values against targets and tolerances or limits without changing the model |
-| `cad_update_parameters` | Merge top-level parameters and rebuild by default; `mode: "replace"` replaces the entire parameter object |
 | `cad_api` | Locate installed declarations by symbol or `Class.member`, with `offset` / `limit` paging |
 | `cad_fit` | Check clearance and interference between named parts without changing geometry |
-| `cad_variants` | Generate independent parameter specifications with optional exports |
+| `cad_variants` | Copy the current SMP and apply explicit operations for independent variants |
 | `cad_export` | Export a saved revision of a specified model file, optionally one part |
 | `cad_restore` | Make an existing revision current without creating a revision |
 
-Read model file names and revisions with `cad_read_project` first. All model tools except reading and API lookup require an explicit task-relative `sourceFile`; mutations, queries, measurements and checks also require that file's `expectedRevision`. Explicit agent targets do not change the UI selection. Revisions are independent per file; new files start at revision 0.
+Read model file names and revisions with `cad_read_project` first. All model tools except reading and API lookup require an explicit design-relative SMP `modelFile`; mutations, queries, measurements and checks also require that file's `expectedRevision`. Explicit agent targets do not change the UI selection. Revisions are independent per file; new files start at revision 0.
 
 ### Face and edge numbering
 
-Call `cad_set_geometry_id_format` on a saved model with `sourceFile`, `expectedRevision`, `summary`, and at least one of `faceFormat` and `edgeFormat`. A template must contain exactly one numbering placeholder. `{n}` starts numbering at 1. `{n:1}` through `{n:9}` set the minimum width and pad with leading zeros. For example, `Face-{n:3}` produces `Face-001`. Omitted formats retain their current values. Use `F-{n}` and `E-{n}` to reset the defaults.
+Call `cad_set_geometry_id_format` on a saved model with `modelFile`, `expectedRevision`, `summary`, and at least one of `faceFormat` and `edgeFormat`. A template must contain exactly one numbering placeholder. `{n}` starts numbering at 1. `{n:1}` through `{n:9}` set the minimum width and pad with leading zeros. For example, `Face-{n:3}` produces `Face-001`. Omitted formats retain their current values. Use `F-{n}` and `E-{n}` to reset the defaults.
 
 A changed format commits a revision immediately. The workbench and `cad_query` use it for the display ID. Later builds inherit the current revision's formats. Restoring a revision also restores its formats. Queries, measurements and edits continue to use full revision-scoped `id` references.
 
 ### Trials, checks and publication
 
-`head` identifies the current revision. Use `cad_restore` to switch it. Each commit records the current revision as its `parent` and takes the next number across all saved revisions of that file. Build pending working changes before switching revisions.
+`head` identifies the current revision. Use `cad_restore` to switch it. Each commit records the current revision as its `parent` and takes the next number across all saved revisions of that file. Save or import pending model changes before switching revisions.
 
-`cad_build`, `cad_edit` and `cad_update_parameters` retain direct commits by default. Set `commit: false` to save a candidate and process checkpoints without replacing the saved source, parameters, solid or revision. The result supplies `runId` and current `head`. Pass the same `sourceFile`, `expectedRevision: head` and `runId` to query, measure and check that candidate. Candidate references belong to that candidate, not the saved model.
+`cad_build`, `cad_edit` and `cad_import` retain direct commits by default. Set `commit: false` to save a candidate and process checkpoints without replacing the saved solid, metadata or revision. The result supplies `runId` and current `head`. Pass the same `modelFile`, `expectedRevision: head` and `runId` to query, measure and check that candidate. Candidate references belong to that candidate, not the saved model.
 
 Publish once with `cad_commit`, supplying `runId`, the original `expectedRevision`, `summary` and complete `checks`. Publication uses the exact candidate without rerunning model code. Candidates persist under `.cad-process/` across restarts; a changed saved revision or working model files requires another trial. Trial mode isolates CAD publication; it does not undo arbitrary filesystem writes made by custom JavaScript.
 
-All modeling commits accept `checks`; failed checks preserve the previous revision. `cad_commit` retains trial checks and adds new ones; an empty list cannot discard failed candidate checks. Correct a check definition by evaluating a new trial. Each check can include `name` and `basis` to record the dimension and its drawing view, annotation and units. Definitions and results persist with the revision and in ZIP `project.json`. `cad_check` is read-only, so supply the complete check list when publishing. A successful build without checks establishes valid geometry, not drawing compliance. Never change a drawing target to the measured value merely to pass a check.
+All modeling commits accept `checks`; failed checks preserve the previous revision. `cad_commit` retains trial checks and adds new ones; an empty list cannot discard failed candidate checks. Correct a check definition by evaluating a new trial. Each check can include `name` and `basis` to record the dimension and its drawing view, annotation and units. Definitions and results persist with the revision and in ZIP `state.json`. `cad_check` is read-only, so supply the complete check list when publishing. A successful build without checks establishes valid geometry, not drawing compliance. Never change a drawing target to the measured value merely to pass a check.
 
 Use `cad.log(...)` or `console.log(...)` for diagnostics. Tool results include logs and checkpoint labels; failures include their phase, operation and source stack. Do not publish test boxes or deliberately throw exceptions to obtain diagnostics.
 
@@ -49,7 +49,7 @@ For edges, optional `edgeParameters: [0,0.5,1]` adds `samples: [{t,point}]` to e
 
 ```json
 {
-  "sourceFile": "model.js",
+  "modelFile": "model.smp",
   "expectedRevision": 1,
   "kind": "edges",
   "selector": { "geomType": "circle" },
@@ -75,6 +75,9 @@ The MiniCAD preset includes the standard DSH filesystem, search, shell, skill an
 
 | Operation | Main parameters and semantics |
 | --- | --- |
+| `add_part` | `id`, `name`, `tool`; add an independent part or start an assembly from an empty model |
+| `copy_part` | `part`, new `id`, `name`, optional translation `center` and `rotate`; retain the original and add an independent copy |
+| `remove_part` | `part`; remove a member; a published model must still contain a valid solid |
 | `revolve` | `profile`, world-space `axis`, `angle`, optional `origin`; nonzero angle from -360 to 360 degrees |
 | `loft` | Two or more ordered `sections`; optional `ruled`, `smooth`, `closed` |
 | `sweep` | `profile` and `path` (line, polyline, spline, arc or helix); optional `orient`, `translational`, `twist` |
@@ -115,9 +118,9 @@ This operation extrudes a D-shaped profile.
 
 A three-point arc in `sweep.path` takes world coordinates `[x,y,z]`. Pattern `count` includes the original, from 2 to 100. With a `tool`, combine its copies using `mode: "fuse" | "cut" | "intersect"`. Omit the tool to copy the target body.
 
-Initial modeling starts without a solid: create or import one before applying cuts, chamfers or other modifications. Ordinary edits to an existing revision load its saved exact solid and execute only the new operations. Do not resubmit earlier operations; process checkpoints record only the current operations. If working source exists before the first saved revision, it is evaluated as the initial solid.
+Initial modeling starts without a solid: create or import one before applying cuts, chamfers or other modifications. Ordinary edits to an existing revision load its saved exact solid and execute only the new operations. Do not resubmit earlier operations; process checkpoints record only the current operations. Only this call creates the initial geometry; files on disk are never executed implicitly.
 
-Edits are also appended to source for full replay through `cad_update_parameters` or an explicit `cad_build`. When `cad_edit` supplies parameters that differ from the saved revision, existing features are rebuilt with those parameters before the new operations run; this base rebuild does not duplicate earlier process checkpoints. Unbuilt working-file changes to source, parameters or imported resources still require a build before local editing.
+Edits modify the saved SMP directly and never append or replay source. Optional `parameters` resolve numeric `{parameter:"name"}` references in this call only. Omitted parameters are an empty object. Later changes to scripts or reference resources do not alter the saved geometry.
 
 For example, `{"op":"color","part":"lid","color":"#4682B4"}` colors the lid. Follow it with `{"op":"color","part":"lid","faces":{"position":"top"},"color":"#FF8000"}` to make the top face orange. Use `null` to clear the color at the selected scope. A face with its override cleared inherits the part color. Colors are saved with the revision and can be exported in SMP and STEP.
 
@@ -125,7 +128,7 @@ For example, create a plate and cut three holes in one batch:
 
 ```json
 {
-  "sourceFile": "model.js",
+  "modelFile": "model.smp",
   "expectedRevision": 0,
   "parameters": { "length": 40 },
   "summary": "Create a three-hole plate",
@@ -147,9 +150,18 @@ function build(parameters, cad) {
 }
 ```
 
-`cad.readModel("resources/input.step")` also imports exact resources. Local edits are stored in source and replayed when parameters change. `cad_update_parameters` merges top-level keys by default; nested values replace as a whole. Use `mode: "replace"` to replace the full object or remove parameters. For `cad_build` / `cad_edit`, supplied `parameters` are the complete object; omitting them retains working parameters.
+`cad.readModel("resources/input.step")` imports and archives exact resources. Every `cad_build` call requires explicit `source`. `cad.current` is the current exact saved model, or `null` for a new model. With `part:"lid"`, it is that member only and the return value replaces only that member. Parameters belong to this execution. Relative `require` and `__dirname` resolve from the design root. Local CommonJS modules and files read through `cad.readModel` are archived automatically; declare other file inputs with `inputs:["resources/table.json"]`.
 
 Every final independent solid must have a meaningful purpose-based name. The assembly collection needs no overall name. Set `name` on an initial creation operation or finish the batch with `rename`; rename an existing assembly member with `{op:"rename",part:"lid",name:"Inspection cover"}`. Intermediate construction and `commit:false` trials may be unnamed, but publishing through `cad_build`, `cad_edit` or `cad_commit` rejects unnamed solids and preserves the saved revision. Edits retain unambiguous inherited names; split or merged solids with ambiguous ownership require explicit names. Names persist with revisions, queries and workbench previews. STEP and SMP exports retain solid names; SMB and STL do not store these names.
+
+
+Cut the current exact part without rebuilding earlier features:
+
+```javascript
+function build(parameters, cad) {
+  return cad.current.cut(cad.Cylinder(4, 100));
+}
+```
 
 ### Measurements, checks and geometry references
 
@@ -168,7 +180,7 @@ Example dimensional checks:
 
 ```json
 {
-  "sourceFile": "model.js",
+  "modelFile": "model.smp",
   "expectedRevision": 1,
   "checks": [
     { "measurement": { "kind": "size", "axis": "x" }, "expected": 40, "tolerance": 0.01 },
@@ -179,9 +191,9 @@ Example dimensional checks:
 
 Checks return overall `passed` and each measured value, unit and result. Use `expected` +/- `tolerance` (default 1e-6), or inclusive `min` / `max` bounds (either can be omitted). Length, area, volume and angle use mm, mm², mm³ and degrees; tolerances use the measurement's unit.
 
-Geometry IDs bind the task, model file and revision. Stale and foreign references are rejected. `faces` / `edges` accept arrays of IDs. IDs resolve through topology positions and kernel derivation, never nearest-center guessing. A reference removed, split or no longer traceable after an earlier operation fails explicitly. Query again after edits; use geometry selectors for later steps in a batch. Replaying stored references requires unchanged topology, so prefer geometric selectors for parametric edits expected to change topology.
+Geometry IDs bind the task, model file and revision. Stale and foreign references are rejected. `faces` / `edges` accept arrays of IDs. IDs resolve through topology positions and kernel derivation, never nearest-center guessing. A reference removed, split or no longer traceable after an earlier operation fails explicitly. Query again after edits; use geometry selectors for later steps in a batch. Face and edge IDs are revision-local, not permanent cross-version identities.
 
-Exports are written to the task's `exports/<model path without .js>/`, preventing equal revision numbers in different files from overwriting one another. Existing export files remain available.
+Exports are written to the task's `exports/<model path without .smp>/`, preventing equal revision numbers in different files from overwriting one another. Existing export files remain available.
 
 
 ## Multipart models
@@ -198,35 +210,50 @@ function build(p, cad) {
 ```
 
 - `cad_query(kind:"parts")` lists IDs, labels, dimensions, volumes and preview ranges. Geometry selectors accept `part:"lid"`; geometry results include `part` and `partName`. Geometry IDs remain scoped to the model file and revision.
-- Each `cad_edit` operation specifies `part:"lid"`, e.g. `{op:"translate",part:"lid",by:[0,0,10]}`. Existing operations edit that member without merging other parts. Use `cad_build` to add/remove members or change the parts list.
+- Each `cad_edit` operation specifies `part:"lid"`, e.g. `{op:"translate",part:"lid",by:[0,0,10]}`. Existing operations edit that member without merging other parts. Use `add_part`, `copy_part` and `remove_part` to manage members, or explicitly script a complex change through `cad.current`.
 - Measurements can target `{part:"lid",one:true}`. Thickness requires a single solid target.
-- `cad_fit` takes `sourceFile`, `expectedRevision`, `pairs:[{from:"base",to:"lid"}]` and optional `tolerance` (default 0.001 mm). It reports minimum surface distance, interference volume and `contact`, `separated` or `interference`; it neither solves constraints nor changes geometry.
+- `cad_fit` takes `modelFile`, `expectedRevision`, `pairs:[{from:"base",to:"lid"}]` and optional `tolerance` (default 0.001 mm). It reports minimum surface distance, interference volume and `contact`, `separated` or `interference`; it neither solves constraints nor changes geometry.
 - `cad_export` optionally takes `part:"lid"`. Omit it for the whole model. Whole models support STEP, STL, SMP and project ZIP; SMB is a single-body exchange format. Individual exports retain world placement. STEP round trips check solid count, volume and bounding dimensions/placement, without claiming to retain assembly constraints or a hierarchy tree.
 - Revision comparison compares occupied material volume; renaming, ID changes and regrouping alone have no volume difference.
 
 The plugin's `cad.assembly` supports whole-model `translate` and `rotate`, plus `parts` and `part(id)` member access. It is not a SMLib `cad.Part`. Apply custom Boolean operations to member shapes and compose a new assembly.
 
-## Parameter variants
+## Model variants
 
-`cad_variants` evaluates saved source with top-level parameter overrides into new model files, leaving the original model, revision and UI selection unchanged. Output paths must be new task-relative `.js` files.
+`cad_variants` copies the saved exact SMP and applies each variant's explicit `operations`. It does not execute historical scripts. Outputs are new design-relative `.smp` files; the original model and UI selection remain unchanged.
 
 ```json
 {
-  "sourceFile": "model.js",
+  "modelFile": "model.smp",
   "expectedRevision": 1,
   "variants": [
-    { "name": "60 mm", "sourceFile": "sizes/box-60.js", "parameters": { "length": 60 } },
-    { "name": "80 mm", "sourceFile": "sizes/box-80.js", "parameters": { "length": 80 } },
-    { "name": "100 mm", "sourceFile": "sizes/box-100.js", "parameters": { "length": 100 } }
+    { "name": "Long", "modelFile": "sizes/long.smp", "operations": [{ "op": "scale", "factor": [1.5, 1, 1] }] },
+    { "name": "Thick", "modelFile": "sizes/thick.smp", "operations": [{ "op": "offset_faces", "faces": { "position": "top" }, "distance": 2 }] }
   ],
-  "formats": ["step", "stl"]
+  "formats": ["step"]
 }
 ```
 
-A batch contains 1–20 specifications. Each can supply its own `checks`; checks from previous revisions are not inherited. Optional formats are STEP, STL, SMP and ZIP. All variants are evaluated and checked before any are published. Publication and export are individually durable; failures report already saved variants rather than promising a whole-batch rollback. Each output is independent and does not automatically track future source changes. Use `cad.readModel` for task-relative resources; custom relative `require` paths are the source author's responsibility when creating files in different directories.
+A batch contains 1–20 variants with optional call-local `parameters` and `checks`; old checks are not inherited. Every variant is evaluated before publication. Commits and exports are individually durable; failures report already saved variants. Outputs are independent and do not track later model changes.
 
-The display-mode icon cycles through solid, wireframe and transparent display. **Select targets** switches model files/specifications and shows part inspection controls only for assemblies with multiple solids; single-solid models with multiple files show only a compact model picker. These viewing operations do not affect geometry, revisions or exports.
+## Native snapshots and build archives
 
-## Native storage
+Revisions live under `.cad-history/<model path without .smp>/vNNNN/`. Only `model.smp` and `state.json` are required to restore, query or continue editing geometry.
 
-Working solids, saved revisions and trial candidates now use `.smp` multipart containers, with part IDs and labels in revision state. Legacy design-registry migration has been removed. Old `.smb` revision snapshots are not read or migrated; rebuild old source to create a current-format revision. External SMB remains supported as a single-body exchange format.
+| File | Role |
+| --- | --- |
+| `model.smp` | Required: exact geometry, topology and colors |
+| `state.json` | Required: format version, units, part IDs/names and entity mapping, plus geometry summaries and checks for this revision |
+| `preview.bin` | Regenerable workbench mesh cache |
+| `operations.json` | Tool call, input model/revision, kernel version, operations and checks; an audit record, never a geometry replay dependency |
+| `build/source.js` | Required archive of the actual source whenever this revision used cad_build |
+| `build/base.smp`, `build/base.state.json` | Archived input snapshot when building on an existing model; the operation record identifies the selected part |
+| `build/parameters.json` | Parameters supplied to this build, when present |
+| `build/inputs/` | Build resources, local helper modules and declared file inputs, when used |
+| `inputs/` | Files read by imports or structured operations, when used |
+
+Working models are `<name>.smp` and `<name>.state.json`. `.cad-design.json` manages model lists, revision relationships and current pointers. ZIP exports contain the revision snapshot and its execution materials. Import the SMP as `file` and metadata as `metadataFile` to restore part identity without the original workspace. Checks record this revision's verification, not persistent constraints.
+
+Subsequent cad_edit calls never rewrite or copy earlier source. Explicit script execution creates a new candidate; use `cad.current` to edit the current exact geometry. Failed and uncommitted source, parameters and inputs remain in their `.cad-process/` run.
+
+External SMB remains supported as a single-body exchange format.

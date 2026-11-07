@@ -32,7 +32,7 @@ export function MeasurementPanel({ targets, onClose, project, request, onResult,
     let settled = false;
     setState({ key, loading: true });
     const [first, second] = targets;
-    const target = { projectId: project.id, sourceFile: project.sourceFile, expectedRevision: project.head, measurementId };
+    const target = { projectId: project.id, modelFile: project.modelFile, expectedRevision: project.head, measurementId };
     const pending = second
       ? request("measure", { ...target, measurements: ["distance", "max_distance"].map(kind => ({ kind, from: first.reference, to: second.reference })) }, controller.signal)
       : request("query", { ...target, kind: first.kind, selector: first.reference }, controller.signal);
@@ -49,7 +49,7 @@ export function MeasurementPanel({ targets, onClose, project, request, onResult,
       controller.abort();
       if (!settled) void request("cancel_measurement", { measurementId }).catch(() => {});
     };
-  }, [key, project.id, project.sourceFile, project.head]);
+  }, [key, project.id, project.modelFile, project.head]);
   const current = state.key === key ? state : { loading: true };
   const { geometry } = current;
   const [minimum, maximum] = current.items || [];

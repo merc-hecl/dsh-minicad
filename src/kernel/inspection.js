@@ -36,13 +36,13 @@ export function direction(input) {
     throw localizedError("方向向量不能为零", "direction must be nonzero");
   return input.map((n) => n / length);
 }
-export const modelScope = (projectId, sourceFile) =>
+export const modelScope = (projectId, modelFile) =>
   createHash("sha256")
-    .update(`${projectId}\0${sourceFile}`)
+    .update(`${projectId}\0${modelFile}`)
     .digest("hex")
     .slice(0, 24);
 const round = (n) => Math.round(n * 1e6) / 1e6;
-// Structural checks protect parameter replay; positional nearest-neighbour guessing is never used for IDs.
+// Structural checks protect operation references; positional nearest-neighbour guessing is never used for IDs.
 const topologyCache = new WeakMap();
 function topology(shape) {
   if (topologyCache.has(shape)) return topologyCache.get(shape);

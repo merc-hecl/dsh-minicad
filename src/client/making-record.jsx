@@ -74,15 +74,15 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
     return () => container.removeEventListener("wheel", scrollRecords);
   }, []);
   useEffect(() => {
-    request("process_history", { projectId: project.id, sourceFile: project.sourceFile }, controller.current.signal)
+    request("process_history", { projectId: project.id, modelFile: project.modelFile }, controller.current.signal)
       .then(setRuns).catch(error => { if (error.name !== "AbortError") setError(errorDetail(error)); });
     return () => { controller.current.abort(); cache.current.clear(); onTranscriptTarget(null); };
   }, []);
   const allRuns = useMemo(() => {
     const items = new Map(runs.map(run => [run.id, run]));
-    if (progress?.sourceFile === project.sourceFile) items.set(progress.id, progress);
+    if (progress?.modelFile === project.modelFile) items.set(progress.id, progress);
     return [...items.values()];
-  }, [runs, progress, project.sourceFile]);
+  }, [runs, progress, project.modelFile]);
   const versions = useMemo(() => project.revisions.map(revision => ({ key: `v${revision.revision}`,
       label: `v${revision.revision}${revision.revision === project.head ? ` · ${t("current")}` : ""}`,
       revision: revision.revision, created: revision.created, title: revision.summary || t("savedVersion") }))
@@ -115,16 +115,16 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
     let promise = cache.current.get(entry.key);
     if (!promise) {
       promise = request(entry.runId ? "checkpoint" : "preview", {
-        projectId: project.id, sourceFile: project.sourceFile,
+        projectId: project.id, modelFile: project.modelFile,
         ...(entry.runId ? { runId: entry.runId, sequence: entry.sequence } : { revision: entry.revision }),
       }, controller.current.signal).then(previewData => ({ previewData, metrics: entry.metrics,
-        sourceFile: project.sourceFile, revision: entry.revision || entry.baseRevision, geometryIds: entry.geometryIds }));
+        modelFile: project.modelFile, revision: entry.revision || entry.baseRevision, geometryIds: entry.geometryIds }));
       cache.current.set(entry.key, promise);
       if (cache.current.size > 6) cache.current.delete(cache.current.keys().next().value);
       promise.catch(() => { if (cache.current.get(entry.key) === promise) cache.current.delete(entry.key); });
     }
     return promise;
-  }, [project.id, project.sourceFile, request]);
+  }, [project.id, project.modelFile, request]);
   useEffect(() => {
     if (!focus) { setLoading(false); setDesign(null); return; }
     let disposed = false;
@@ -149,7 +149,7 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
       <section className="mc-record-model" aria-label={t("recordModel")}>
         <div className="mc-record-toolbar">
           {focus && <Tag tone="neutral">{focus.label}</Tag>}
-          <span className="mc-record-kind">{focus ? t(focus.runId ? "checkpointPreview" : "savedVersion") : project.sourceFile}</span>
+          <span className="mc-record-kind">{focus ? t(focus.runId ? "checkpointPreview" : "savedVersion") : project.modelFile}</span>
           <Button variant="ghost" size="sm" icon={<IconRefreshOutlineRegular size={16} />} aria-label={t("resetView")} onClick={() => setReset(value => value + 1)} />
         </div>
         <div className="mc-record-stage">

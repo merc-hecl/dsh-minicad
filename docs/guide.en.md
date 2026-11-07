@@ -37,14 +37,14 @@ To update an npm installation on Desktop, uninstall it through **Plugins**, then
 - **Select targets** enables face and edge selection. It also opens the model inspection panel for assemblies with multiple solids; single-solid models have no panel. Click the toolbar button again or close the panel to exit. Click to replace, Ctrl+click to toggle, or click blank space/press Esc to clear. Measure the selection or add a **Reference** with your request to the conversation.
 - Hover over a solid to see its name. After selecting faces or edges, the selection toolbar shows the names of their owning solids. The agent must name every final solid by purpose; the assembly collection needs no overall name.
 - A single face shows its area and area centroid. A single edge shows its length and endpoints. Circular edges, spherical faces and cylindrical faces also show their geometric center and radius. Coordinates use world X/Y/Z in mm. Two targets give minimum and maximum distances and the absolute world-axis components of one nearest-point line. Three or more targets disable measurement. `≈` marks approximations. Areas use mm².
-- Click the branch icon at the top left of the workbench to open the version tree for the current model file. Select a saved version to preview it, then click **Switch to** to make it current. The next edit branches from that version and uses the next available version number. Build any pending source, parameter or resource changes before switching.
+- Click the branch icon at the top left of the workbench to open the version tree for the current model file. Select a saved version to preview it, then click **Switch to** to make it current. The next edit branches from that version and uses the next available version number. Ask the agent to import or save externally modified model working files before switching.
 - **Making record** shows saved versions, modeling steps and the full conversation. Failed or stopped builds preserve the saved model.
 - **Revision comparison** shows exact volume differences of the base relative to the target: green for added, red for removed, gray for shared volume. It does not change the model; selection and measurement pause during comparison.
 - Ask the agent to export STEP, STL or a project ZIP. The native navigation menu at the top right opens the design directory or the current saved model in FreeCAD. External edits are not written back automatically.
 
 - Click the display-mode icon to cycle through solid, wireframe and transparent display. The icon and tooltip reflect the current mode. Revision comparison cycles only between solid and wireframe. In the inspection panel for assemblies with multiple solids, the eye button on the left toggles each part's visibility and **Show all** restores every part. Display changes do not affect geometry, revisions or exports.
 - The workbench displays saved part colors, with face colors taking precedence. Ask the agent to color a part or selected faces.
-- When a design contains multiple model files or variants, select them in **Select targets**. Single-solid models show only a compact model picker; assemblies with multiple solids also show part visibility controls. Measurement and reference surfaces temporarily hide while the model/variant or external-application menu is open, then return when it closes. Ask the agent to generate parameter variants and export a whole model or an individual part.
+- When a design contains multiple model files or variants, select them in **Select targets**. Single-solid models show only a compact model picker; assemblies with multiple solids also show part visibility controls. Measurement and reference surfaces temporarily hide while the model/variant or external-application menu is open, then return when it closes. Ask the agent to generate independent model variants and export a whole model or an individual part.
 - The agent creates and names independent parts. Contact does not fuse components; ask the agent to check clearance and interference.
 
 Valid geometry and dimensional checks do not establish structural strength or manufacturability.
@@ -63,11 +63,12 @@ An empty string enables automatic detection. Non-PATH Linux installations such a
 
 ## Data and runtime boundaries
 
-Native solids use `.smp`. Old `.smb` revision snapshots are no longer read or automatically migrated; rebuild old source for a new revision.
+Native solids use `.smp`; external SMB is supported as a single-body exchange format.
 
-- Design folders contain source, parameters, exact solids, `.cad-design.json` and `.cad-history/`. Copy the whole folder to preserve models and versions. DSH stores conversations separately.
+- Working models are `<name>.smp` and `<name>.state.json`. `.cad-design.json` manages models and revisions; `.cad-history/` contains complete snapshots and execution materials. Restoring and continuing edits require only SMP and metadata. Copy the whole folder to preserve models and history. DSH stores conversations separately.
 - `.cad-process/` stores modeling steps, `references/` stores drawings and `exports/` stores exports. **Save as** excludes uncommitted trials.
 - The open-design index is `$DSH_HOME/storages/minicad/designs.json`. DSH_HOME defaults to `~/.dsh`; `dataDir` can override the index directory.
+- Catalog reads skip entries with missing folders, damaged metadata or invalid formats while preserving their registration and files. Explicitly opening such a folder reports the underlying error.
 - Renaming a design renames its folder and updates associated conversation working directories. **Remove** only removes its catalog entry; files and conversations remain.
 - The kernel runs in a separate Node process with a default 120-second task timeout. Stopping terminates modeling while preserving committed versions. Process isolation is not a security sandbox; only run trusted design code.
 - Do not let multiple DSH processes write to the same MiniCAD data directory.

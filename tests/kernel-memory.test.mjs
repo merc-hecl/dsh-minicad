@@ -49,7 +49,7 @@ test(
         });
         const target = {
           projectId: task.id,
-          sourceFile: "model.js",
+          modelFile: "model.smp",
         };
         assert.equal(starts, 0);
         const source =
@@ -83,16 +83,15 @@ test(
           1,
           "idle metadata calls and opening a saved preview start no process",
         );
-        await writeFile(
-          join(task.directory, "model.parameters.json"),
-          JSON.stringify({ width: 12 }),
-        );
+        const metadataFile = join(task.directory, "model.state.json");
+        const originalMetadata = await readFile(metadataFile);
+        await writeFile(metadataFile, JSON.stringify({ changed: true }));
         const external = await worker.call("get", target);
-        assert.equal(external.parameters.width, 12);
         assert.equal(external.workingTreeChanged, true);
-        assert.notEqual(external.sourceVersion, built.sourceVersion);
+        assert.notEqual(external.modelVersion, built.modelVersion);
+        await writeFile(metadataFile, originalMetadata);
         const [updated, queued] = await Promise.all([
-          worker.call("build", { ...target, expectedRevision: 1 }),
+          worker.call("build", { ...target, expectedRevision: 1, source, parameters: { width: 12 } }),
           worker.call("get", target),
         ]);
         assert.equal(updated.head, 2);
@@ -120,7 +119,7 @@ test(
 );
 
 test(
-  "stale previews refresh only in an isolated process without changing committed geometry",
+  "missing previews regenerate only in an isolated process without changing committed geometry",
   { timeout: 60000 },
   async () => {
     let starts = 0;
@@ -134,23 +133,16 @@ test(
           source: "function build(p,cad){return cad.Box(10,20,30).named('长方体')}",
           parameters: {},
         });
-        const folder = join(task.directory, built.revisions[0].folder);
-        const stateFile = join(folder, "state.json");
         const binary = await readFile(join(task.directory, "model.smp"));
-        const old = JSON.parse(await readFile(stateFile, "utf8"));
-        delete old.previewVersion;
-        await writeFile(stateFile, JSON.stringify(old));
+        const preview = await worker.call("preview_file", { ...args, revision: 1 });
+        await rm(preview.path);
         const metadata = await worker.call("get", args);
-        assert.equal(
-          metadata.design.previewVersion,
-          undefined,
-          "metadata reads must reflect changed state files",
-        );
+        assert.equal(metadata.head, 1);
         assert.equal(starts, 1);
-        await worker.call("preview_file", { projectId: task.id, revision: 1 });
-        const refreshed = await worker.call("get", { projectId: task.id });
+        const regenerated = await worker.call("preview_file", { ...args, revision: 1 });
+        const refreshed = await worker.call("get", args);
         assert.equal(starts, 2);
-        assert.equal(refreshed.design.previewVersion, 4);
+        assert.ok(decodePreview(await readFile(regenerated.path)).indices.length > 0);
         assert.equal(refreshed.head, 1);
         assert.equal(refreshed.revisions.length, 1);
         await worker.call("get", { projectId: task.id });

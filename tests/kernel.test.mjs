@@ -129,17 +129,17 @@ test(
         await readFile(join(p.directory, "model.smp")),
         original,
       );
-      await rm(join(p.directory, "model.js"));
+      await rm(join(p.directory, "model.smp"));
       await assert.rejects(
         worker.call("edit", {
           projectId: p.id,
           expectedRevision: 1,
           operations: [{ op: "box", size: [1, 1, 1] }],
         }),
-        /源码或参数已修改/,
+        /模型工作文件已修改/,
       );
       assert.equal((await worker.call("get", { projectId: p.id })).head, 1);
-      await writeFile(join(p.directory, "model.js"), source);
+      await writeFile(join(p.directory, "model.smp"), original);
       for (const format of ["step", "stl", "smb", "zip"]) {
         const exported = await worker.call("export", {
           projectId: p.id,
@@ -159,14 +159,14 @@ test(
         }
         if (format === "zip") {
           const files = unzipSync(bytes);
-          assert.equal(strFromU8(files["model.js"]), source);
+          assert.equal(strFromU8(files["build/source.js"]), source);
           assert.ok(files["model.smp"].length);
         }
       }
       const second = await worker.call("build", {
         projectId: p.id,
         expectedRevision: 1,
-        parameters: { width: 80 },
+        source, parameters: { width: 80 },
       });
       near(second.design.metrics.sizeX, 80);
       near(second.design.metrics.volume, 80 * 40 * 8 - Math.PI * 16 * 8);
@@ -178,7 +178,7 @@ test(
       assert.equal(restored.head, 1);
       assert.deepEqual(restored.revisions.map(entry => entry.revision), [2, 1]);
       near(restored.design.metrics.volume, built.design.metrics.volume);
-      assert.equal(restored.design.parameters.width, 60);
+      near(restored.design.metrics.sizeX, 60);
       const persisted = await worker.call("get", { projectId: p.id });
       assert.equal(persisted.head, 1);
       assert.equal(persisted.design.checks, undefined);
@@ -187,7 +187,7 @@ test(
         cad.fromSmp(await readFile(join(p.directory, "model.smp"))).volume,
         built.design.metrics.volume,
       );
-      const base = { projectId: p.id, sourceFile: "model.js", expectedRevision: 1 };
+      const base = { projectId: p.id, modelFile: "model.smp", expectedRevision: 1 };
       await assert.rejects(worker.call("restore", { ...base, expectedRevision: 2, revision: 2 }), /设计已更新/);
       const trial = await worker.call("edit", { ...base, commit: false,
         operations: [{ op: "scale", factor: [0.5, 1, 1] }] });
@@ -209,7 +209,7 @@ test(
 );
 
 test(
-  "query/edit: fillet, through hole, blind hole, stale ids and parameter replay",
+  "query/edit: fillet, through hole, blind hole, stale IDs and persisted edits",
   { timeout: 90000 },
   async () =>
     setup(async (worker) => {
@@ -264,12 +264,9 @@ test(
         }),
         /过期/,
       );
-      const rebuilt = await worker.call("build", {
-        projectId: p.id,
-        expectedRevision: 2,
-        parameters: { length: 40 },
-      });
-      near(rebuilt.design.metrics.volume, blind.design.metrics.volume + 500);
+      const moved = await worker.call("edit", { projectId: p.id, expectedRevision: 2,
+        operations: [{ op: "translate", by: [10,0,0] }] });
+      near(moved.design.metrics.volume, blind.design.metrics.volume);
       const cylinder = await worker.call("query", {
         projectId: p.id,
         expectedRevision: 3,
@@ -295,7 +292,7 @@ test(
       const result = await worker.call("build", {
         projectId: p.id,
         expectedRevision: 0,
-        sourceFile: "parts/plate.js",
+        modelFile: "parts/plate.smp",
         source:
           'function build(p,cad) { return cad.readModel("resources/input.step").named("导入零件"); }',
         parameters: {},
@@ -313,28 +310,14 @@ test(
           "base64",
         ),
       );
-      assert.ok(archive["resources/input.step"]);
+      assert.ok(archive["build/inputs/resources/input.step"]);
       await writeFile(
         join(p.directory, "resources", "input.step"),
         cad.toStep(cad.Box(2, 3, 4)),
       );
-      assert.equal(
-        (await worker.call("get", { projectId: p.id })).workingTreeChanged,
-        true,
-      );
-      await assert.rejects(
-        worker.call("edit", {
-          projectId: p.id,
-          expectedRevision: 1,
-          operations: [{ op: "translate", by: [1, 0, 0] }],
-        }),
-        /源码或参数已修改/,
-      );
-      const rebuilt = await worker.call("build", {
-        projectId: p.id,
-        expectedRevision: 1,
-      });
-      near(rebuilt.design.metrics.volume, 24);
+      const edited = await worker.call("edit", { projectId: p.id, expectedRevision: 1,
+        operations: [{ op: "translate", by: [1,0,0] }] });
+      near(edited.design.metrics.volume, 1260);
       const old = await worker.call("export", {
         projectId: p.id,
         revision: 1,
@@ -352,7 +335,7 @@ test(
       near(restored.design.metrics.volume, 1260);
       const after = await worker.call("build", {
         projectId: p.id,
-        expectedRevision: 1,
+        expectedRevision: 1, source: "function build(p,cad){return cad.current;}",
       });
       assert.equal(after.head, 3);
       near(after.design.metrics.volume, 1260);

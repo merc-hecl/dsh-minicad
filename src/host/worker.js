@@ -53,7 +53,7 @@ export function createWorker({
     modeling,
     sequence = 0;
   const activeJournal = (params) => modeling && modeling.projectId === params.projectId
-    && (!params.sourceFile || params.sourceFile === modeling.sourceFile) ? modeling.journal : null;
+    && (!params.modelFile || params.modelFile === modeling.modelFile) ? modeling.journal : null;
   const script = fileURLToPath(
     new URL("../kernel/service.js", import.meta.url),
   );
@@ -192,8 +192,8 @@ export function createWorker({
       if (signal?.aborted) throw localizedError("操作已取消", "Operation cancelled");
       if (localMethods.has(method)) {
         try {
-          // No model code or WASM can run here. Old previews explicitly fall
-          // back to the isolated process instead of loading the kernel in DSH.
+          // No model code or WASM can run here. Preview regeneration runs
+          // in the isolated process instead of loading the kernel in DSH.
           return await new Store(dataDir, { allowKernel: false }).dispatch(
             method,
             params,
@@ -202,11 +202,11 @@ export function createWorker({
           if (!(error instanceof KernelRequired)) throw error;
         }
       }
-      const constructs = ["build", "edit", "update_parameters", "commit"].includes(method);
+      const constructs = ["build", "import", "edit", "commit"].includes(method);
       const location = params.projectId ? await new Store(dataDir, { allowKernel: false }).dispatch("process_location", params) : null;
       if (constructs) {
-        modeling = { projectId: params.projectId, sourceFile: location.sourceFile,
-          journal: new ProcessJournal(location.directory, location.sourceFile) };
+        modeling = { projectId: params.projectId, modelFile: location.modelFile,
+          journal: new ProcessJournal(location.directory, location.modelFile) };
       }
       try {
         for (let attempt = 0; ; attempt++) {

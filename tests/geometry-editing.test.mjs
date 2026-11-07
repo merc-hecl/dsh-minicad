@@ -64,7 +64,7 @@ test(
       const task = await worker.call("create");
       const args = {
         projectId: task.id,
-        sourceFile: "model.js",
+        modelFile: "model.smp",
         preserveSelection: true,
       };
       await worker.call("build", {
@@ -128,7 +128,6 @@ test(
       });
       assert.equal(edited.head, 2);
       near(edited.design.metrics.volume, 6400);
-      assert.deepEqual(edited.parameters, { width: 10 });
       assert.equal(edited.revisions[0].summary, summary);
       assert.equal(edited.revisions[0].parent, 1);
       const previewFile = await worker.call("preview_file", {
@@ -165,7 +164,7 @@ test("selected face and edge batches measure and edit the same saved geometry in
   let worker = createWorker({ dataDir: root });
   try {
     const task = await worker.call("create");
-    const args = { projectId: task.id, sourceFile: "model.js" };
+    const args = { projectId: task.id, modelFile: "model.smp" };
     const built = await worker.call("build", { ...args, expectedRevision: 0, source: "function build(p,cad){return cad.Box(20,10,4).named('底板');}" });
     const faces = (await worker.call("query", { ...args, expectedRevision: 1, kind: "faces" })).items;
     const top = faces.find(face => face.normal[2] > .9), bottom = faces.find(face => face.normal[2] < -.9);
@@ -195,16 +194,15 @@ test("selected face and edge batches measure and edit the same saved geometry in
   } finally { await worker.dispose(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("agent edit trials preserve saved files and commit a checked replayable batch as one version", { timeout: 120000 }, async () => {
+test("agent edit trials preserve saved files and commit a checked batch as one version", { timeout: 120000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "minicad-agent-trial-"));
   const worker = createWorker({ dataDir: root });
   try {
     const task = await worker.call("create");
-    const args = { projectId: task.id, sourceFile: "model.js", expectedRevision: 1 };
+    const args = { projectId: task.id, modelFile: "model.smp", expectedRevision: 1 };
     const built = await worker.call("build", { ...args, expectedRevision: 0,
       source: "function build(p,cad){return cad.Box(20,10,p.thickness).named('底板');}", parameters: { thickness: 4 } });
     const before = await readFile(join(built.workspaceDirectory, "model.smp"));
-    const sourceBefore = await readFile(join(built.workspaceDirectory, "model.js"));
     const top = (await worker.call("query", { ...args, kind: "faces", selector: { position: "top" } })).items[0];
     const operations = [{ op: "offset_faces", faces: top.id, distance: 3 },
       { op: "scale", factor: [2, 1, 1] }, { op: "rotate", axis: [0, 0, 1], angle: 90 }];
@@ -215,14 +213,13 @@ test("agent edit trials preserve saved files and commit a checked replayable bat
     const candidate = await worker.call("query", { ...args, runId: trial.runId, kind: "faces", selector: { position: "top" } });
     near(candidate.items[0].center[2], 5);
     assert.equal((await worker.call("get", args)).head, 1);
-    assert.deepEqual(await readFile(join(built.workspaceDirectory, "model.js")), sourceBefore);
     assert.deepEqual(await readFile(join(built.workspaceDirectory, "model.smp")), before);
     const committed = await worker.call("commit", { ...args, runId: trial.runId, summary: "Agent face offset, scale and rotation" });
     assert.equal(committed.head, 2); assert.equal(committed.revisions.length, 2);
     near(committed.design.metrics.volume, 2800);
     assert.equal(committed.design.validation.passed, true);
-    const replayed = await worker.call("update_parameters", { ...args, expectedRevision: 2, parameters: { thickness: 6 } });
-    near(replayed.design.metrics.volume, 3600);
+    const resized = await worker.call("build", { ...args, expectedRevision: 2, source: "function build(p,cad){return cad.current.scale([1,1,9/7]);}" });
+    near(resized.design.metrics.volume, 3600);
   } finally { await worker.dispose(); await rm(root, { recursive: true, force: true }); }
 });
 

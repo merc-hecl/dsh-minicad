@@ -3,13 +3,13 @@
   "version": "0.1.2",
   "license": "MIT",
   "type": "module",
-  "description": "Parametric CAD modeling, inspection and revision history for DeepSeek Harness agents.",
+  "description": "Exact CAD modeling, inspection and revision history for DeepSeek Harness agents.",
   "keywords": [
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
     "cad",
-    "parametric-modeling",
+    "direct-modeling",
     "smlib"
   ],
   "repository": {

@@ -7,7 +7,7 @@ import * as cad from "@classcad/smlibwasm";
 import { queryShape, modelScope } from "../src/kernel/model.js";
 import { createWorker } from "../src/host/worker.js";
 
-const scope = modelScope("coordinate-test", "model.js");
+const scope = modelScope("coordinate-test", "model.smp");
 const near = (actual, expected, tolerance = 1e-6) => assert.ok(Math.abs(actual - expected) < tolerance, `${actual} != ${expected}`);
 const nearPoint = (actual, expected) => actual.forEach((value, i) => near(value, expected[i]));
 const pointKey = point => point.map(value => Math.round(value * 1e6)).join(",");
@@ -41,7 +41,7 @@ test("vertices and edge endpoints use actual world geometry and support scoped I
   assert.deepEqual(queryShape(part, 1, "edges", edges[0].id, scope, undefined, [0, 1])[0].samples.map(sample => sample.point), [edges[0].start, edges[0].end]);
   assert.throws(() => queryShape(part, 2, "vertices", vertices[0].id, scope), /stale or foreign/);
   assert.throws(() => queryShape(part, 1, "edges", vertices[0].id, scope), /stale or foreign/);
-  assert.throws(() => queryShape(part, 1, "vertices", vertices[0].id, modelScope("other", "model.js")), /stale or foreign/);
+  assert.throws(() => queryShape(part, 1, "vertices", vertices[0].id, modelScope("other", "model.smp")), /stale or foreign/);
 }));
 
 test("curve samples follow arc length on arcs, closed circles, reversed curves and splines", () => cad.scope(() => {
@@ -84,9 +84,9 @@ test("coordinate queries preserve saved state, isolate candidates and survive re
   let worker = createWorker({ dataDir });
   try {
     const project = await worker.call("create");
-    const args = { projectId: project.id, sourceFile: "model.js" };
+    const args = { projectId: project.id, modelFile: "model.smp" };
     await worker.call("edit", { ...args, expectedRevision: 0, operations: [{ op: "box", size: [10, 20, 6], name: "坐标校验块" }] });
-    const files = ["model.js", "model.parameters.json", "model.smp", ".cad-design.json"];
+    const files = ["model.smp", "model.state.json", "model.smp", ".cad-design.json"];
     const before = await Promise.all(files.map(file => readFile(join(project.directory, file))));
     const history = await worker.call("process_history", args);
     const vertices = await worker.call("query", { ...args, expectedRevision: 1, kind: "vertices" });

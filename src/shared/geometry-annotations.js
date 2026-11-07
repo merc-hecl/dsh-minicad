@@ -15,7 +15,7 @@ export function nextGeometryAnnotation(text, from = 0) {
       if (
         typeof data.reference === "string" &&
         typeof data.label === "string" &&
-        typeof data.sourceFile === "string" &&
+        typeof data.modelFile === "string" &&
         Number.isInteger(data.expectedRevision) &&
         typeof data.note === "string"
       )

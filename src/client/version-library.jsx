@@ -27,7 +27,7 @@ function layoutRevisions(revisions) {
 }
 
 function RevisionDetails({ project, entry, date, request, disabled, onSelect, t }) {
-  const { id: projectId, sourceFile, head } = project;
+  const { id: projectId, modelFile, head } = project;
   const { revision } = entry;
   const current = revision === head;
   const currentPreview = current ? project.design?.previewData : null;
@@ -36,7 +36,7 @@ function RevisionDetails({ project, entry, date, request, disabled, onSelect, t 
   useEffect(() => {
     if (currentPreview) return;
     const controller = new AbortController();
-    request("preview", { projectId, sourceFile, revision }, controller.signal)
+    request("preview", { projectId, modelFile, revision }, controller.signal)
       .then(data => {
         if (!controller.signal.aborted) setPreview({ revision, data });
       })
@@ -44,11 +44,11 @@ function RevisionDetails({ project, entry, date, request, disabled, onSelect, t 
         if (!controller.signal.aborted) setPreview({ revision, error: errorDetail(error) });
       });
     return () => controller.abort();
-  }, [currentPreview, projectId, sourceFile, revision, request]);
+  }, [currentPreview, projectId, modelFile, revision, request]);
 
   const loaded = preview?.revision === revision ? preview : null;
   const previewData = currentPreview || loaded?.data;
-  const design = previewData ? { previewData, sourceFile, revision } : null;
+  const design = previewData ? { previewData, modelFile, revision } : null;
   const error = webglFailed ? t("webglError") : currentPreview ? null : loaded?.error;
 
   return <div className="mc-revision-detail">

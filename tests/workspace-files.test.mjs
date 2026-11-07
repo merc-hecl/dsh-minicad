@@ -18,6 +18,40 @@ async function setup(fn) {
     await rm(root, { recursive:true, force:true, maxRetries:3, retryDelay:200 }); }
 }
 
+test("unreadable registered designs do not block listing, accessing or creating valid designs", { timeout: 60000 }, () => setup(async (worker, root, settings) => {
+  const first = await worker.call("create", { title: "First" });
+  const second = await worker.call("create", { title: "Second" });
+  await worker.call("bind", { projectId: first.id, sessionId: "healthy-session" });
+  const invalid = [
+    { name: "unsupported-format", content: JSON.stringify({ version: 1, id: "old-design", models: {}, sessions: [] }) },
+    { name: "corrupt-json", content: "{broken" },
+    { name: "missing-metadata", content: null },
+  ];
+  for (const item of invalid) {
+    item.directory = join(root, item.name);
+    await mkdir(item.directory);
+    if (item.content !== null) await writeFile(join(item.directory, ".cad-design.json"), item.content);
+  }
+  const registered = [invalid[0].directory, first.directory, invalid[1].directory, second.directory, invalid[2].directory];
+  const registryFile = join(settings, "designs.json");
+  await writeFile(registryFile, JSON.stringify({ version: 1, paths: registered }));
+  assert.deepEqual((await worker.call("list")).map(item => item.id), [first.id, second.id]);
+  assert.equal((await worker.call("get", { projectId: second.id })).id, second.id);
+  assert.equal((await worker.call("by_session", { sessionId: "healthy-session" })).id, first.id);
+  assert.deepEqual(JSON.parse(await readFile(registryFile, "utf8")).paths, registered);
+
+  const created = await worker.call("create", { title: "New" });
+  const built = await worker.call("build", { projectId: created.id, expectedRevision: 0,
+    source: box, parameters: { width: 12 } });
+  near(built.design.metrics.volume, 600);
+  assert.deepEqual((await worker.call("list")).map(item => item.id), [created.id, first.id, second.id]);
+  assert.deepEqual(JSON.parse(await readFile(registryFile, "utf8")).paths, [created.directory, ...registered]);
+  for (const item of invalid) {
+    if (item.content !== null) assert.equal(await readFile(join(item.directory, ".cad-design.json"), "utf8"), item.content);
+    else assert.deepEqual(await readdir(item.directory), []);
+  }
+}));
+
 test("design folders own shared model history across conversations; save as is independent and reopening preserves bindings", {timeout:90000}, () => setup(async(worker, root) => {
   const directory=join(root,"plate"); await mkdir(directory);
   const task=await worker.call("open_design",{path:directory});
@@ -37,11 +71,11 @@ test("design folders own shared model history across conversations; save as is i
   const branch=await worker.call("fork_project",{projectId:task.id,path:copy});
   assert.notEqual(branch.id,task.id); assert.deepEqual(branch.sessions,[]);
   assert.equal(branch.head,1); assert.equal(await readFile(join(copy,"notes.txt"),"utf8"),"shared design note");
-  const changed=await worker.call("build",{projectId:branch.id,expectedRevision:1,parameters:{width:30}});
+  const changed=await worker.call("build",{projectId:branch.id,expectedRevision:1,source:box,parameters:{width:30}});
   near(changed.design.metrics.volume,1500);
   near((await worker.call("get",{projectId:task.id})).design.metrics.volume,1000);
   await worker.call("close_design",{projectId:task.id});
-  assert.equal(await readFile(join(directory,"model.js"),"utf8"),box);
+  near(cad.fromSmp(await readFile(join(directory,"model.smp"))).volume,1000);
   const reopened=await worker.call("open_design",{path:directory});
   assert.equal(reopened.id,task.id); assert.equal(reopened.activeSessionId,"discussion-a");
   assert.equal((await worker.call("reference_file",{projectId:task.id,attachmentId:attached.attachments[0].id})).data,referencePdf);
@@ -52,29 +86,29 @@ test("design folders own shared model history across conversations; save as is i
 test("current STEP models preserve exact geometry and file scope with unsaved working files", { timeout: 90000 }, () => setup(async (worker, root) => {
   const directory = join(root, "revision handoff"); await mkdir(directory);
   const task = await worker.call("open_design", { path: directory });
-  const target = { projectId: task.id, sourceFile: "models/plate.js" };
+  const target = { projectId: task.id, modelFile: "models/plate.smp" };
   await worker.call("build", { ...target, expectedRevision: 0, source: box, parameters: { width: 8 } });
-  await worker.call("build", { ...target, expectedRevision: 1, parameters: { width: 16 } });
-  await worker.call("build", { projectId: task.id, sourceFile: "other.js", expectedRevision: 0,
+  await worker.call("build", { ...target, expectedRevision: 1, source: box, parameters: { width: 16 } });
+  await worker.call("build", { projectId: task.id, modelFile: "other.smp", expectedRevision: 0,
     source: box, parameters: { width: 24 } });
-  await worker.call("select_model", { projectId: task.id, sourceFile: "other.js" });
+  await worker.call("select_model", { projectId: task.id, modelFile: "other.smp" });
   const dirtySource = 'throw new Error("unsaved source must not be used for a saved revision");';
-  await writeFile(join(directory, target.sourceFile), dirtySource);
+  await writeFile(join(directory, target.modelFile), dirtySource);
   const before = await worker.call("get", { projectId: task.id });
-  for (const [sourceFile, volume] of [[target.sourceFile, 800], ["other.js", 1200]]) {
-    const current = await worker.call("get", { projectId: task.id, sourceFile });
-    const exported = await worker.call("export", { projectId: task.id, sourceFile, revision: current.head, format: "step" });
-    assert.equal(exported.sourceFile, sourceFile);
+  for (const [modelFile, volume] of [[target.modelFile, 800], ["other.smp", 1200]]) {
+    const current = await worker.call("get", { projectId: task.id, modelFile });
+    const exported = await worker.call("export", { projectId: task.id, modelFile, revision: current.head, format: "step" });
+    assert.equal(exported.modelFile, modelFile);
     assert.equal(exported.revision, current.head);
     const shape = cad.fromStep(await readFile(exported.path, "utf8"));
     try { assert.ok(shape.isValid()); near(shape.volume, volume); }
     finally { shape.dispose(); }
   }
   const after = await worker.call("get", { projectId: task.id });
-  assert.equal(after.sourceFile, before.sourceFile);
+  assert.equal(after.modelFile, before.modelFile);
   assert.equal(after.head, before.head);
   assert.deepEqual(after.revisions, before.revisions);
-  assert.equal(await readFile(join(directory, target.sourceFile), "utf8"), dirtySource);
+  assert.equal(await readFile(join(directory, target.modelFile), "utf8"), dirtySource);
 }));
 
 test("workspace rename preserves all sessions and geometry; metadata failures and interrupted moves roll back",{timeout:90000},()=>setup(async(worker,root,settings)=>{
@@ -123,7 +157,7 @@ test(
       let failed = false;
       const store = new Store(temporary, {
         write: (path, bytes) => {
-          if (path.endsWith("model.parameters.json") && !failed) {
+          if (path.endsWith("model.state.json") && !failed) {
             failed = true;
             throw new Error("injected write failure");
           }
@@ -143,28 +177,26 @@ test(
         (await store.dispatch("get", { projectId: task.id })).head,
         1,
       );
-      const original = await readFile(join(task.directory, "model.js"));
+      const original = await readFile(join(task.directory, "model.smp"));
       atomicWrite(
         store.journal,
         jsonBytes({
           phase: "prepared",
+          moves: [],
           files: [
             {
-              path: join(task.directory, "model.js"),
+              path: join(task.directory, "model.smp"),
+              rollbackPath: join(task.directory, "model.smp"),
               before: original.toString("base64"),
             },
           ],
         }),
       );
-      await writeFile(join(task.directory, "model.js"), "interrupted write");
+      await writeFile(join(task.directory, "model.smp"), "interrupted write");
       worker = createWorker({ dataDir: temporary });
       const recovered = await worker.call("get", { projectId: task.id });
       assert.equal(recovered.head, 1);
-      assert.equal(recovered.parameters.width, 20);
-      assert.equal(
-        await readFile(join(task.directory, "model.js"), "utf8"),
-        box,
-      );
+      near(recovered.design.metrics.sizeX, 20);
       assert.deepEqual(
         await readFile(join(task.directory, "model.smp")),
         before,

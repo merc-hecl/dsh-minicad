@@ -91,7 +91,7 @@ test(
     let worker = createWorker({ dataDir: root });
     try {
       const task = await worker.call("create");
-      const args = { projectId: task.id, sourceFile: "model.js" };
+      const args = { projectId: task.id, modelFile: "model.smp" };
       const source =
         "function build(p,cad){return cad.Box(p.width,20,8).cut(cad.Cylinder(3,10)).named('孔板');}";
       const built = await worker.call("build", {
@@ -151,7 +151,7 @@ test(
       const second = await worker.call("build", {
         ...args,
         expectedRevision: 1,
-        parameters: { width: 40 },
+        source, parameters: { width: 40 },
       });
       assert.deepEqual(second.design.geometryIds, defaultIdFormats);
       assert.equal(
@@ -215,11 +215,12 @@ test("numbering changes commit a restorable revision without rebuilding the mode
     await rm(root, { recursive: true, force: true });
   });
   const task = await worker.call("create");
-  const args = { projectId: task.id, sourceFile: "model.js" };
+  const args = { projectId: task.id, modelFile: "model.smp" };
   const source = "function build(p,cad){return cad.Box(p.width,20,8).named('底板');}";
   const built = await worker.call("build", { ...args, source, parameters: { width: 30 }, expectedRevision: 0 });
-  const workingFile = join(built.directory, args.sourceFile);
-  const draft = "// Unfinished draft";
+  const workingFile = join(built.directory, args.modelFile);
+  const original = await readFile(workingFile);
+  const draft = "externally modified SMP";
   await writeFile(workingFile, draft);
   const setFormats = (expectedRevision, formats) => worker.call("set_geometry_id_format", {
     ...args, expectedRevision, summary: "Change face and edge numbering", ...formats,
@@ -241,8 +242,8 @@ test("numbering changes commit a restorable revision without rebuilding the mode
   await assert.rejects(setFormats(1, { edgeFormat: "Line-{n}" }), { status: 409 });
   assert.equal((await setFormats(2, { edgeFormat: "Edge-{n:3}" })).committed, false);
 
-  await writeFile(workingFile, source);
-  const rebuilt = await worker.call("update_parameters", { ...args, expectedRevision: 2, parameters: { width: 40 } });
+  await writeFile(workingFile, original);
+  const rebuilt = await worker.call("build", { ...args, expectedRevision: 2, source, parameters: { width: 40 } });
   assert.equal(rebuilt.head, 3);
   assert.equal((await query(3, "faces"))[0].displayId, "Face-001");
   const restored = await worker.call("restore", { ...args, expectedRevision: 3, revision: 1 });

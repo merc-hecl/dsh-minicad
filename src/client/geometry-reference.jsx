@@ -13,7 +13,7 @@ function GeometryReference({ node }) {
     <span>
       <ReferenceChip
         label={`${item.label} · v${item.expectedRevision}`}
-        title={`${item.sourceFile}\n${item.reference}`}
+        title={`${item.modelFile}\n${item.reference}`}
       />
       {item.note && <span> — {item.note}</span>}
     </span>

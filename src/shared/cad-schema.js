@@ -9,10 +9,10 @@ export const object = (properties, required = Object.keys(properties)) => ({
 });
 export const text = { type: "string", minLength: 1 };
 export const revision = { type: "integer", minimum: 0 };
-export const sourceFile = {
+export const modelFile = {
   ...text,
   description:
-    "Task-relative JavaScript model file returned by cad_read_project. Does not change the UI selection.",
+    "Design-relative SMP model file returned by cad_read_project, e.g. model.smp. Does not change the UI selection.",
 };
 const parameter = object({ parameter: text });
 const number = (rules = {}) => ({
@@ -198,6 +198,14 @@ const operationDescriptions = {
   rename: "Assign a mandatory, meaningful name to one solid. Use part for an assembly member or target for one solid in a multi-solid Part. Name every final solid before publishing. An assembly is only a collection and needs no overall name. Geometry and IDs are unchanged.",
 };
 const operationGroups = [
+  {
+    description: 'Manage independent parts without merging their geometry. Create an assembly with add_part; add every member with a stable id and meaningful name. copy_part preserves the source and places an independent copy.',
+    operations: [
+      object({ op: { const: "add_part" }, id: text, name: text, tool: primitiveSchema }),
+      object({ op: { const: "remove_part" }, part: text }),
+      object({ op: { const: "copy_part" }, part: text, id: text, name: text, ...placement }, ["op", "part", "id", "name"]),
+    ],
+  },
   {
     description: 'Create and combine solids. Use a wire profile for a closed outline made of lines and circular arcs. For a round hole, use {"op":"cut","tool":{"shape":"cylinder","radius":2.5,"height":12}}.',
     operations: [

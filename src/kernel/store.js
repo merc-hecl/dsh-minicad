@@ -12,7 +12,7 @@ import {
   sep,
 } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { zipSync, strToU8 } from "fflate";
+import { zipSync } from "fflate";
 import {
   atomicWrite,
   fileBytes,
@@ -31,7 +31,6 @@ const id = () => randomUUID().replaceAll("-", "");
 const portable = (path) => path.split(sep).join("/");
 const stem = (name) => name.slice(0, -extname(name).length);
 const nextRevision = (model) => (model?.revisions.at(-1)?.revision ?? 0) + 1;
-const candidateRevision = (run) => run.candidateRevision ?? run.baseRevision + 1;
 const cleanName = (name) =>
   String(name)
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
@@ -57,16 +56,15 @@ function modelPath(root, name) {
   if (
     typeof name !== "string" ||
     isAbsolute(name) ||
-    !name.endsWith(".js") ||
+    !name.endsWith(".smp") ||
     name.split(/[/\\]/).some((part) => part.startsWith("."))
   )
-    throw localizedError("建模文件必须是工作目录内的 JavaScript 文件", "Choose a JavaScript modeling file within the working directory");
+    throw localizedError("模型文件必须是工作目录内的 SMP 文件", "Choose an SMP model file within the working directory");
   return inside(root, name);
 }
 function paths(root, name) {
-  const source = modelPath(root, name),
-    base = stem(source);
-  return [source, `${base}.parameters.json`, `${base}.smp`];
+  const solid = modelPath(root, name);
+  return [solid, `${stem(solid)}.state.json`];
 }
 function availableDirectory(root, title, current) {
   let name = cleanName(title).slice(0, 80);
@@ -107,13 +105,13 @@ export class Store {
     if (!fs.existsSync(this.journal)) return;
     const pending = readJson(this.journal);
     if (pending.phase !== "committed") {
-      for (const move of (pending.moves || []).toReversed())
+      for (const move of pending.moves.toReversed())
         if (fs.existsSync(move.to) && (!fs.existsSync(move.from) ||
           (process.platform === "win32" && move.from !== move.to && move.from.toLowerCase() === move.to.toLowerCase())))
           fs.renameSync(move.to, move.from);
       for (const item of pending.files.reverse())
         atomicWrite(
-          item.rollbackPath || item.path,
+          item.rollbackPath,
           item.before === null ? null : Buffer.from(item.before, "base64"),
         );
     }
@@ -148,12 +146,15 @@ export class Store {
   }
   readWorkspace(root) {
     const task = readJson(this.designFile(root));
-    if (task.version !== 1 || !task.id || !task.models || !Array.isArray(task.sessions))
+    if (task.version !== 2 || !task.id || !task.models || !Array.isArray(task.sessions))
       throw localizedError("设计元数据无效", "invalid design metadata");
     return { id: task.id, updated: task.updated, projects: { [task.id]: task } };
   }
   workspaces() {
-    return this.registered().filter(path => fs.existsSync(path)).map(root => [root, this.readWorkspace(root)]);
+    return this.registered().flatMap(root => {
+      try { return [[root, this.readWorkspace(root)]]; }
+      catch { return []; } // One unreadable design must not block the other registered designs.
+    });
   }
   locate(key) {
     for (const [root, data] of this.workspaces())
@@ -161,10 +162,10 @@ export class Store {
     throw localizedError("设计任务不存在", "Design not found");
   }
   row(root, task) {
-    const model = task.models[task.sourceFile] || {};
+    const model = task.models[task.modelFile] || {};
     return { id: task.id, title: task.title, activeSessionId: task.activeSessionId, sessions: task.sessions,
       head: model.head || 0, created: task.created, updated: Math.max(task.updated, model.updated || 0),
-      directory: root, sourceFile: task.sourceFile, has_messages: Boolean(task.started) };
+      directory: root, modelFile: task.modelFile, has_messages: Boolean(task.started) };
   }
   saveWorkspace(root, data) { this.write(this.designFile(root), this.workspaceBytes(data)); }
   managedDirectory(title) {
@@ -182,8 +183,8 @@ export class Store {
     if (known.includes(root)) return this.project(Object.values(this.readWorkspace(root).projects)[0].id);
     const file = this.designFile(root), time = now();
     const task = fs.existsSync(file) ? Object.values(this.readWorkspace(root).projects)[0] : {
-      version: 1, id: id(), title: title || basename(root), created: time, updated: time,
-      models: {}, sourceFile: "model.js", sessions: [], activeSessionId: null, started: false, attachments: [],
+      version: 2, id: id(), title: title || basename(root), created: time, updated: time,
+      models: {}, modelFile: "model.smp", sessions: [], activeSessionId: null, started: false, attachments: [],
     };
     if (this.workspaces().some(([, other]) => other.id === task.id)) {
       task.id = id(); task.sessions = []; task.activeSessionId = null;
@@ -192,9 +193,9 @@ export class Store {
       [this.registry, jsonBytes({ version: 1, paths: [root, ...known] })]]));
     return this.project(task.id);
   }
-  snapshot(key, revision, sourceFile) {
+  snapshot(key, revision, modelFile) {
     const [root, , task] = this.locate(key),
-      model = task.models[sourceFile || task.sourceFile] || {},
+      model = task.models[modelFile || task.modelFile] || {},
       number = revision === undefined ? model.head || 0 : Number(revision);
     if (!number) return null;
     const entry = (model.revisions || []).find(
@@ -204,78 +205,37 @@ export class Store {
     const folder = inside(root, entry.folder);
     return { folder, state: readJson(join(folder, "state.json")) };
   }
-  project(key, sourceFile) {
+  project(key, modelFile) {
     const [root, , storedTask] = this.locate(key),
       task =
-        sourceFile === undefined
+        modelFile === undefined
           ? storedTask
           : {
               ...storedTask,
-              sourceFile: portable(
+              modelFile: portable(
                 relative(
                   root,
-                  modelPath(root, sourceFile),
+                  modelPath(root, modelFile),
                 ),
               ),
             },
       result = this.row(root, task),
       directory = result.directory,
-      saved = this.snapshot(key, undefined, task.sourceFile),
+      saved = this.snapshot(key, undefined, task.modelFile),
       state = saved?.state || null;
-    const [source, parameter] = paths(directory, task.sourceFile),
-      sourceData = fileBytes(source),
-      parameterData = fileBytes(parameter);
+    const working = paths(directory, task.modelFile);
     result.workspaceDirectory = directory;
-    result.selectedSourceFile = storedTask.sourceFile;
-    result.models = Object.entries(task.models).map(([sourceFile, model]) => ({
-      sourceFile,
-      head: model.head,
-    }));
-    result.source = sourceData?.toString("utf8") ?? state?.source ?? "";
-    try {
-      result.parameters = parameterData
-        ? JSON.parse(parameterData)
-        : state?.parameters || {};
-      if (
-        !result.parameters ||
-        Array.isArray(result.parameters) ||
-        typeof result.parameters !== "object"
-      )
-        throw new Error();
-    } catch {
-      result.parameters = null;
-      result.workingError = "parameters 必须是 JSON 对象";
-    }
-    result.sourceVersion = createHash("sha256")
-      .update(sourceData || "")
-      .update("\0")
-      .update(parameterData || "")
-      .digest("hex");
-    result.workingTreeChanged = Boolean(
-      state &&
-      (!sourceData ||
-        !parameterData ||
-        result.source !== state.source ||
-        JSON.stringify(result.parameters) !== JSON.stringify(state.parameters)),
-    );
-    for (const name of state?.assets || []) {
-      const digest = hashFile(inside(directory, name));
-      result.sourceVersion += digest ?? createHash("sha256").digest("hex");
-      if (digest !== hashFile(inside(saved.folder, name)))
-        result.workingTreeChanged = true;
-    }
+    result.selectedModelFile = storedTask.modelFile;
+    result.models = Object.entries(task.models).map(([modelFile, model]) => ({ modelFile, head: model.head }));
+    result.modelVersion = working.map(path => hashFile(path) || "missing").join(":");
+    result.workingTreeChanged = Boolean(saved && working.some((path, index) =>
+      hashFile(path) !== hashFile(join(saved.folder, ["model.smp", "state.json"][index]))));
     if (state) {
-      state.source = result.source;
-      if (result.parameters !== null) state.parameters = result.parameters;
-      state.geometryIds ||= { ...defaultIdFormats };
-      state.geometryScope = createHash("sha256")
-        .update(`${key}\0${task.sourceFile}`)
-        .digest("hex")
-        .slice(0, 24);
+      state.geometryScope = createHash("sha256").update(`${key}\0${task.modelFile}`).digest("hex").slice(0, 24);
     }
     result.design = state;
     result.revisions = [
-      ...(task.models[task.sourceFile]?.revisions || []),
+      ...(task.models[task.modelFile]?.revisions || []),
     ].sort((a, b) => b.revision - a.revision);
     result.attachments = (task.attachments || []).map(
       ({ path, ...entry }) => entry,
@@ -298,20 +258,20 @@ export class Store {
       "model.smp", saved.state.parts, saved.state.entities,
     );
   }
-  prepareInputs(directory, sourceFile) {
+  prepareInputs(directory, modelFile) {
     return new Map(
-      paths(directory, sourceFile).map((path) => [path, fileBytes(path)]),
+      paths(directory, modelFile).map((path) => [path, fileBytes(path)]),
     );
   }
   record(
     key,
-    sourceFile,
+    modelFile,
     state,
     binary,
     summary,
     expected,
     inputs,
-    assets = new Map(),
+    materials = new Map(),
     {
       selectModel = true,
       extraFiles = new Map(),
@@ -321,14 +281,14 @@ export class Store {
   ) {
     const [root, data, task] = this.locate(key),
       directory = root;
-    const model = task.models[sourceFile] || { head: 0, revisions: [] };
+    const model = task.models[modelFile] || { head: 0, revisions: [] };
     this.expect(model.head, { expectedRevision: expected });
     if (inputs)
       for (const [path, bytes] of inputs)
         if (!equalBytes(fileBytes(path), bytes)) throw new Conflict();
     const revision = nextRevision(model),
       time = now(),
-      history = inside(directory, `.cad-history/${portable(stem(sourceFile))}`);
+      history = inside(directory, `.cad-history/${portable(stem(modelFile))}`);
     let folder = join(history, `v${String(revision).padStart(4, "0")}`),
       suffix = 2;
     while (fs.existsSync(folder))
@@ -345,37 +305,31 @@ export class Store {
       summary: String(summary || "更新设计").slice(0, 200),
       created: time,
     });
-    task.models[sourceFile] = model;
-    if (selectModel) task.sourceFile = sourceFile;
+    task.models[modelFile] = model;
+    if (selectModel) task.modelFile = modelFile;
     task.started = true;
     task.updated = data.updated = time;
     state.revision = revision;
     state.parent = expected || null;
-    state.sourceFile = sourceFile;
+    state.modelFile = modelFile;
     const preview = previewBytes ?? encodePreview(state.preview);
     state.preview = {
       ...previewInfo(preview),
       digest: createHash("sha256").update(preview).digest("hex"),
     };
-    const [source, parameters, solid] = paths(directory, sourceFile),
+    const [solid, metadata] = paths(directory, modelFile),
       changes = new Map([
         [join(folder, "preview.bin"), preview],
-        [join(folder, "model.js"), Buffer.from(state.source)],
-        [join(folder, "parameters.json"), jsonBytes(state.parameters)],
         [join(folder, "model.smp"), binary],
         [join(folder, "state.json"), jsonBytes(state)],
       ]);
     if (writeWorkingFiles) {
-      changes.set(source, Buffer.from(state.source));
-      changes.set(parameters, jsonBytes(state.parameters));
       changes.set(solid, binary);
+      changes.set(metadata, jsonBytes(state));
+    } else if (equalBytes(fileBytes(metadata), jsonBytes(this.snapshot(key, expected, modelFile).state))) {
+      changes.set(metadata, jsonBytes(state));
     }
-    for (const name of state.assets || []) {
-      const target = inside(directory, name),
-        bytes = assets.get(name) || fs.readFileSync(target);
-      if (writeWorkingFiles) changes.set(target, bytes);
-      changes.set(inside(folder, name), bytes);
-    }
+    for (const [name, bytes] of materials) changes.set(inside(folder, name), bytes);
     changes.set(this.designFile(root), this.workspaceBytes(data));
     for (const [path, bytes] of extraFiles) changes.set(path, bytes);
     this.commit(changes);
@@ -384,12 +338,12 @@ export class Store {
   async build(key, args, edit = false) {
     const [root, , task] = this.locate(key);
     const directory = root;
-    const sourceFile = portable(relative(directory, modelPath(directory, args.sourceFile || task.sourceFile)));
-    const head = task.models[sourceFile]?.head || 0;
+    const modelFile = portable(relative(directory, modelPath(directory, args.modelFile || task.modelFile)));
+    const head = task.models[modelFile]?.head || 0;
     this.expect(head, args);
-    const saved = this.snapshot(key, undefined, sourceFile);
-    const journal = new ProcessJournal(directory, sourceFile);
-    const run = journal.begin(sourceFile, head, nextRevision(task.models[sourceFile]), args.summary, saved?.state.geometryIds || defaultIdFormats);
+    const saved = this.snapshot(key, undefined, modelFile);
+    const journal = new ProcessJournal(directory, modelFile);
+    const run = journal.begin(modelFile, head, nextRevision(task.models[modelFile]), args.summary, saved ? saved.state.geometryIds : defaultIdFormats);
     try {
       const result = await this.executeBuild(key, args, edit, journal, run, saved);
       return result;
@@ -405,158 +359,100 @@ export class Store {
     }
   }
   async executeBuild(key, args, edit, journal, run, saved) {
-    const [root, , task] = this.locate(key),
-      directory = root,
-      sourceFile = portable(
-        relative(
-          directory,
-          modelPath(directory, args.sourceFile || task.sourceFile),
-        ),
-      );
-    const head = task.models[sourceFile]?.head || 0;
+    const [directory, , task] = this.locate(key);
+    const modelFile = portable(relative(directory, modelPath(directory, args.modelFile || task.modelFile)));
+    const head = task.models[modelFile]?.head || 0;
     this.expect(head, args);
-    const inputs = this.prepareInputs(directory, sourceFile),
-      [sourcePath, parameterPath] = paths(directory, sourceFile),
-      api = await this.kernel();
-    let source = args.source ?? inputs.get(sourcePath)?.toString("utf8") ?? "",
-      parameters;
-    if (
-      args.parameterMode !== undefined &&
-      !["merge", "replace"].includes(args.parameterMode)
-    )
-      throw localizedError("不支持的参数更新模式", "unsupported parameter mode");
-    try {
-      const previous =
-        args.parameterMode === "replace" ||
-        (args.parameterMode !== "merge" && args.parameters !== undefined)
-          ? {}
-          : JSON.parse(inputs.get(parameterPath) || "{}");
-      if (!previous || typeof previous !== "object" || Array.isArray(previous))
-        throw localizedError("parameters 必须是 JSON 对象", "parameters must be a JSON object");
-      if (
-        args.parameters !== undefined &&
-        (!args.parameters ||
-          typeof args.parameters !== "object" ||
-          Array.isArray(args.parameters))
-      )
-        throw localizedError("parameters 必须是 JSON 对象", "parameters must be a JSON object");
-      parameters =
-        args.parameterMode === "merge"
-          ? { ...previous, ...args.parameters }
-          : (args.parameters ?? previous);
-    } catch {
-      throw localizedError("parameters 必须是 JSON 对象", "parameters must be a JSON object");
-    }
-    if (
-      !parameters ||
-      typeof parameters !== "object" ||
-      Array.isArray(parameters)
-    )
+    if (saved && !args.file && this.project(key, modelFile).workingTreeChanged)
+      throw new Conflict("模型工作文件已修改，请先导入或保存修改", "Import or save the modified model working files first.");
+    const api = await this.kernel(), inputs = this.prepareInputs(directory, modelFile);
+    const parameters = args.parameters ?? {};
+    if (!parameters || typeof parameters !== "object" || Array.isArray(parameters))
       throw localizedError("parameters 必须是 JSON 对象", "parameters must be a JSON object");
     jsonBytes(parameters);
-    const assets = new Map();
-    let shape,
-      operations;
-    if (edit) {
-      if (saved && this.project(key, sourceFile).workingTreeChanged)
-        throw new Conflict("源码或参数已修改，请先构建工作文件再进行局部编辑", "Build the modified source or parameters before editing geometry.");
-      shape = saved ? await this.shape(saved) : null;
-      if (saved)
-        for (const name of saved.state.assets || [])
-          assets.set(name, fs.readFileSync(inside(directory, name)));
-      operations = api.normalizeOperations(
-        args.operations,
-        shape,
-        head,
-        api.modelScope(key, sourceFile),
-      );
-    } else {
-      if (!source.trim() || source.length > 2 * 1024 * 1024)
-        throw new Error(
-          "需要定义 build(parameters, cad) 函数的 JavaScript 建模源码",
-        );
-      if (saved?.state.assets)
-        for (const name of saved.state.assets)
-          assets.set(name, fs.readFileSync(inside(directory, name)));
+    const base = args.baseModelFile ? this.snapshot(key, args.baseRevision, args.baseModelFile) : saved;
+    const resources = {}, materials = new Map();
+    const operation = { tool: args.file ? "cad_import" : edit ? "cad_edit" : "cad_build", kernel: api.kernelName,
+      inputModel: args.baseModelFile || modelFile, inputRevision: base?.state.revision || 0,
+      ...(args.part ? { part: args.part } : {}),
+      ...(edit ? { operations: args.operations, ...(args.parameters !== undefined ? { parameters } : {}) } : {}),
+      ...(args.file ? { file: args.file, ...(args.metadataFile ? { metadataFile: args.metadataFile } : {}) } : {}),
+      ...(args.checks ? { checks: api.values(args.checks, parameters) } : {}) };
+    materials.set("operations.json", jsonBytes(operation));
+    if (!edit && !args.file) {
+      if (typeof args.source !== "string" || !args.source.trim() || args.source.length > 2 * 1024 * 1024)
+        throw localizedError("请提供定义 build(parameters, cad) 的建模源码", "Provide source defining build(parameters, cad)");
+      materials.set("build/source.js", Buffer.from(args.source));
+      if (args.parameters !== undefined) materials.set("build/parameters.json", jsonBytes(parameters));
+      if (base) {
+        materials.set("build/base.smp", fs.readFileSync(join(base.folder, "model.smp")));
+        materials.set("build/base.state.json", jsonBytes(base.state));
+      }
     }
-    const resources = Object.fromEntries(assets);
-    for (const [name, bytes] of assets)
-      inputs.set(inside(directory, name), bytes);
-    const checkpoint = (part, label, operation) => {
-      // Invalid/open intermediate construction is never shown as a valid solid.
-      const description = api.describeShape(part);
-      journal.capture(run, description, label, operation);
-      return part;
-    };
+    journal.saveMaterials(run, materials);
     const resourceRead = (name, bytes) => {
       const path = inside(directory, name);
-      if (paths(directory, sourceFile).includes(path))
-        throw localizedError("模型资源不能引用当前建模输出文件", "Model resources cannot reference the current build output");
       if (!inputs.has(path)) inputs.set(path, bytes);
+      const nameInArchive = `${operation.tool === "cad_build" ? "build/" : ""}inputs/${portable(relative(directory, path))}`;
+      if (materials.has(nameInArchive)) return;
+      materials.set(nameInArchive, bytes);
+      journal.saveMaterials(run, new Map([[nameInArchive, bytes]]));
     };
-    const build = (capture) => api.buildShape(
-      source, parameters, inside(directory, sourceFile), resources, resourceRead,
-      directory, capture, (...args) => journal.log(run, format(...args)),
-    );
-    if (edit) {
-      // Parameter changes must regenerate existing features. Ordinary edits use
-      // the saved exact solid; replay remains available in the appended source.
-      if (saved ? !isDeepStrictEqual(parameters, saved.state.parameters) : source.trim())
-        shape = await build();
-      shape = api.editShape(shape, operations, parameters, {
-        readModel: name => api.readModel(directory, name, resources, resourceRead),
-        checkpoint,
+    for (const name of args.inputs || []) resourceRead(name, fs.readFileSync(inside(directory, name)));
+    const checkpoint = (part, label, operation) => {
+      journal.capture(run, api.describeShape(part), label, operation);
+      return part;
+    };
+    let shape = base ? await this.shape(base) : null;
+    if (args.file) {
+      const bytes = fs.readFileSync(inside(directory, args.file));
+      resourceRead(args.file, bytes);
+      let metadata;
+      if (args.metadataFile) {
+        const bytes = fs.readFileSync(inside(directory, args.metadataFile));
+        resourceRead(args.metadataFile, bytes);
+        metadata = JSON.parse(bytes);
+      }
+      shape = api.readShape(bytes, args.file, metadata?.parts, metadata?.entities);
+      if (metadata?.geometryIds) run.geometryIds = metadata.geometryIds;
+    } else if (edit) {
+      const operations = api.normalizeOperations(api.values(args.operations, parameters), shape,
+        base?.state.revision || 0, api.modelScope(key, args.baseModelFile || modelFile));
+      shape = api.editShape(shape, operations, {}, {
+        readModel: name => api.readModel(directory, name, resources, resourceRead), checkpoint,
       });
-      source = api.editSource(source, operations, head);
-    } else shape = await build(checkpoint);
-    for (const [name, bytes] of Object.entries(resources))
-      assets.set(name, bytes);
-    const state = {
-      ...api.describeShape(shape),
-      geometryIds: run.geometryIds,
-      source,
-      parameters,
-      operations: operations || [],
-      assets: [...assets.keys()],
-    };
+    } else {
+      const current = args.part ? shape.part(args.part).shape : shape;
+      const result = await api.buildShape(args.source, parameters, inside(directory, "build.js"), resources,
+        resourceRead, directory, checkpoint, (...args) => journal.log(run, format(...args)), current);
+      shape = args.part ? api.replacePart(shape, args.part, result) : result;
+    }
+    const state = { ...api.describeShape(shape), formatVersion: 2, unit: "mm", geometryIds: run.geometryIds };
     if (args.commit !== false) api.requireNames(shape);
     journal.capture(run, state, "", "result");
     journal.finish(run, "validating");
-    const scope = args.commit === false ? api.modelScope(key, `${sourceFile}@${run.id}`) : api.modelScope(key, sourceFile);
-    state.validation = args.checks?.length ? {
-      checks: args.checks,
-      ...api.checkShape(shape, api.values(args.checks, parameters), scope, run.candidateRevision),
-    } : { passed: null, checks: [], results: [] };
+    const scope = api.modelScope(key, args.commit === false ? `${modelFile}@${run.id}` : modelFile);
+    const checks = api.values(args.checks || [], parameters);
+    state.validation = checks.length ? { checks, ...api.checkShape(shape, checks, scope, run.candidateRevision) }
+      : { passed: null, checks: [], results: [] };
     const diagnostics = { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean) };
     if (args.commit === false) {
-      journal.saveCandidate(run, state, api.saveShape(shape), inputs, assets);
-      return { sourceFile, head, committed: false, runId: run.id, metrics: state.metrics,
-        validation: state.validation, diagnostics };
+      journal.saveCandidate(run, state, api.saveShape(shape), inputs);
+      return { modelFile, head, committed: false, runId: run.id, metrics: state.metrics, validation: state.validation, diagnostics };
     }
     if (state.validation.passed === false)
       throw Object.assign(localizedError("尺寸检查未通过，当前版本未被覆盖", "dimensional checks failed; saved revision retained"), { validation: state.validation });
     const finishedRun = { ...run, phase: "done", committedRevision: run.candidateRevision, updated: now() };
-    this.record(
-      key,
-      sourceFile,
-      state,
-      api.saveShape(shape),
-      args.summary,
-      head,
-      inputs,
-      assets,
-      {
-        selectModel: !args.preserveSelection,
-        extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finishedRun)]]),
-      },
-    );
-    return { ...this.project(key, sourceFile), committed: true, diagnostics };
+    this.record(key, modelFile, state, api.saveShape(shape), args.summary, head, inputs, materials, {
+      selectModel: !args.preserveSelection, extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finishedRun)]]),
+    });
+    return { ...this.project(key, modelFile), committed: true, diagnostics };
   }
   async commitCandidate(key, args) {
     const [root, , task] = this.locate(key), directory = root;
-    const journal = new ProcessJournal(directory, args.sourceFile);
-    const candidate = journal.candidate(args.runId), { run, state, folder, inputs, assets } = candidate;
-    const model = task.models[args.sourceFile];
+    const journal = new ProcessJournal(directory, args.modelFile);
+    const candidate = journal.candidate(args.runId), { run, state, folder, inputs, materials } = candidate;
+    const model = task.models[args.modelFile];
     this.expect(model?.head || 0, args);
     this.expect(run.baseRevision, args);
     if (run.phase !== "preview") throw new Conflict();
@@ -567,50 +463,50 @@ export class Store {
     api.requireNames(shape);
     state.validation = checks.length ? { checks, ...api.checkShape(
       shape,
-      api.values(checks, state.parameters), api.modelScope(key, `${args.sourceFile}@${run.id}`), candidateRevision(run),
+      checks, api.modelScope(key, `${args.modelFile}@${run.id}`), run.candidateRevision,
     ) } : { passed: null, checks: [], results: [] };
     if (state.validation.passed === false)
       throw Object.assign(localizedError("尺寸检查未通过，当前版本未被覆盖", "dimensional checks failed; saved revision retained"), { validation: state.validation });
-    state.preview = candidate.preview();
+    state.preview = api.previewShape(shape);
     const finished = { ...run, phase: "done", committedRevision: nextRevision(model), updated: now() };
-    this.record(key, args.sourceFile, state, fs.readFileSync(join(folder, "model.smp")),
-      args.summary || run.summary, run.baseRevision, inputs, assets, {
+    this.record(key, args.modelFile, state, fs.readFileSync(join(folder, "model.smp")),
+      args.summary || run.summary, run.baseRevision, inputs, materials, {
         selectModel: !args.preserveSelection,
         extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finished)], [journal.index, jsonBytes({ id: run.id })]]),
       });
-    return { ...this.project(key, args.sourceFile), committed: true,
+    return { ...this.project(key, args.modelFile), committed: true,
       diagnostics: { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean) } };
   }
-  async setGeometryIdFormat(key, sourceFile, head, args) {
+  async setGeometryIdFormat(key, modelFile, head, args) {
     this.expect(head, args);
-    const saved = this.snapshot(key, head, sourceFile);
+    const saved = this.snapshot(key, head, modelFile);
     if (!saved) throw localizedError("请先完成建模", "build a model first");
     if (args.faceFormat === undefined && args.edgeFormat === undefined)
       throw localizedError("请提供面或边的编号格式", "supply a face or edge ID format");
-    const current = saved.state.geometryIds || defaultIdFormats;
+    const current = saved.state.geometryIds;
     const geometryIds = { ...current };
     for (const name of ["faceFormat", "edgeFormat"]) {
       if (args[name] === undefined) continue;
       validateIdFormat(args[name]);
       geometryIds[name] = args[name];
     }
-    if (isDeepStrictEqual(geometryIds, current)) return { sourceFile, head, committed: false, geometryIds };
+    if (isDeepStrictEqual(geometryIds, current)) return { modelFile, head, committed: false, geometryIds };
 
-    const { path } = await this.dispatch("preview_file", { projectId: key, sourceFile, revision: head });
-    // Reading a legacy preview may have upgraded its saved metadata.
-    const state = this.snapshot(key, head, sourceFile).state;
+    const { path } = await this.dispatch("preview_file", { projectId: key, modelFile, revision: head });
+    // Preview regeneration may have refreshed the cache metadata.
+    const state = this.snapshot(key, head, modelFile).state;
     state.geometryIds = geometryIds;
-    const assets = new Map((state.assets || []).map(name => [name, fs.readFileSync(inside(saved.folder, name))]));
-    const revision = this.record(key, sourceFile, state, fs.readFileSync(join(saved.folder, "model.smp")),
-      args.summary, head, undefined, assets, {
+    const materials = new Map([["operations.json", jsonBytes({ tool: "cad_set_geometry_id_format", inputRevision: head, geometryIds })]]);
+    const revision = this.record(key, modelFile, state, fs.readFileSync(join(saved.folder, "model.smp")),
+      args.summary, head, undefined, materials, {
         selectModel: false,
         writeWorkingFiles: false,
         previewBytes: fs.readFileSync(path),
       });
-    return { sourceFile, head: revision, committed: true, geometryIds };
+    return { modelFile, head: revision, committed: true, geometryIds };
   }
   async export(key, args) {
-    const saved = this.snapshot(key, args.revision, args.sourceFile);
+    const saved = this.snapshot(key, args.revision, args.modelFile);
     if (!saved) throw localizedError("请先完成建模", "Build a model first");
     const api = await this.kernel(),
       fullShape = await this.shape(saved),
@@ -629,26 +525,12 @@ export class Store {
         break;
       case "zip": {
         if (args.part) throw localizedError("零件导出请选择 STEP、STL 或 SMP", "use STEP, STL or SMP for a part");
-        const sourceFile = state.sourceFile || task.sourceFile;
-        const archive = {
-          [sourceFile]: strToU8(state.source),
-          [`${stem(sourceFile)}.parameters.json`]: jsonBytes(state.parameters),
-          [`${stem(sourceFile)}.smp`]: fs.readFileSync(
-            join(saved.folder, "model.smp"),
-          ),
-          "project.json": jsonBytes({
-            title: task.title,
-            revision: Number(args.revision),
-            unit: "mm",
-            kernel: state.kernel,
-            geometryIds: state.geometryIds || defaultIdFormats,
-            validation: state.validation || null,
-            parts: state.parts,
-            entities: state.entities,
-          }),
-        };
-        for (const asset of state.assets || [])
-          archive[asset] = fs.readFileSync(inside(saved.folder, asset));
+        const archive = {};
+        for (const entry of fs.readdirSync(saved.folder, { recursive: true, withFileTypes: true })) {
+          if (!entry.isFile()) continue;
+          const file = join(entry.parentPath, entry.name);
+          archive[portable(relative(saved.folder, file))] = fs.readFileSync(file);
+        }
         bytes = Buffer.from(zipSync(archive));
         mediaType = "application/zip";
         break;
@@ -658,7 +540,7 @@ export class Store {
     }
     const path = inside(
       root,
-      `exports/${portable(stem(state.sourceFile || task.sourceFile))}/${name}.${args.format}`,
+      `exports/${portable(stem(state.modelFile))}/${name}.${args.format}`,
     );
     this.write(path, bytes);
     return {
@@ -667,20 +549,20 @@ export class Store {
       mediaType,
       data: bytes.toString("base64"),
       revision: Number(args.revision),
-      sourceFile: state.sourceFile || task.sourceFile,
+      modelFile: state.modelFile,
     };
   }
   async variants(key, args) {
-    const base = this.snapshot(key, undefined, args.sourceFile);
+    const base = this.snapshot(key, undefined, args.modelFile);
     this.expect(base?.state.revision || 0, args);
     if (!base) throw localizedError("请先完成建模", "build a model first");
-    if (this.project(key, args.sourceFile).workingTreeChanged)
-      throw new Conflict("请先构建工作文件", "Build the working files first.");
+    if (this.project(key, args.modelFile).workingTreeChanged)
+      throw new Conflict("模型工作文件已修改，请先保存或导入修改", "Save or import the modified model working files first.");
     if (!Array.isArray(args.variants) || !args.variants.length || args.variants.length > 20)
       throw localizedError("请提供 1 至 20 个规格", "provide 1–20 variants");
     const [root, , task] = this.locate(key), directory = root, seen = new Set();
     for (const variant of args.variants) {
-      const name = portable(relative(directory, modelPath(directory, variant.sourceFile)));
+      const name = portable(relative(directory, modelPath(directory, variant.modelFile)));
       const normalized = process.platform === "win32" ? name.toLowerCase() : name;
       if (seen.has(normalized) || task.models[name] || paths(directory, name).some(path => fs.existsSync(path)))
         throw localizedError("规格文件已存在或重复", "variant file exists or is duplicated", `: ${name}`);
@@ -690,22 +572,22 @@ export class Store {
     // remain individually durable; errors report which files were already saved.
     const candidates = [];
     for (const variant of args.variants) {
-      const result = await this.build(key, { sourceFile: variant.sourceFile, expectedRevision: 0,
-        source: base.state.source, parameters: { ...base.state.parameters, ...variant.parameters },
-        checks: variant.checks, summary: variant.name || variant.sourceFile, commit: false, preserveSelection: true });
-      if (result.validation.passed === false) throw localizedError("规格检查失败", "variant checks failed", `: ${variant.sourceFile}`);
+      const result = await this.build(key, { modelFile: variant.modelFile, expectedRevision: 0,
+        baseModelFile: args.modelFile, baseRevision: args.expectedRevision, operations: variant.operations, parameters: variant.parameters,
+        checks: variant.checks, summary: variant.name || variant.modelFile, commit: false, preserveSelection: true }, true);
+      if (result.validation.passed === false) throw localizedError("规格检查失败", "variant checks failed", `: ${variant.modelFile}`);
       candidates.push({ ...variant, runId: result.runId });
     }
     const items = [];
     try {
       for (const variant of candidates) {
-        const result = await this.commitCandidate(key, { sourceFile: variant.sourceFile, expectedRevision: 0,
-          runId: variant.runId, summary: variant.name || variant.sourceFile, preserveSelection: true });
-        const item = { sourceFile: variant.sourceFile, revision: result.head, name: variant.name,
-          parameters: result.parameters, metrics: result.design.metrics, exports: [] };
+        const result = await this.commitCandidate(key, { modelFile: variant.modelFile, expectedRevision: 0,
+          runId: variant.runId, summary: variant.name || variant.modelFile, preserveSelection: true });
+        const item = { modelFile: variant.modelFile, revision: result.head, name: variant.name,
+          metrics: result.design.metrics, exports: [] };
         items.push(item);
         for (const format of args.formats || []) {
-          const { path, name } = await this.export(key, { sourceFile: variant.sourceFile, revision: result.head, format });
+          const { path, name } = await this.export(key, { modelFile: variant.modelFile, revision: result.head, format });
           item.exports.push({ path, name, format });
         }
       }
@@ -713,7 +595,7 @@ export class Store {
       appendErrorDetail(error, "已保存规格", "Saved variants", `: ${JSON.stringify(items)}`);
       throw error;
     }
-    return { sourceFile: args.sourceFile, revision: args.expectedRevision, items };
+    return { modelFile: args.modelFile, revision: args.expectedRevision, items };
   }
   async dispatch(method, args = {}) {
     if (method === "api") return readApi(args);
@@ -748,25 +630,25 @@ export class Store {
     const key = String(args.projectId),
       [root, data, task] = this.locate(key),
       directory = root,
-      sourceFile =
-        args.sourceFile === undefined
-          ? task.sourceFile
+      modelFile =
+        args.modelFile === undefined
+          ? task.modelFile
           : portable(
-              relative(directory, modelPath(directory, args.sourceFile)),
+              relative(directory, modelPath(directory, args.modelFile)),
             ),
-      row = this.row(root, { ...task, sourceFile });
-    if (method === "process_location") return { directory, sourceFile };
+      row = this.row(root, { ...task, modelFile });
+    if (method === "process_location") return { directory, modelFile };
     if (["process_state", "process_history", "checkpoint_file"].includes(method)) {
-      const journal = new ProcessJournal(directory, sourceFile);
+      const journal = new ProcessJournal(directory, modelFile);
       if (method === "process_state") return journal.latest();
       if (method === "process_history") return journal.runs().toReversed();
       if (method === "checkpoint_file") return journal.preview(args.runId, args.sequence);
     }
-    if (method === "variants") return this.variants(key, { ...args, sourceFile });
-    if (method === "get") return this.project(key, sourceFile);
+    if (method === "variants") return this.variants(key, { ...args, modelFile });
+    if (method === "get") return this.project(key, modelFile);
     if (method === "compare") {
-      const base = this.snapshot(key, args.baseRevision, sourceFile);
-      const target = this.snapshot(key, args.targetRevision, sourceFile);
+      const base = this.snapshot(key, args.baseRevision, modelFile);
+      const target = this.snapshot(key, args.targetRevision, modelFile);
       if (!base || !target) throw localizedError("版本不存在", "Version not found");
       const api = await this.kernel(), shapes = [];
       try {
@@ -774,7 +656,7 @@ export class Store {
         shapes.push(await this.shape(target));
         const regions = api.compareShapes(...shapes);
         return {
-          projectId: key, sourceFile, baseRevision: base.state.revision, targetRevision: target.state.revision,
+          projectId: key, modelFile, baseRevision: base.state.revision, targetRevision: target.state.revision,
           ...Object.fromEntries(Object.entries(regions).map(([name, region]) => [name, region ? {
             volume: region.metrics.volume,
             preview: Buffer.from(encodePreview(region.preview)).toString("base64"),
@@ -785,7 +667,7 @@ export class Store {
       }
     }
     if (method === "preview_file") {
-      const saved = this.snapshot(key, args.revision, sourceFile);
+      const saved = this.snapshot(key, args.revision, modelFile);
       if (!saved) throw localizedError("请先完成建模", "build a model first");
       const path = join(saved.folder, "preview.bin");
       let valid = false;
@@ -803,73 +685,72 @@ export class Store {
         const state = {
           ...saved.state,
           previewVersion: PREVIEW_VERSION,
-          geometryIds: saved.state.geometryIds || { ...defaultIdFormats },
           preview: {
             ...previewInfo(bytes),
             digest: createHash("sha256").update(bytes).digest("hex"),
           },
         };
-        this.commit(
-          new Map([
+        const changes = new Map([
             [path, bytes],
             [join(saved.folder, "state.json"), jsonBytes(state)],
-          ]),
-        );
+          ]);
+        const metadata = paths(directory, modelFile)[1];
+        if (saved.state.revision === row.head && equalBytes(fileBytes(metadata), jsonBytes(saved.state)))
+          changes.set(metadata, jsonBytes(state));
+        this.commit(changes);
       }
       return {
         path,
         byteLength: fs.statSync(path).size,
-        sourceFile,
+        modelFile,
         revision: args.revision ?? row.head,
       };
     }
     if (method === "select_model") {
-      task.sourceFile = portable(
-        relative(directory, modelPath(directory, args.sourceFile)),
+      task.modelFile = portable(
+        relative(directory, modelPath(directory, args.modelFile)),
       );
       this.saveWorkspace(root, data);
       return this.project(key);
     }
-    if (method === "build" || method === "edit")
+    if (method === "build" || method === "edit" || method === "import")
       return this.build(key, args, method === "edit");
     if (method === "commit") {
-      try { return await this.commitCandidate(key, { ...args, sourceFile }); }
+      try { return await this.commitCandidate(key, { ...args, modelFile }); }
       catch (error) { error.phase ||= "publishing"; error.runId = args.runId; throw error; }
     }
-    if (method === "update_parameters")
-      return this.build(key, { ...args, parameterMode: args.mode ?? "merge" });
     if (method === "set_geometry_id_format")
-      return this.setGeometryIdFormat(key, sourceFile, row.head, args);
+      return this.setGeometryIdFormat(key, modelFile, row.head, args);
     if (method === "fit") {
       this.expect(row.head, args);
-      const saved = this.snapshot(key, undefined, sourceFile);
+      const saved = this.snapshot(key, undefined, modelFile);
       if (!saved) throw localizedError("请先完成建模", "build a model first");
       const api = await this.kernel(), shape = await this.shape(saved);
-      try { return { sourceFile, revision: row.head, items: api.inspectFit(shape, args.pairs, args.tolerance) }; }
+      try { return { modelFile, revision: row.head, items: api.inspectFit(shape, args.pairs, args.tolerance) }; }
       finally { shape.dispose(); }
     }
     if (["query", "measure", "check", "geometry_annotation"].includes(method)) {
       this.expect(row.head, args);
-      const candidate = args.runId ? new ProcessJournal(directory, sourceFile).candidate(args.runId) : null;
+      const candidate = args.runId ? new ProcessJournal(directory, modelFile).candidate(args.runId) : null;
       if (candidate) this.expect(candidate.run.baseRevision, args);
-      const saved = candidate ? { folder: candidate.folder, state: candidate.state } : this.snapshot(key, undefined, sourceFile);
+      const saved = candidate ? { folder: candidate.folder, state: candidate.state } : this.snapshot(key, undefined, modelFile);
       if (!saved) {
-        if (method === "query") return { sourceFile, revision: 0, items: [] };
+        if (method === "query") return { modelFile, revision: 0, items: [] };
         throw localizedError("请先完成建模", "build a model first");
       }
       const api = await this.kernel(),
         shape = await this.shape(saved),
-        scope = api.modelScope(key, candidate ? `${sourceFile}@${args.runId}` : sourceFile);
-      const revision = candidate ? candidateRevision(candidate.run) : row.head;
-      const result = { sourceFile, revision, ...(candidate ? { runId: args.runId, committed: false } : {}) };
+        scope = api.modelScope(key, candidate ? `${modelFile}@${args.runId}` : modelFile);
+      const revision = candidate ? candidate.run.candidateRevision : row.head;
+      const result = { modelFile, revision, ...(candidate ? { runId: args.runId, committed: false } : {}) };
       if (method === "query" && args.kind === "parts")
         return { ...result, kind: "parts", items: saved.state.parts || [] };
       if (method === "geometry_annotation") {
         const describe = reference => {
           const { kind, geometry: item } = api.describeReference(
-            shape, reference, scope, row.head, saved.state.geometryIds || defaultIdFormats,
+            shape, reference, scope, row.head, saved.state.geometryIds,
           );
-          return { projectId: key, sourceFile, expectedRevision: row.head,
+          return { projectId: key, modelFile, expectedRevision: row.head,
             reference: item.id, kind, label: item.displayId, note: String(args.note || ""), geometry: item };
         };
         return args.references ? { ...result, items: args.references.map(describe) } : describe(args.reference);
@@ -879,7 +760,7 @@ export class Store {
           ...result,
           items: api.measureShape(
             shape,
-            api.values(args.measurements, saved.state.parameters),
+            args.measurements,
             scope,
             revision,
           ),
@@ -889,7 +770,7 @@ export class Store {
           ...result,
           ...api.checkShape(
             shape,
-            api.values(args.checks, saved.state.parameters),
+            args.checks,
             scope,
             revision,
           ),
@@ -901,36 +782,34 @@ export class Store {
           shape,
           revision,
           args.kind,
-          api.values(args.selector, saved.state.parameters),
+          args.selector,
           scope,
-          saved.state.geometryIds || defaultIdFormats,
+          saved.state.geometryIds,
           args.edgeParameters,
         ),
       };
     }
     if (method === "restore") {
       this.expect(row.head, args);
-      const saved = this.snapshot(key, args.revision, sourceFile);
+      const saved = this.snapshot(key, args.revision, modelFile);
       if (!saved) throw localizedError("版本不存在", "Version not found");
       const revision = saved.state.revision;
       if (revision !== row.head) {
-        if (this.project(key, sourceFile).workingTreeChanged)
-          throw new Conflict("源码、参数或资源有未构建的修改，请先构建再切换版本", "Build the modified source, parameters or resources before switching revisions.");
-        const changes = new Map(paths(directory, sourceFile).map((file, index) => [
-          file, fs.readFileSync(join(saved.folder, ["model.js", "parameters.json", "model.smp"][index])),
+        if (this.project(key, modelFile).workingTreeChanged)
+          throw new Conflict("模型工作文件已修改，请先保存或导入修改", "Save or import the modified model working files first.");
+        const changes = new Map(paths(directory, modelFile).map((file, index) => [
+          file, fs.readFileSync(join(saved.folder, ["model.smp", "state.json"][index])),
         ]));
-        for (const name of saved.state.assets || [])
-          changes.set(inside(directory, name), fs.readFileSync(inside(saved.folder, name)));
-        const model = task.models[sourceFile];
+        const model = task.models[modelFile];
         model.head = revision;
         model.updated = task.updated = now();
-        if (!args.preserveSelection) task.sourceFile = sourceFile;
+        if (!args.preserveSelection) task.modelFile = modelFile;
         changes.set(this.designFile(root), this.workspaceBytes(data));
         this.commit(changes);
       }
-      return this.project(key, sourceFile);
+      return this.project(key, modelFile);
     }
-    if (method === "export") return this.export(key, { ...args, sourceFile });
+    if (method === "export") return this.export(key, { ...args, modelFile });
     if (method === "fork_project") {
       if (args.sessionId && (await this.dispatch("list")).some(project => project.sessions.includes(args.sessionId)))
         throw new Conflict("会话已绑定另一个设计", "This conversation is bound to another design.");

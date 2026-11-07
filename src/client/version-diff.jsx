@@ -13,11 +13,11 @@ export function VersionDiff({ project, request, onResult, onClose, t, language }
     const controller = new AbortController();
     let disposed = false;
     setResult(null); setError(null); onResult(null);
-    request("compare", { projectId: project.id, sourceFile: project.sourceFile, baseRevision, targetRevision }, controller.signal)
+    request("compare", { projectId: project.id, modelFile: project.modelFile, baseRevision, targetRevision }, controller.signal)
       .then(data => { if (!disposed) { setResult(data); onResult(data); } })
       .catch(error => { if (!disposed && error.name !== "AbortError") setError(errorDetail(error)); });
     return () => { disposed = true; controller.abort(); onResult(null); };
-  }, [project.id, project.sourceFile, baseRevision, targetRevision, request, onResult]);
+  }, [project.id, project.modelFile, baseRevision, targetRevision, request, onResult]);
   const number = new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en-US", { maximumSignificantDigits: 6 });
   const picker = side => {
     const value = side === "base" ? baseRevision : targetRevision;

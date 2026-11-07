@@ -61,7 +61,7 @@ test(
     const worker = createWorker({ dataDir: root });
     try {
       const task = await worker.call("create");
-      const args = { projectId: task.id, sourceFile: "model.js" };
+      const args = { projectId: task.id, modelFile: "model.smp" };
       const built = await worker.call("build", {
         ...args,
         expectedRevision: 0,
@@ -76,11 +76,11 @@ test(
       for (const name of ["mesh", "edges"])
         assert.equal(saved[name], undefined);
       const solid = await readFile(join(task.directory, "model.smp"));
-      const sourceFile = join(task.directory, args.sourceFile);
+      const modelFile = join(task.directory, args.modelFile);
       const draft = "// Unbuilt source";
-      await writeFile(sourceFile, draft);
+      await writeFile(modelFile, draft);
       await writeFile(
-        join(task.directory, "model.parameters.json"),
+        join(task.directory, "model.state.json"),
         '{"width":90}',
       );
       const preview = await worker.call("preview_file", {
@@ -106,13 +106,10 @@ test(
       const state = await worker.call("get", args);
       assert.equal(state.head, 1);
       assert.equal(state.revisions.length, 1);
-      assert.equal(state.parameters.width, 90);
+      assert.equal(state.design.metrics.sizeX, 60);
       assert.equal(state.workingTreeChanged, true);
-      assert.equal(await readFile(sourceFile, "utf8"), draft);
-      assert.deepEqual(
-        await readFile(join(task.directory, "model.smp")),
-        solid,
-      );
+      assert.equal(await readFile(modelFile, "utf8"), draft);
+      assert.deepEqual(await readFile(join(folder, "model.smp")), solid);
     } finally {
       await worker.dispose();
       await rm(root, {

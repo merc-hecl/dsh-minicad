@@ -103,7 +103,7 @@ export function Workbench({
   const [selectionTargets, setSelectionTargets] = useState([]);
   const [selectionInstant, setSelectionInstant] = useState(false);
   const [measurementResult, setMeasurementResult] = useState(null);
-  const measurementKey = JSON.stringify([project?.id, project?.sourceFile, project?.head]);
+  const measurementKey = JSON.stringify([project?.id, project?.modelFile, project?.head]);
   const [hiddenParts, setHiddenParts] = useState([]);
   const [displayMode, setDisplayMode] = useState("solid");
   const [modelMenu, setModelMenu] = useState(false), [appMenu, setAppMenu] = useState(false);
@@ -125,15 +125,15 @@ export function Workbench({
     if (narrow && (historyOpen || versionLibraryOpen || diffOpen)) setPanelCollapsed(true);
   }, [narrow, historyOpen, versionLibraryOpen, diffOpen]);
   useLayoutEffect(() => { setSelectionTargets([]); setMeasurementResult(null); setActiveTool(null); }, [measurementKey, !!processDesign, historyOpen, diffOpen]);
-  useEffect(() => { setDiffOpen(false); setDiff(null); }, [project?.id, project?.sourceFile]);
-  useLayoutEffect(closeVersionLibrary, [closeVersionLibrary, project?.id, project?.sourceFile]);
+  useEffect(() => { setDiffOpen(false); setDiff(null); }, [project?.id, project?.modelFile]);
+  useLayoutEffect(closeVersionLibrary, [closeVersionLibrary, project?.id, project?.modelFile]);
   useEffect(() => {
     if (!selectionTargets.length || (activeTool === "measure" && selectionTargets.length > 2)) setActiveTool(null);
     setMeasurementResult(null);
   }, [selectionTargets, activeTool]);
 
   const processKey = useRef("");
-  useEffect(() => { setProcessDesign(null); processKey.current = ""; }, [project?.id, project?.sourceFile]);
+  useEffect(() => { setProcessDesign(null); processKey.current = ""; }, [project?.id, project?.modelFile]);
   const selection = useRef(""),
     projectRef = useRef(null),
     alive = useRef(true);
@@ -156,12 +156,12 @@ export function Workbench({
     const checkCurrent = () => {
       const current = projectRef.current;
       if (controller.signal.aborted || selection.current !== data.id ||
-          (current?.id === data.id && current.sourceFile === data.sourceFile && current.updated > data.updated))
+          (current?.id === data.id && current.modelFile === data.modelFile && current.updated > data.updated))
         throw new DOMException("Superseded model preview", "AbortError");
     };
     checkCurrent();
     if (!data.design || !data.head) return data;
-    const key = JSON.stringify([data.id, data.sourceFile, data.head]);
+    const key = JSON.stringify([data.id, data.modelFile, data.head]);
     try {
       let previewData;
       if (previewCache.current?.key === key) previewData = previewCache.current.data;
@@ -169,7 +169,7 @@ export function Workbench({
         let pending = previewRequest.current;
         if (!pending || pending.key !== key || pending.signal !== controller.signal) {
           pending = { key, signal: controller.signal };
-          pending.promise = request("preview", { projectId: data.id, sourceFile: data.sourceFile, revision: data.head }, controller.signal);
+          pending.promise = request("preview", { projectId: data.id, modelFile: data.modelFile, revision: data.head }, controller.signal);
           previewRequest.current = pending;
         }
         try { previewData = await pending.promise; }
@@ -324,7 +324,7 @@ export function Workbench({
         if (state.title && state.title !== projectRef.current?.title) {
           setProject((current) => current ? { ...current, title: state.title } : current);
         }
-        if (projectRef.current && (JSON.stringify(state.models) !== JSON.stringify(projectRef.current.models) || state.activeSessionId !== projectRef.current.activeSessionId || state.head !== projectRef.current.head || state.sourceVersion !== projectRef.current.sourceVersion || state.workspaceDirectory !== projectRef.current.workspaceDirectory || state.sourceFile !== projectRef.current.sourceFile)) {
+        if (projectRef.current && (JSON.stringify(state.models) !== JSON.stringify(projectRef.current.models) || state.activeSessionId !== projectRef.current.activeSessionId || state.head !== projectRef.current.head || state.modelVersion !== projectRef.current.modelVersion || state.workspaceDirectory !== projectRef.current.workspaceDirectory || state.modelFile !== projectRef.current.modelFile)) {
           const p = await api("get", { projectId: selected });
           if (!disposed && selection.current === selected) {
             setProject(p);
@@ -332,14 +332,14 @@ export function Workbench({
           }
         }
         const step = state.progress?.steps.at(-1), current = projectRef.current;
-        if (state.running && step && current && state.progress.sourceFile === current.sourceFile && ["working", "validating"].includes(state.progress.phase)) {
+        if (state.running && step && current && state.progress.modelFile === current.modelFile && ["working", "validating"].includes(state.progress.phase)) {
           const key = `${state.progress.id}:${step.sequence}`;
           if (processKey.current !== key) {
-            const previewData = await request("checkpoint", { projectId: selected, sourceFile: current.sourceFile, runId: state.progress.id, sequence: step.sequence }, loadController.current.signal);
-            if (!disposed && selection.current === selected && projectRef.current?.sourceFile === current.sourceFile) {
+            const previewData = await request("checkpoint", { projectId: selected, modelFile: current.modelFile, runId: state.progress.id, sequence: step.sequence }, loadController.current.signal);
+            if (!disposed && selection.current === selected && projectRef.current?.modelFile === current.modelFile) {
               processKey.current = key;
               setProcessDesign({ previewData, metrics: step.metrics, parts: step.parts, entities: step.entities, geometryIds: state.progress.geometryIds,
-                sourceFile: current.sourceFile, checkpoint: { runId: state.progress.id, sequence: step.sequence } });
+                modelFile: current.modelFile, checkpoint: { runId: state.progress.id, sequence: step.sequence } });
             }
           }
         } else if (!state.running || state.progress?.phase === "done") {
@@ -385,10 +385,10 @@ export function Workbench({
     const captured = project, controller = loadController.current;
     return action(async () => {
       const data = await api("restore", {
-        projectId: captured.id, sourceFile: captured.sourceFile,
+        projectId: captured.id, modelFile: captured.modelFile,
         revision, expectedRevision: captured.head,
       });
-      if (controller.signal.aborted || selection.current !== captured.id || projectRef.current?.sourceFile !== captured.sourceFile) return;
+      if (controller.signal.aborted || selection.current !== captured.id || projectRef.current?.modelFile !== captured.modelFile) return;
       controller.abort();
       const next = new AbortController();
       loadController.current = next;
@@ -399,11 +399,11 @@ export function Workbench({
       await refreshList();
     });
   }
-  function selectModelFile(sourceFile) {
-    if (busy || running || nativeRunning || sourceFile === project.sourceFile) return;
+  function selectModelFile(modelFile) {
+    if (busy || running || nativeRunning || modelFile === project.modelFile) return;
     const captured = project, controller = loadController.current;
     return action(async () => {
-      const data = await api("select_model", { projectId: captured.id, sourceFile });
+      const data = await api("select_model", { projectId: captured.id, modelFile });
       if (controller.signal.aborted || selection.current !== captured.id) return;
       controller.abort();
       const next = new AbortController();
@@ -433,11 +433,11 @@ export function Workbench({
   function selectTool(tool) { setError(null); setActiveTool(tool); }
   async function addSelectedReferences({ note }) {
     const captured = { targets: selectionTargets, projectId: selected,
-      sourceFile: project.sourceFile, expectedRevision: project.head, sessionId: project.activeSessionId };
+      modelFile: project.modelFile, expectedRevision: project.head, sessionId: project.activeSessionId };
     const currentContext = () => alive.current && selection.current === captured.projectId
-      && projectRef.current?.sourceFile === captured.sourceFile && projectRef.current?.activeSessionId === captured.sessionId;
+      && projectRef.current?.modelFile === captured.modelFile && projectRef.current?.activeSessionId === captured.sessionId;
     await action(async () => {
-      const args = { projectId: captured.projectId, sourceFile: captured.sourceFile, expectedRevision: captured.expectedRevision };
+      const args = { projectId: captured.projectId, modelFile: captured.modelFile, expectedRevision: captured.expectedRevision };
       const { items } = await api("geometry_annotation", { ...args, references: captured.targets.map(target => target.reference), note });
       if (!currentContext() || projectRef.current.head !== captured.expectedRevision) return;
       if (!addGeometryReference(captured.sessionId, items)) throw Object.assign(new Error(t("referenceInputBusy")), { uiKey: "referenceInputBusy" });
@@ -473,7 +473,7 @@ export function Workbench({
   const originalDesign = diffOpen ? design : processDesign || design;
   const displayedDesign = useMemo(() => originalDesign && ({ ...originalDesign,
     previewData: visiblePreview(originalDesign.previewData, originalDesign.parts, diffOpen ? [] : hiddenParts) }), [originalDesign, hiddenParts, diffOpen]);
-  const displayedDiff = diffOpen && diff?.projectId === project?.id && diff?.sourceFile === project?.sourceFile ? diff : null;
+  const displayedDiff = diffOpen && diff?.projectId === project?.id && diff?.modelFile === project?.modelFile ? diff : null;
   return (
     <div
       ref={workbench}
@@ -594,7 +594,7 @@ export function Workbench({
               onClick={() => { closeVersionLibrary(); setDiffOpen(false); setHistoryOpen(value => !value); }} />
           </div>
           {project && renderSlot("minicad.directoryActions", { absolutePath: project.workspaceDirectory,
-            projectId: project.id, sourceFile: project.sourceFile, hasModel: project.head > 0, onMenuOpenChange: setAppMenu })}
+            projectId: project.id, modelFile: project.modelFile, hasModel: project.head > 0, onMenuOpenChange: setAppMenu })}
         </nav>
       </header>
       <aside id="mc-design-library" className="mc-sidebar mc-panel" aria-label={t("projects")}
@@ -647,12 +647,12 @@ export function Workbench({
         hidden={hiddenParts} setHidden={setHiddenParts}
         busy={modelSwitchDisabled} onModel={selectModelFile} onMenuOpenChange={setModelMenu}
         onClose={() => { clearGeometrySelection(); setSelecting(false); }} t={t} />}
-      {diffOpen && project && <VersionDiff key={`${project.id}:${project.sourceFile}`} project={project} request={request}
+      {diffOpen && project && <VersionDiff key={`${project.id}:${project.modelFile}`} project={project} request={request}
         onResult={setDiff} onClose={() => setDiffOpen(false)} t={t} language={language} />}
-      {historyOpen && project && <MakingRecord key={`${project.id}:${project.sourceFile}`} project={project} progress={progress}
+      {historyOpen && project && <MakingRecord key={`${project.id}:${project.modelFile}`} project={project} progress={progress}
         request={request} t={t} language={language}
         onClose={() => setHistoryOpen(false)} onTranscriptTarget={setTranscriptTarget} />}
-      {versionLibraryOpen && project?.head > 0 && <VersionLibrary key={`${project.id}:${project.sourceFile}`} project={project}
+      {versionLibraryOpen && project?.head > 0 && <VersionLibrary key={`${project.id}:${project.modelFile}`} project={project}
         request={request} language={language} disabled={busy || running || nativeRunning}
         onClose={dismissVersionLibrary} onSelect={selectRevision} t={t} />}
       <ConversationDock key={project?.activeSessionId || "none"} ref={dock} t={t} hidden={historyOpen || versionLibraryOpen}

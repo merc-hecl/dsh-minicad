@@ -52,7 +52,7 @@ export async function apply(ctx, config = {}) {
     measurements = new Map();
   let disposed = false;
   const call = async (method, args, signal) => {
-    if (!["build", "edit", "restore", "update_parameters", "commit", "variants", "set_geometry_id_format"].includes(method)) return worker.call(method, args, signal);
+    if (!["build", "import", "edit", "restore", "commit", "variants", "set_geometry_id_format"].includes(method)) return worker.call(method, args, signal);
     if (active.has(args.projectId))
       throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
     const controller = new AbortController();
@@ -238,13 +238,13 @@ export async function apply(ctx, config = {}) {
       return {
         head: p.head,
         models: p.models,
-        sourceVersion: p.sourceVersion,
+        modelVersion: p.modelVersion,
         workspaceDirectory: p.workspaceDirectory,
-        sourceFile: p.sourceFile,
+        modelFile: p.modelFile,
         title: p.title,
         activeSessionId: p.activeSessionId,
-        progress: inFlight ? worker.processState({ projectId: p.id, sourceFile: p.sourceFile })
-          : await call("process_state", { projectId: p.id, sourceFile: p.sourceFile }),
+        progress: inFlight ? worker.processState({ projectId: p.id, modelFile: p.modelFile })
+          : await call("process_state", { projectId: p.id, modelFile: p.modelFile }),
         projects: inFlight ? undefined : (await call("list")).map((project) => ({
           ...project,
           running: designBusy(project),

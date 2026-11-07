@@ -16,9 +16,7 @@ export function validateIdFormat(template) {
 export function geometryLabel(kind, index, formats = defaultIdFormats) {
   const template = formats[kind === "faces" ? "faceFormat" : "edgeFormat"];
   const number = String(index + 1);
-  // Older templates treated everything outside {n} as literal text.
-  if (template.includes("{n}")) return template.replace("{n}", number);
-  return template.replace(numberingToken, (_token, width) => number.padStart(Number(width), "0"));
+  return template.replace(numberingToken, (_token, width) => width ? number.padStart(Number(width), "0") : number);
 }
 
 export const geometryReference = (scope, revision, kind, index) =>

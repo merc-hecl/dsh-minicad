@@ -62,7 +62,7 @@ test("structured revolve, loft, sweep and patterns produce exact solids and isol
   ]);
   assert.equal(linear.solids().length, 3);
   near(linear.volume, 24);
-  const scope = modelScope("target-task", "parts.js");
+  const scope = modelScope("target-task", "parts.smp");
   const solids = queryShape(linear, 1, "solids", {}, scope);
   const target = solids.find((item) => Math.abs(item.center[0] - 5) < 1e-6).id;
   const moved = editShape(
@@ -189,7 +189,7 @@ test("sweep paths, profile placement and circular tool patterns preserve expecte
 });
 
 test("exact measurements and dimensional checks distinguish wall material from cavities and gaps", () => {
-  const scope = modelScope("task", "model.js");
+  const scope = modelScope("task", "model.smp");
   const plate = cad.Box(20, 10, 4).cut(cad.Cylinder(2, 6));
   const top = queryShape(
     plate,
@@ -331,7 +331,7 @@ test("exact measurements and dimensional checks distinguish wall material from c
 });
 
 test(
-  "model targets, scoped references, parameter merge/replace and historical exports stay independent",
+  "model targets, scoped references, explicit builds and edits and historical exports stay independent",
   { timeout: 90000 },
   () =>
     setup(async (worker) => {
@@ -339,10 +339,10 @@ test(
       const projectId = task.id;
       const a = {
         projectId,
-        sourceFile: "a.js",
+        modelFile: "a.smp",
         preserveSelection: true,
       };
-      const b = { ...a, sourceFile: "b.js" };
+      const b = { ...a, modelFile: "b.smp" };
       const source =
         "function build(p,cad){return cad.Box(p.length,p.width,p.height).named('参数块');}";
       await worker.call("build", {
@@ -358,14 +358,14 @@ test(
         parameters: { length: 6, width: 8, height: 10 },
       });
       assert.equal(
-        (await worker.call("get", { projectId })).sourceFile,
-        "model.js",
+        (await worker.call("get", { projectId })).modelFile,
+        "model.smp",
       );
       const readA = await worker.call("get", a);
       assert.equal(readA.head, 1);
       assert.equal(
-        (await worker.call("get", { projectId })).sourceFile,
-        "model.js",
+        (await worker.call("get", { projectId })).modelFile,
+        "model.smp",
       );
       const topA = (
         await worker.call("query", {
@@ -386,15 +386,15 @@ test(
       const otherTask = await worker.call("create");
       await worker.call("build", {
         projectId: otherTask.id,
-        sourceFile: "a.js",
+        modelFile: "a.smp",
         expectedRevision: 0,
         source,
-        parameters: readA.parameters,
+        parameters: { length: 10, width: 20, height: 30 },
       });
       await assert.rejects(
         worker.call("edit", {
           projectId: otherTask.id,
-          sourceFile: "a.js",
+          modelFile: "a.smp",
           expectedRevision: 1,
           operations: [{ op: "move_faces", faces: topA, by: [0, 0, 1] }],
         }),
@@ -429,35 +429,14 @@ test(
         }),
         /过期/,
       );
-      const replayed = await worker.call("update_parameters", {
-        ...a,
-        expectedRevision: 2,
-        parameters: { length: 12 },
-      });
-      near(replayed.design.metrics.volume, 12 * 20 * 32);
-      const merged = await worker.call("update_parameters", {
-        ...b,
-        expectedRevision: 1,
-        parameters: { length: 12 },
-      });
-      assert.deepEqual(merged.parameters, { length: 12, width: 8, height: 10 });
-      near(merged.design.metrics.volume, 960);
-      const replaced = await worker.call("update_parameters", {
-        ...b,
-        expectedRevision: 2,
-        mode: "replace",
-        parameters: { length: 5, width: 6, height: 7 },
-      });
-      assert.deepEqual(replaced.parameters, { length: 5, width: 6, height: 7 });
-      await assert.rejects(
-        worker.call("update_parameters", {
-          ...b,
-          expectedRevision: 3,
-          mode: "replace",
-          parameters: { length: 2 },
-        }),
-      );
-      assert.equal((await worker.call("get", b)).head, 3);
+      const expanded = await worker.call("edit", { ...a, expectedRevision: 2,
+        operations: [{ op: "scale", factor: [1.2, 1, 1] }] });
+      near(expanded.design.metrics.volume, 12 * 20 * 32);
+      const enlarged = await worker.call("edit", { ...b, expectedRevision: 1,
+        operations: [{ op: "scale", factor: [2, 1, 1] }] });
+      near(enlarged.design.metrics.volume, 960);
+      await worker.call("build", { ...b, expectedRevision: 2, source,
+        parameters: { length: 5, width: 6, height: 7 } });
       const exportA = await worker.call("export", {
         ...a,
         revision: 1,
@@ -479,8 +458,8 @@ test(
       assert.equal(restored.head, 1);
       near(restored.design.metrics.volume, 6000);
       assert.equal(
-        (await worker.call("get", { projectId })).sourceFile,
-        "model.js",
+        (await worker.call("get", { projectId })).modelFile,
+        "model.smp",
       );
       const checked = await worker.call("check", {
         ...b,
@@ -507,7 +486,7 @@ test(
       const task = await worker.call("create");
       const args = {
         projectId: task.id,
-        sourceFile: "model.js",
+        modelFile: "model.smp",
       };
       await mkdir(join(task.directory, "resources"));
       const imported = cad.Box(10, 20, 30);

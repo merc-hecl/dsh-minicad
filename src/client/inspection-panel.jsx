@@ -20,14 +20,14 @@ export function InspectionPanel({ project, parts, hidden, setHidden, onModel, on
     <div className="mc-inspection-content mc-panel-scroll">
       {hasParts && <header><strong>{t("inspectModel")}</strong><Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={14} />} aria-label={t("close")} onClick={onClose} /></header>}
       {project.models.length > 1 && <Menu portal dense autoFocus minWidthFromAnchor className="mc-inspection-model-menu" open={menuVisible}
-        onClose={() => setModelMenu(false)} selectedIds={[project.sourceFile]}
+        onClose={() => setModelMenu(false)} selectedIds={[project.modelFile]}
         anchor={<Button className="mc-inspection-model-picker" variant="outline"
           disabled={busy} aria-label={t("modelSpecifications")} aria-haspopup="menu" aria-expanded={menuVisible}
           onClick={() => setModelMenu(value => !value)}>
-          <span title={project.sourceFile}>{project.sourceFile}</span><IconChevronDownOutlineRegular size={14} />
+          <span title={project.modelFile}>{project.modelFile}</span><IconChevronDownOutlineRegular size={14} />
         </Button>}
-        items={project.models.map(model => ({ id: model.sourceFile, label: model.sourceFile }))}
-        onSelect={id => { setModelMenu(false); if (id !== project.sourceFile) onModel(id); }} />}
+        items={project.models.map(model => ({ id: model.modelFile, label: model.modelFile }))}
+        onSelect={id => { setModelMenu(false); if (id !== project.modelFile) onModel(id); }} />}
       {hasParts && <>
       <div className="mc-inspection-actions mc-inspection-parts-heading"><strong>{t("assemblyParts")}</strong>
         <Button variant="ghost" size="sm" disabled={!hidden.length} onClick={() => setHidden([])}>{t("showAllParts")}</Button></div>

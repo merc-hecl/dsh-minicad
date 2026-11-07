@@ -61,8 +61,7 @@ export const zh = {
   edges: "边",
   selectGeometry: "选择目标",
 
-  workingFilesChanged: "建模文件已修改，请先重新构建再进行局部编辑",
-  checkoutWorkingFilesChanged: "建模文件有未构建的修改，请先构建再切换版本",
+  workingFilesChanged: "模型工作文件已修改，请先保存或导入",
   geometryReferenceInvalid: "几何引用已失效，请重新查询当前版本",
   geometrySelectionMissing: "没有找到匹配的面或边",
   geometrySelectionAmbiguous: "几何选择不唯一，请缩小范围",
@@ -210,8 +209,7 @@ export const en = {
   edges: "Edge",
   selectGeometry: "Select targets",
 
-  workingFilesChanged: "Model files changed. Rebuild them before making local edits.",
-  checkoutWorkingFilesChanged: "Build working changes before switching versions.",
+  workingFilesChanged: "Model files changed. Save or import them first.",
   geometryReferenceInvalid: "The geometry reference is stale. Query the current revision again.",
   geometrySelectionMissing: "No matching faces or edges were found.",
   geometrySelectionAmbiguous: "The geometry selection is ambiguous. Narrow the selection.",
@@ -241,7 +239,7 @@ export const en = {
   designFolderInvalid: "The design workspace folder does not exist or cannot be accessed",
   saveAsEmpty: "Save as requires an empty folder",
   taskMoveInvalid: "The design workspace cannot be safely moved. Check the destination.",
-  workspacePathInvalid: "Choose a JavaScript modeling file within the working directory",
+  workspacePathInvalid: "Choose an SMP model file within the working directory",
   workspaceMetadataInvalid: "The design's .cad-design.json is invalid or conflicting",
   taskActions: "Actions for design {name}",
   searchTasks: "Search designs and conversations",

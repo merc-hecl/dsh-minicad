@@ -7,12 +7,12 @@ import * as cad from "@classcad/smlibwasm";
 import { createWorker } from "../src/host/worker.js";
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`);
 
-test("solid names are mandatory at publication and survive rename, restart, replay and exact exports", { timeout: 90000 }, async () => {
+test("solid names are mandatory at publication and survive rename, restart, direct edits and exact exports", { timeout: 90000 }, async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "minicad-names-"));
   let worker = createWorker({ dataDir });
   try {
     const project = await worker.call("create", { title: "命名" });
-    const target = { projectId: project.id, sourceFile: "model.js" };
+    const target = { projectId: project.id, modelFile: "model.smp" };
     const source = "function build(p,cad){return cad.Box(p.width,10,4).named('底板');}";
     const built = await worker.call("build", { ...target, expectedRevision: 0, source, parameters: { width: 20 } });
     assert.deepEqual(built.design.entities.map(entity => entity.name), ["底板"]);
@@ -29,9 +29,9 @@ test("solid names are mandatory at publication and survive rename, restart, repl
     await assert.rejects(worker.call("build", { ...target, expectedRevision: 2,
       source: "function build(p,cad){return cad.Box(3,4,5).named('  ');}" }), /Every solid must be named/);
     assert.equal((await worker.call("get", target)).head, 2);
-    const replay = await worker.call("update_parameters", { ...target, expectedRevision: 2, parameters: { width: 30 } });
-    assert.equal(replay.design.entities[0].name, "安装底板");
-    near(replay.design.metrics.volume, 1200);
+    const resized = await worker.call("build", { ...target, expectedRevision: 2, source: "function build(p,cad){return cad.current.scale([1.5,1,1]);}" });
+    assert.equal(resized.design.entities[0].name, "安装底板");
+    near(resized.design.metrics.volume, 1200);
     for (const format of ["step", "smp"]) {
       const exported = await worker.call("export", { ...target, revision: 3, format });
       const shape = cad.fromFile(Buffer.from(exported.data, "base64"), `model.${format}`);
@@ -49,7 +49,7 @@ test("independent solids keep individual names; assembly renames do not rename t
   const worker = createWorker({ dataDir });
   try {
     const project = await worker.call("create", { title: "独立实体" });
-    const target = { projectId: project.id, sourceFile: "model.js" };
+    const target = { projectId: project.id, modelFile: "model.smp" };
     const built = await worker.call("edit", { ...target, expectedRevision: 0, operations: [
       { op: "box", size: [10, 10, 4], name: "板坯" }, { op: "box", size: [5, 5, 5], center: [20, 0, 0], name: "支柱" },
       { op: "rename", target: { nearest: [0, 0, 0], one: true }, name: "底板" },

@@ -9,7 +9,7 @@ import { nearestPair, farthestPair } from "../src/kernel/distances.js";
 import { createWorker } from "../src/host/worker.js";
 
 const near = (actual, expected, tolerance = 1e-6) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} != ${expected}`);
-const scope = modelScope("measurement", "model.js");
+const scope = modelScope("measurement", "model.smp");
 const verifyPair = item => near(Math.hypot(...item.point.map((n, i) => n - item.otherPoint[i])), item.value);
 
 test("bounded face-face, face-edge and edge-edge distances and shortest-line projections", () => cad.scope(() => {
@@ -118,7 +118,7 @@ test("worker measurements preserve saved files and revisions and reject stale re
   const directory = await mkdtemp(join(tmpdir(), "minicad-measurement-"));
   const worker = createWorker({ dataDir: directory });
   try {
-    const task = await worker.call("create"), args = { projectId: task.id, sourceFile: "model.js" };
+    const task = await worker.call("create"), args = { projectId: task.id, modelFile: "model.smp" };
     const built = await worker.call("build", { ...args, expectedRevision: 0, source: "function build(p, cad) { return cad.Box(20, 10, 4).named('底板'); }" });
     const file = join(built.workspaceDirectory, "model.smp"), before = await readFile(file);
     const { items } = await worker.call("query", { ...args, expectedRevision: 1, kind: "faces" });

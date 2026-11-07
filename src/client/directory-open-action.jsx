@@ -17,7 +17,7 @@ function ApplicationIcon({ source, size = 14 }) {
 }
 
 export function DirectoryOpenAction(props) {
-  const { absolutePath, projectId, sourceFile, hasModel, request, minicadT, t, onMenuOpenChange } = props;
+  const { absolutePath, projectId, modelFile, hasModel, request, minicadT, t, onMenuOpenChange } = props;
   const available = props.useOpenInAppApps(apps => apps);
   const nativeChoice = props.useOpenInAppChoice(id => id);
   const operation = props.useOpenInAppLaunch(value => value);
@@ -67,7 +67,7 @@ export function DirectoryOpenAction(props) {
     inFlight.current = true; setPending(true); setMenuOpen(false);
     try {
       if (id === "freecad") {
-        await request("open_model", { projectId, sourceFile, application: id });
+        await request("open_model", { projectId, modelFile, application: id });
         localStorage.setItem(choiceKey, id); setModelChoice(true);
       } else {
         await props.launch(id, absolutePath);

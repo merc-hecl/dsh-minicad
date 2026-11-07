@@ -23,7 +23,7 @@ async function workspace(fn) {
 }
 
 test("touching parts retain identity across edit, candidate commit, restore and exact exports", { timeout: 90000 }, () => workspace(async (worker, project) => {
-  const target = { projectId: project.id, sourceFile: "model.js" };
+  const target = { projectId: project.id, modelFile: "model.smp" };
   const built = await worker.call("build", { ...target, expectedRevision: 0, source, parameters: { length: 40 } });
   assert.equal(built.design.metrics.solidCount, 2);
   assert.deepEqual(built.design.parts.map(p => [p.id, p.name]), [["base", "底座"], ["lid", "盖板"]]);
@@ -61,22 +61,22 @@ test("touching parts retain identity across edit, candidate commit, restore and 
   await worker.call("edit", { ...target, expectedRevision: 1, operations: [{ op: "translate", part: "lid", by: [0, 0, -1] }] });
   const interference = await worker.call("fit", { ...target, expectedRevision: 3, pairs });
   assert.equal(interference.items[0].relation, "interference"); near(interference.items[0].interferenceVolume, 800);
-  // Parameter replay applies the saved move once, while preserving both parts.
-  const rebuilt = await worker.call("update_parameters", { ...target, expectedRevision: 3, parameters: { length: 60 } });
+  // An explicit script edits the current exact lid and preserves the base.
+  const rebuilt = await worker.call("build", { ...target, expectedRevision: 3, part: "lid", source: "function build(p,cad){return cad.current.translate(1,0,0);}" });
   assert.equal(rebuilt.design.parts.length, 2); near(rebuilt.design.parts[1].center[2], 5);
 }));
 
-test("parameter variants generate independent checked files and exports without changing the original", { timeout: 90000 }, () => workspace(async (worker, project) => {
-  const target = { projectId: project.id, sourceFile: "model.js" };
+test("SMP operation variants generate independent checked files and exports without changing the original", { timeout: 90000 }, () => workspace(async (worker, project) => {
+  const target = { projectId: project.id, modelFile: "model.smp" };
   await worker.call("build", { ...target, expectedRevision: 0, source, parameters: { length: 40 } });
   const before = await readFile(join(project.directory, "model.smp"));
   const result = await worker.call("variants", { ...target, expectedRevision: 1, formats: ["step"],
-    variants: [60, 80, 100].map(length => ({ name: `${length} mm`, sourceFile: `sizes/box-${length}.js`, parameters: { length },
+    variants: [60, 80, 100].map(length => ({ name: `${length} mm`, modelFile: `sizes/box-${length}.smp`, operations: [{ op: "scale", part: "base", factor: [length / 40, 1, 1] }, { op: "scale", part: "lid", factor: [length / 40, 1, 1] }],
       checks: [{ measurement: { kind: "size", axis: "x" }, expected: length, tolerance: 0.001 }] })) });
   assert.equal(result.items.length, 3);
   for (const [i, item] of result.items.entries()) {
     const length = [60, 80, 100][i];
-    const saved = await worker.call("get", { projectId: project.id, sourceFile: item.sourceFile });
+    const saved = await worker.call("get", { projectId: project.id, modelFile: item.modelFile });
     assert.equal(saved.design.parts.length, 2); assert.equal(saved.design.validation.passed, true);
     near(saved.design.metrics.sizeX, length);
     const bodies = cad.fromStep(await readFile(item.exports[0].path));
@@ -85,15 +85,15 @@ test("parameter variants generate independent checked files and exports without 
   }
   assert.deepEqual(await readFile(join(project.directory, "model.smp")), before);
   const original = await worker.call("get", target);
-  assert.equal(original.head, 1); assert.equal(original.selectedSourceFile, "model.js");
+  assert.equal(original.head, 1); assert.equal(original.selectedModelFile, "model.smp");
   await assert.rejects(worker.call("variants", { ...target, expectedRevision: 1,
-    variants: [{ sourceFile: "valid.js", parameters: { length: 50 } }, { sourceFile: "bad.js", parameters: { length: 30 },
+    variants: [{ modelFile: "valid.smp", operations: [{ op: "scale", part: "base", factor: [1.25, 1, 1] }] }, { modelFile: "bad.smp", operations: [{ op: "scale", part: "base", factor: [0.75, 1, 1] }],
       checks: [{ measurement: { kind: "size", axis: "x" }, expected: 99 }] }] }));
-  assert.equal((await worker.call("get", { ...target, sourceFile: "valid.js" })).head, 0);
+  assert.equal((await worker.call("get", { ...target, modelFile: "valid.smp" })).head, 0);
 }));
 
 test("assembly bore queries and face edits retain component ownership; STEP accepts disconnected solids", { timeout: 90000 }, () => workspace(async (worker, project) => {
-  const target = { projectId: project.id, sourceFile: "model.js" };
+  const target = { projectId: project.id, modelFile: "model.smp" };
   await worker.call("build", { ...target, expectedRevision: 0, source: `function build(p,cad) {
     const base = cad.Box(40,30,10).cut(cad.Cylinder(2,6).translate(0,0,3));
     const lid = cad.Box(40,30,2).cut(cad.Cylinder(2,4)).translate(0,0,6);
