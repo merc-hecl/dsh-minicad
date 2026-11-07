@@ -179,5 +179,3 @@ html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-making-record, .m
 .mc-inspection-part { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 2px 4px; border-radius: 8px; }
 .mc-part-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .mc-inspection-part[data-hidden] .mc-part-name, .mc-inspection-part[data-hidden] .mc-part-visibility { color: var(--mc-muted); }
-.mc-inspection-part[data-isolated] { background: var(--mc-selected); }
-.mc-inspection-part button[aria-pressed="true"] { color: var(--mc-accent); }

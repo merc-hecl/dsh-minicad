@@ -1,7 +1,7 @@
 export const zh = {
   inspectModel: "模型查看", modelSpecifications: "模型与规格", transparentView: "透明",
   assemblyParts: "零件", showAllParts: "显示全部",
-  showPart: "显示", hidePart: "隐藏", isolatePart: "单独查看", exitIsolation: "退出单独查看",
+  showPart: "显示", hidePart: "隐藏",
   workbenchTools: "工作台工具栏",
   canvasPlaceholder: "描述需求…", attachFile: "添加附件",
   pinInput: "固定输入框", unpinInput: "取消固定",
@@ -167,7 +167,7 @@ export const zh = {
 export const en = {
   inspectModel: "Model inspection", modelSpecifications: "Models and variants", transparentView: "Transparent",
   assemblyParts: "Parts", showAllParts: "Show all",
-  showPart: "Show", hidePart: "Hide", isolatePart: "Isolate", exitIsolation: "Exit isolation",
+  showPart: "Show", hidePart: "Hide",
   workbenchTools: "Workbench toolbar",
   canvasPlaceholder: "Describe what you need…", attachFile: "Add attachment",
   pinInput: "Pin input", unpinInput: "Unpin input",

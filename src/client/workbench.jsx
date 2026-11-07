@@ -104,11 +104,9 @@ export function Workbench({
   const [selectionInstant, setSelectionInstant] = useState(false);
   const [measurementResult, setMeasurementResult] = useState(null);
   const measurementKey = JSON.stringify([project?.id, project?.sourceFile, project?.head]);
-  const [inspectionOpen, setInspectionOpen] = useState(false);
   const [hiddenParts, setHiddenParts] = useState([]);
-  const [isolation, setIsolation] = useState(null);
   const [transparent, setTransparent] = useState(false);
-  useEffect(() => { setHiddenParts([]); setIsolation(null); setTransparent(false); }, [measurementKey]);
+  useEffect(() => { setHiddenParts([]); setTransparent(false); }, [measurementKey]);
   useEffect(() => { setSelectionTargets([]); setMeasurementResult(null); }, [hiddenParts]);
   const [wire, setWire] = useState(false),
     [resetView, setResetView] = useState(0);
@@ -466,6 +464,7 @@ export function Workbench({
     });
   }
   const design = project?.design;
+  const selectionActive = selecting && !!project && !modal && !processDesign && !historyOpen && !versionLibraryOpen && !diffOpen;
   const originalDesign = diffOpen ? design : processDesign || design;
   const displayedDesign = useMemo(() => originalDesign && ({ ...originalDesign,
     previewData: visiblePreview(originalDesign.previewData, originalDesign.parts, diffOpen ? [] : hiddenParts) }), [originalDesign, hiddenParts, diffOpen]);
@@ -530,13 +529,13 @@ export function Workbench({
         diff={displayedDiff}
         wire={wire}
         transparent={!diffOpen && transparent}
-        selecting={!modal && !processDesign && !historyOpen && !diffOpen && selecting}
+        selecting={selectionActive}
         targets={selectionTargets}
         selectionInstant={selectionInstant}
         pickingDisabled={busy || versionLibraryOpen}
-        measurementResult={!modal && !processDesign && !historyOpen && !diffOpen && selecting && activeTool === "measure" && selectionTargets.length === 2 ? measurementResult : null}
+        measurementResult={selectionActive && activeTool === "measure" && selectionTargets.length === 2 ? measurementResult : null}
         onPick={pickGeometry}
-        selectionTools={project && <SelectionTools targets={selectionTargets} tool={!modal && !processDesign && !historyOpen && !diffOpen && selecting ? activeTool : null}
+        selectionTools={project && <SelectionTools targets={selectionTargets} tool={selectionActive ? activeTool : null}
           onToolChange={selectTool} onClear={clearGeometrySelection}
           onRemove={reference => { if (!busy) setSelectionTargets(current => current.filter(target => target.reference !== reference)); }}
           referenceDisabled={busy || !sessionReference || sessionReference.sessionId !== project.activeSessionId}
@@ -576,13 +575,12 @@ export function Workbench({
             <Btn icon={IconRefreshOutlineRegular} label={t("resetView")} disabled={historyOpen} onClick={() => setResetView(value => value + 1)} />
             <Btn icon={wire ? WireframeViewIcon : SolidViewIcon} label={t(wire ? "solid" : "wire")}
               disabled={historyOpen} aria-pressed={wire} onClick={() => setWire(value => !value)} />
-            <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selecting && !diffOpen && !historyOpen}
-              disabled={!design || !!processDesign || busy || diffOpen || historyOpen}
+            <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selectionActive}
+              aria-expanded={selectionActive} aria-controls={selectionActive ? "mc-model-inspection" : undefined}
+              disabled={!project || !!processDesign || busy || diffOpen || historyOpen || versionLibraryOpen}
               onClick={() => { clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
           </div>
           <div className="mc-header-action-group">
-            <Btn icon={IconPanelLeftOutlineRegular} label={t("inspectModel")} aria-pressed={inspectionOpen} disabled={!project || historyOpen || versionLibraryOpen || diffOpen}
-              onClick={() => setInspectionOpen(value => !value)} />
             <Btn icon={IconCompareSplitOutlineRegular} label={t("compareVersion")} disabled={!project || project.revisions.length < 2} aria-pressed={diffOpen}
               onClick={() => { closeVersionLibrary(); setHistoryOpen(false); setDiffOpen(value => !value); }} />
             <Btn icon={IconFlatListOutlineRegular} label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen}
@@ -638,9 +636,9 @@ export function Workbench({
           <span role="status" className="mc-loading"><StateDot state="ongoing" />{t("loading")}</span>
         </div>
       )}
-      {inspectionOpen && project && !historyOpen && !versionLibraryOpen && !diffOpen && !processDesign && <InspectionPanel key={measurementKey} project={project} parts={design?.parts}
-        hidden={hiddenParts} setHidden={setHiddenParts} isolation={isolation} setIsolation={setIsolation} transparent={transparent} setTransparent={setTransparent}
-        busy={busy || running || nativeRunning} onClose={() => setInspectionOpen(false)} t={t}
+      {selectionActive && <InspectionPanel key={measurementKey} project={project} parts={design?.parts}
+        hidden={hiddenParts} setHidden={setHiddenParts} transparent={transparent} setTransparent={setTransparent}
+        busy={busy || running || nativeRunning} onClose={() => { clearGeometrySelection(); setSelecting(false); }} t={t}
         onModel={selectModelFile} />}
       {diffOpen && project && <VersionDiff key={`${project.id}:${project.sourceFile}`} project={project} request={request}
         onResult={setDiff} onClose={() => setDiffOpen(false)} t={t} language={language} />}

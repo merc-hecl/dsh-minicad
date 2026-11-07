@@ -338,13 +338,19 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
       const sidebar = owner?.hasAttribute("data-project-panel-collapsed") ? null : box(".mc-sidebar"), header = box(".mc-header");
       const left = Math.min(Math.max(12, sidebar?.width ? sidebar.right - viewport.left + 12 : 12), Math.max(12, viewport.width - 160));
       const right = Math.max(left + 120, viewport.width - 12);
-      const top = Math.max(12, (header?.bottom || viewport.top) - viewport.top + 12);
+      let top = Math.max(12, (header?.bottom || viewport.top) - viewport.top + 12);
       panel.style.maxWidth = `${Math.max(120, right - left)}px`;
       anchorPoint.fromArray(target.point).project(camera);
       const x = (anchorPoint.x + 1) * viewport.width / 2;
       const y = (1 - anchorPoint.y) * viewport.height / 2;
       const width = panel.offsetWidth;
-      const px = Math.max(left, Math.min(x + 12 + width <= right ? x + 12 : x - 12 - width, right - width));
+      let px = Math.max(left, Math.min(x + 12 + width <= right ? x + 12 : x - 12 - width, right - width));
+      const inspection = box(".mc-inspection");
+      if (inspection && px + width > inspection.left - viewport.left && px < inspection.right - viewport.left) {
+        const before = inspection.left - viewport.left - width - 12;
+        if (before >= left) px = Math.min(px, before);
+        else top = Math.max(top, inspection.bottom - viewport.top + 12);
+      }
       let bottom = viewport.height - 20;
       const navigation = box(".mc-navigation");
       if (navigation && px + width > navigation.left - viewport.left && px < navigation.right - viewport.left)
