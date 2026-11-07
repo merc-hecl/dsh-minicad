@@ -117,7 +117,8 @@ Reply in the user's language with the saved revision, what changed, what was che
     );
     if (!["build", "import", "edit", "commit"].includes(method) || !result.committed) return result;
     return { modelFile: result.modelFile, head: result.head, committed: true,
-      metrics: result.design.metrics, parts: result.design.parts, validation: result.design.validation,
+      metrics: result.design.metrics, validation: result.design.validation,
+      ...(result.design.parts === undefined ? {} : { parts: result.design.parts }),
       diagnostics: result.diagnostics,
       note: "Only the listed checks are verified; valid geometry does not establish full drawing compliance." };
   };

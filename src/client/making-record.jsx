@@ -85,12 +85,17 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
   }, [runs, progress, project.modelFile]);
   const versions = useMemo(() => project.revisions.map(revision => ({ key: `v${revision.revision}`,
       label: `v${revision.revision}${revision.revision === project.head ? ` · ${t("current")}` : ""}`,
-      revision: revision.revision, created: revision.created, title: revision.summary || t("savedVersion") }))
+      revision: revision.revision, parent: revision.parent, created: revision.created, title: revision.summary || t("savedVersion") }))
     .sort((a, b) => a.revision - b.revision), [project.revisions, project.head, t]);
   const versionFocus = versions.find(entry => entry.revision === selectedVersion)
     || versions.find(entry => entry.revision === project.head) || versions.at(-1);
-  const processRuns = useMemo(() => allRuns.filter(run => run.steps.length)
-    .sort((a, b) => b.created - a.created), [allRuns]);
+  const processRuns = useMemo(() => allRuns.filter(run => {
+    if (!run.steps.length) return false;
+    if (run.committedRevision) return run.committedRevision === versionFocus?.revision;
+    // Trials leading to this revision share its target number and parent.
+    return (run.candidateRevision === versionFocus?.revision && run.baseRevision === (versionFocus?.parent ?? 0))
+      || (run.baseRevision === project.head && (!versionFocus || versionFocus.revision === project.head));
+  }).sort((a, b) => b.created - a.created), [allRuns, versionFocus, project.head]);
   const activeRun = processRuns.find(run => run.id === selectedRun)
     || processRuns.find(run => run.committedRevision === versionFocus?.revision) || processRuns[0];
   const steps = useMemo(() => activeRun ? activeRun.steps.map(step => ({ key: `${activeRun.id}:${step.sequence}`,
