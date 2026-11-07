@@ -1,3 +1,4 @@
+import { localizedError } from "../shared/errors.js";
 import * as cad from "@classcad/smlibwasm";
 
 // An assembly is a collection, never a Boolean union. IDs belong to the design,
@@ -5,20 +6,20 @@ import * as cad from "@classcad/smlibwasm";
 export class Assembly {
   constructor(parts) {
     if (!Array.isArray(parts) || !parts.length || parts.length > 100)
-      throw new Error("请提供 1 至 100 个零件 / provide 1–100 parts");
+      throw localizedError("请提供 1 至 100 个零件", "provide 1–100 parts");
     const ids = new Set();
     this.parts = parts.map(({ id, name = id, shape }) => {
       if (typeof id !== "string" || !id.trim() || ids.has(id))
-        throw new Error("零件 ID 必须非空且唯一 / part IDs must be nonempty and unique");
+        throw localizedError("零件 ID 必须非空且唯一", "part IDs must be nonempty and unique");
       if (typeof name !== "string" || !(shape instanceof cad.Part) || !shape.isValid() || !(shape.volume > 0))
-        throw new Error(`零件无效 / invalid part: ${id}`);
+        throw localizedError("零件无效", "invalid part", `: ${id}`);
       ids.add(id);
       return { id, name, shape: shape.named(id) };
     });
   }
   part(id) {
     const item = this.parts.find(item => item.id === id);
-    if (!item) throw new Error(`零件不存在 / unknown part: ${id}`);
+    if (!item) throw localizedError("零件不存在", "unknown part", `: ${id}`);
     return item;
   }
   translate(...args) { return assembly(this.parts.map(p => ({ ...p, shape: p.shape.translate(...args) }))); }
@@ -56,10 +57,10 @@ export function partInfo(shape) {
 }
 
 export function inspectFit(assembly, pairs, tolerance = 0.001) {
-  if (!(assembly instanceof Assembly)) throw new Error("请先创建多零件模型 / build an assembly first");
-  if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error("公差无效 / invalid tolerance");
+  if (!(assembly instanceof Assembly)) throw localizedError("请先创建多零件模型", "build an assembly first");
+  if (!Number.isFinite(tolerance) || tolerance < 0) throw localizedError("公差无效", "invalid tolerance");
   return pairs.map(({ from, to }) => {
-    if (from === to) throw new Error("请选择两个不同零件 / choose two different parts");
+    if (from === to) throw localizedError("请选择两个不同零件", "choose two different parts");
     const a = assembly.part(from).shape, b = assembly.part(to).shape;
     const overlap = a.intersect(b);
     try {

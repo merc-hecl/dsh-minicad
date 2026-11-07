@@ -1,4 +1,6 @@
 // One contract for model-facing schemas and kernel validation. No UI dependency.
+import { localizedError } from "./errors.js";
+
 export const object = (properties, required = Object.keys(properties)) => ({
   type: "object",
   properties,
@@ -393,26 +395,26 @@ export function validate(value, rule, path = "input") {
       (option.required || []).every(key => Object.hasOwn(value, key)) &&
       Object.keys(value).every(key => Object.hasOwn(option.properties, key)));
     if (structural) return validate(value, structural, path);
-    throw new Error(`${path}: 参数格式不匹配 / invalid value (${errors[0]})`);
+    throw localizedError(`${path}: 参数格式不匹配`, `${path}: invalid value`, ` (${errors[0]})`);
   }
   if (rule.const !== undefined && value !== rule.const)
-    throw new Error(`${path}: 必须为 / expected ${rule.const}`);
+    throw localizedError(`${path}: 必须为`, `${path}: expected`, ` ${rule.const}`);
   if (rule.enum && !rule.enum.includes(value))
-    throw new Error(`${path}: 不支持的值 / unsupported value`);
+    throw localizedError(`${path}: 不支持的值`, `${path}: unsupported value`);
   const bad = () => {
-    throw new Error(`${path}: 参数类型或范围错误 / invalid type or range`);
+    throw localizedError(`${path}: 参数类型或范围错误`, `${path}: invalid type or range`);
   };
   switch (rule.type) {
     case "object":
       if (!value || typeof value !== "object" || Array.isArray(value)) bad();
       for (const key of rule.required || [])
         if (!Object.hasOwn(value, key))
-          throw new Error(`${path}.${key}: 缺少必填参数 / required`);
+          throw localizedError(`${path}.${key}: 缺少必填参数`, `${path}.${key}: required`);
       for (const [key, item] of Object.entries(value)) {
         if (Object.hasOwn(rule.properties || {}, key))
           validate(item, rule.properties[key], `${path}.${key}`);
         else if (rule.additionalProperties === false)
-          throw new Error(`${path}.${key}: 未知参数 / unknown field`);
+          throw localizedError(`${path}.${key}: 未知参数`, `${path}.${key}: unknown field`);
       }
       break;
     case "array":

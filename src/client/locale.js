@@ -150,6 +150,7 @@ export const zh = {
   error: "操作未完成",
   retry: "重试",
   details: "技术详情",
+  localizedErrorDetail: "{zh}",
   invalidJSON: "参数必须是有效的 JSON 对象",
   pdfOnly: "请选择不超过 20 MB 的 PDF 文件",
   webglError: "无法创建 3D 视图，请检查图形加速设置。",
@@ -315,6 +316,7 @@ export const en = {
   error: "Operation could not be completed",
   retry: "Retry",
   details: "Technical details",
+  localizedErrorDetail: "{en}",
   invalidJSON: "Parameters must be a valid JSON object",
   pdfOnly: "Choose a PDF file smaller than 20 MB",
   webglError:
@@ -331,5 +333,3 @@ export const en = {
   copy: "Copy",
   copied: "Copied",
 };
-
-export { errorKey } from "../shared/errors.js";

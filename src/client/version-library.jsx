@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { Button, IconChevronRightOutlineRegular, IconCloseOutlineRegular, StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
 import { Viewport } from "./viewport.jsx";
 import { ErrorDetails } from "./workbench-dialog.jsx";
+import { errorDetail } from "../shared/errors.js";
 
 const columnWidth = 140, rowHeight = 64, nodeWidth = 106, nodeHeight = 36;
 
@@ -40,7 +41,7 @@ function RevisionDetails({ project, entry, date, request, disabled, onSelect, t 
         if (!controller.signal.aborted) setPreview({ revision, data });
       })
       .catch(error => {
-        if (!controller.signal.aborted) setPreview({ revision, error: error.message });
+        if (!controller.signal.aborted) setPreview({ revision, error: errorDetail(error) });
       });
     return () => controller.abort();
   }, [currentPreview, projectId, sourceFile, revision, request]);

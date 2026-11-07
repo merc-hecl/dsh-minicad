@@ -44,7 +44,7 @@ export function apply(ctx) {
       const response = await fetch(`/api/minicad/${method}?` + new URLSearchParams(params), { signal: combined });
       if (!response.ok) {
         const data = await response.json();
-        throw Object.assign(new Error(data.error || response.statusText), { uiKey: data.code });
+        throw Object.assign(new Error(data.error || response.statusText), { uiKey: data.code, localized: data.localized });
       }
       return decodePreview(await response.arrayBuffer());
     }
@@ -58,6 +58,7 @@ export function apply(ctx) {
     if (!response.ok)
       throw Object.assign(new Error(data.error || response.statusText), {
         uiKey: data.code,
+        localized: data.localized,
       });
     if (method === "compare") {
       for (const name of ["added", "removed", "unchanged"]) {

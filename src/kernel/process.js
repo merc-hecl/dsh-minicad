@@ -1,3 +1,4 @@
+import { localizedError } from "../shared/errors.js";
 import fs from "node:fs";
 import { join, relative, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -21,7 +22,7 @@ export class ProcessJournal {
   manifest(runId) { return join(this.root, runId, "run.json"); }
   run(runId) {
     if (typeof runId !== "string" || !/^[\da-f-]{36}$/i.test(runId))
-      throw new Error("过程记录不存在 / process run does not exist");
+      throw localizedError("过程记录不存在", "process run does not exist");
     return readJson(this.manifest(runId));
   }
   log(run, text) {
@@ -78,7 +79,7 @@ export class ProcessJournal {
     const file = typeof runId === "string" && /^[\da-f-]{36}$/i.test(runId) ? this.manifest(runId) : null;
     const run = file && fs.existsSync(file) ? readJson(file) : null;
     const step = run?.steps.find(item => item.sequence === Number(sequence));
-    if (!step) throw new Error("过程步骤不存在 / process checkpoint does not exist");
+    if (!step) throw localizedError("过程步骤不存在", "process checkpoint does not exist");
     return { path: join(this.root, run.id, `${step.sequence}.bin`), byteLength: step.byteLength,
       design: { metrics: step.metrics, parts: step.parts, geometryIds: run.geometryIds, sourceFile: run.sourceFile,
         revision: run.baseRevision, checkpoint: { runId: run.id, sequence: step.sequence } } };

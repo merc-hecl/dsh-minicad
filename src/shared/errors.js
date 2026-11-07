@@ -1,4 +1,24 @@
-// Stable translation keys for authored errors. Kernel diagnostics remain details.
+// The diagnostic message is used by logs and tools. The workbench renders a single locale.
+export function localizedError(zh, en, suffix = "") {
+  return Object.assign(new Error(`${zh} / ${en}${suffix}`), {
+    localized: { zh: zh + suffix, en: en + suffix },
+  });
+}
+
+export function errorDetail(error) {
+  return error.localized ?? error.message ?? String(error);
+}
+
+export function appendErrorDetail(error, zh, en, suffix) {
+  const detail = errorDetail(error);
+  error.localized = {
+    zh: `${detail.zh ?? detail}\n${zh}${suffix}`,
+    en: `${detail.en ?? detail}\n${en}${suffix}`,
+  };
+  error.message += `\n${zh} / ${en}${suffix}`;
+}
+
+// Stable translation keys for error summaries.
 const rules = [
   ["freecadUnavailable", /未检测到 FreeCAD/],
   ["modelAppLaunchFailed", /FreeCAD 启动失败/],

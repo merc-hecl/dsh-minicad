@@ -1,3 +1,4 @@
+import { localizedError } from "../shared/errors.js";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -92,8 +93,8 @@ export function createWorker({
   }
   function launch(method, params, signal, directory) {
     return new Promise((resolve, reject) => {
-      if (stopped) return reject(new Error("MiniCAD 已关闭"));
-      if (signal?.aborted) return reject(new Error("操作已取消"));
+      if (stopped) return reject(localizedError("MiniCAD 已关闭", "MiniCAD is closed"));
+      if (signal?.aborted) return reject(localizedError("操作已取消", "Operation cancelled"));
       const id = ++sequence;
       const child = spawnProcess(
         process.execPath,
@@ -139,8 +140,9 @@ export function createWorker({
         cleanup();
         reject(
           Object.assign(
-            new Error(`无法启动建模服务：${error.message}`, { cause: error }),
+            localizedError("无法启动建模服务", "Could not start the modeling process", `: ${error.message}`),
             {
+              cause: error,
               retryable: ["ENOMEM", "EAGAIN"].includes(error.code),
             },
           ),
@@ -152,6 +154,7 @@ export function createWorker({
           if (response.error)
             reject(
               Object.assign(new Error(response.error), {
+                localized: response.localized,
                 status: response.status,
                 operationIndex: response.operationIndex,
                 operation: response.operation,
@@ -166,13 +169,9 @@ export function createWorker({
         } else
           reject(
             Object.assign(
-              new Error(
-                aborted
-                  ? "操作已取消"
-                  : timedOut
-                    ? "建模服务已退出：操作超时"
-                    : `建模服务已退出 (${code})。${stderr}`,
-              ),
+              aborted ? localizedError("操作已取消", "Operation cancelled")
+                : timedOut ? localizedError("建模服务已退出：操作超时", "The modeling process stopped after a timeout")
+                  : localizedError("建模服务已退出", "The modeling process stopped", ` (${code}). ${stderr}`),
               {
                 retryable:
                   !aborted && !timedOut && allocationFailure.test(stderr),
@@ -190,8 +189,8 @@ export function createWorker({
     if (journal && method === "process_history") return Promise.resolve(journal.runs().toReversed());
     if (journal && method === "checkpoint_file") return Promise.resolve(journal.preview(params.runId, params.sequence));
     const run = async () => {
-      if (stopped) throw new Error("MiniCAD 已关闭");
-      if (signal?.aborted) throw new Error("操作已取消");
+      if (stopped) throw localizedError("MiniCAD 已关闭", "MiniCAD is closed");
+      if (signal?.aborted) throw localizedError("操作已取消", "Operation cancelled");
       if (localMethods.has(method)) {
         try {
           // No model code or WASM can run here. Old previews explicitly fall
@@ -226,7 +225,7 @@ export function createWorker({
             try {
               await delay(250, undefined, { signal });
             } catch {
-              throw new Error("操作已取消");
+              throw localizedError("操作已取消", "Operation cancelled");
             }
           }
         }

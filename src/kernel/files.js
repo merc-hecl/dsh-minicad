@@ -1,3 +1,4 @@
+import { localizedError } from "../shared/errors.js";
 import fs from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -7,7 +8,7 @@ export const jsonBytes = (value) =>
       value,
       (_key, v) => {
         if (typeof v === "number" && !Number.isFinite(v))
-          throw new Error("JSON 不能包含非有限数字");
+          throw localizedError("JSON 不能包含非有限数字", "JSON cannot contain non-finite numbers");
         return v;
       },
       2,
@@ -71,12 +72,12 @@ export function inside(root, name) {
     rel = relative(base, target);
   const outside = (path) =>
     path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
-  if (!rel || outside(rel)) throw new Error("项目文件路径超出工作目录");
+  if (!rel || outside(rel)) throw localizedError("项目文件路径超出工作目录", "Project file path is outside the working directory");
   if (fs.existsSync(base)) {
     let parent = target;
     while (!fs.existsSync(parent)) parent = dirname(parent);
     if (outside(relative(fs.realpathSync(base), fs.realpathSync(parent))))
-      throw new Error("项目文件路径超出工作目录");
+      throw localizedError("项目文件路径超出工作目录", "Project file path is outside the working directory");
   }
   return target;
 }

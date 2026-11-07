@@ -3,6 +3,7 @@ import { CodeBlock, DisclosureRow, Modal } from "@deepseek-ai/dsh-client-ui-prim
 
 export function ErrorDetails({ detail, t }) {
   const [expanded, setExpanded] = useState(false);
+  if (!detail) return null;
   return (
     <DisclosureRow
       title={t("details")}
@@ -11,7 +12,7 @@ export function ErrorDetails({ detail, t }) {
       expandOnRowClick
       onToggle={() => setExpanded((current) => !current)}
     >
-      <CodeBlock code={detail} showHeader={false} />
+      <CodeBlock code={typeof detail === "string" ? detail : t("localizedErrorDetail", detail)} showHeader={false} />
     </DisclosureRow>
   );
 }

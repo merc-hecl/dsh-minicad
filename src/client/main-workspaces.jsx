@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { WorkbenchDialog } from "./workbench-dialog.jsx";
-import { errorKey } from "../shared/errors.js";
+import { errorDetail, errorKey } from "../shared/errors.js";
 
 // This is a view of MiniCAD's workspace ownership, not a second DSH registry.
 // DSH workspace membership validates immutable Session-header cwd, whereas a
@@ -74,7 +74,7 @@ function MainWorkspaces({ NativeBrowser, catalog, request, minicadT, ...props })
       if (!design) return props.startSession(id, options);
       // The native browser owns presentation and opens the real DSH Session.
       modify("new_session", { projectId: design.id }).then(project => props.open(project.activeSessionId))
-        .catch(error => setError({ key: error.uiKey || errorKey(error.message), detail: error.message }));
+        .catch(error => setError({ key: error.uiKey || errorKey(error.message), detail: errorDetail(error) }));
     }}
     renameWorkspace={(id, title) => byKey.has(id)
       ? modify("rename", { projectId: byKey.get(id).id, title }) : props.renameWorkspace(id, title)}

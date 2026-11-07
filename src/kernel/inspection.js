@@ -1,3 +1,4 @@
+import { localizedError } from "../shared/errors.js";
 import { Assembly } from "./assembly.js";
 import {
   defaultIdFormats,
@@ -27,7 +28,7 @@ export function topologyItems(shape, kind) {
 export function direction(input) {
   const length = Math.hypot(...input);
   if (!Number.isFinite(length) || length < 1e-12)
-    throw new Error("方向向量不能为零 / direction must be nonzero");
+    throw localizedError("方向向量不能为零", "direction must be nonzero");
   return input.map((n) => n / length);
 }
 export const modelScope = (projectId, sourceFile) =>
@@ -67,16 +68,16 @@ export function parseReference(id, kind, scope, revision) {
     Number(match[2]) !== revision ||
     (kind && match[3] !== kind)
   )
-    throw new Error(
-      "几何引用已过期或属于其他模型，请重新查询 / stale or foreign geometry reference",
+    throw localizedError(
+      "几何引用已过期或属于其他模型，请重新查询", "stale or foreign geometry reference",
     );
   return { kind: match[3], index: Number(match[4]) };
 }
 export function bindReference(id, kind, shape, scope, revision) {
   const parsed = parseReference(id, kind, scope, revision);
   if (!shape || !topologyItems(shape, parsed.kind)[parsed.index])
-    throw new Error(
-      "几何引用不存在，请重新查询 / geometry reference does not exist",
+    throw localizedError(
+      "几何引用不存在，请重新查询", "geometry reference does not exist",
     );
   return { $ref: { ...parsed, topology: topology(shape) } };
 }
@@ -89,20 +90,20 @@ export function select(part, kind, selector = {}, base = part, items, allowEmpty
     return found;
   }
   if (typeof selector === "string")
-    throw new Error(
-      "请使用当前模型的查询引用 / resolve query references before editing",
+    throw localizedError(
+      "请使用当前模型的查询引用", "resolve query references before editing",
     );
   if (selector.$ref) {
     const ref = selector.$ref;
     if (!base || kind !== ref.kind || topology(base) !== ref.topology)
-      throw new Error(
-        "模型拓扑已变化，请重新查询 / model topology changed; query again",
+      throw localizedError(
+        "模型拓扑已变化，请重新查询", "model topology changed; query again",
       );
     if ((kind === "solids" || kind === "vertices") && part === base)
       return new cad.ShapeList(list[ref.index]);
     const original = topologyItems(base, kind)[ref.index];
     if (!original)
-      throw new Error("几何引用不存在 / geometry reference does not exist");
+      throw localizedError("几何引用不存在", "geometry reference does not exist");
     list =
       kind === "solids"
         ? list.filter(
@@ -114,14 +115,14 @@ export function select(part, kind, selector = {}, base = part, items, allowEmpty
             .filter((item) => item.equals(original))
             .union(list.derivedFrom(original));
     if (list.length !== 1)
-      throw new Error(
-        "几何引用已被移除或拆分，请重新查询 / reference removed or split; query again",
+      throw localizedError(
+        "几何引用已被移除或拆分，请重新查询", "reference removed or split; query again",
       );
     return list;
   }
   if (selector.part) {
     const owner = part instanceof Assembly ? part.part(selector.part).shape : part;
-    if (!(part instanceof Assembly) && owner.name !== selector.part) throw new Error("零件不存在 / unknown part");
+    if (!(part instanceof Assembly) && owner.name !== selector.part) throw localizedError("零件不存在", "unknown part");
     if (part instanceof Assembly && kind === "solids") {
       const start = part.parts.slice(0, part.parts.findIndex(p => p.id === selector.part)).reduce((n, p) => n + p.shape.solids().length, 0);
       list = list.slice(start, start + owner.solids().length);
@@ -165,10 +166,10 @@ export function select(part, kind, selector = {}, base = part, items, allowEmpty
       1e-7,
     );
   if (!list.length && !allowEmpty)
-    throw new Error("没有找到匹配的几何，请重新查询 / no matching geometry");
+    throw localizedError("没有找到匹配的几何，请重新查询", "no matching geometry");
   if (selector.one && list.length !== 1)
-    throw new Error(
-      "几何选择不唯一，请缩小查询范围 / ambiguous geometry selection",
+    throw localizedError(
+      "几何选择不唯一，请缩小查询范围", "ambiguous geometry selection",
     );
   return list;
 }
@@ -182,11 +183,11 @@ export function queryShape(
   edgeParameters,
 ) {
   if (!["faces", "edges", "solids", "holes", "vertices"].includes(kind))
-    throw new Error("不支持的几何查询类型 / unsupported query kind");
+    throw localizedError("不支持的几何查询类型", "unsupported query kind");
   validate(selector, querySelectorSchema, "selector");
   if (edgeParameters !== undefined) {
     validate(edgeParameters, edgeParametersSchema, "edgeParameters");
-    if (kind !== "edges") throw new Error("曲线取点需查询边 / edgeParameters requires an edges query");
+    if (kind !== "edges") throw localizedError("曲线取点需查询边", "edgeParameters requires an edges query");
   }
   const topologyKind = kind === "holes" ? "faces" : kind;
   const all = topologyItems(shape, topologyKind);
@@ -280,7 +281,7 @@ function naturalCenter(item) {
     const midpoint = (Math.min(...projections) + Math.max(...projections)) / 2;
     return origin.map((v, i) => v + midpoint * unit[i]);
   }
-  throw new Error("中心测量需使用圆边、球面、圆柱面或显式点 / center measurement requires a circle, sphere, cylinder or explicit point");
+  throw localizedError("中心测量需使用圆边、球面、圆柱面或显式点", "center measurement requires a circle, sphere, cylinder or explicit point");
 }
 // Cylindrical bore segments, not semantic machining features. Open side cutouts
 // stay distinguishable from complete cylindrical walls and through bores.
@@ -356,17 +357,17 @@ function orientation(shape, input, scope, revision) {
     return vector(item.normal);
   if (["cylinder", "cone", "torus"].includes(item.geomType))
     return vector(item.axis.direction);
-  throw new Error(
-    "夹角需使用平面、直线、旋转轴或方向向量 / angle requires planes, lines, axes or vectors",
+  throw localizedError(
+    "夹角需使用平面、直线、旋转轴或方向向量", "angle requires planes, lines, axes or vectors",
   );
 }
 function thickness(shape, request) {
-  if (shape instanceof Assembly) throw new Error("测厚请指定零件实体 target / thickness requires a target solid in an assembly");
+  if (shape instanceof Assembly) throw localizedError("测厚请指定零件实体 target", "thickness requires a target solid in an assembly");
   const unit = direction(request.direction),
     point = request.point;
   if (shape.classify(point)[0] === "outside")
-    throw new Error(
-      "测厚点必须位于实体内或表面 / thickness point must be in or on the solid",
+    throw localizedError(
+      "测厚点必须位于实体内或表面", "thickness point must be in or on the solid",
     );
   const box = shape.bbox(),
     extent =
@@ -392,8 +393,8 @@ function thickness(shape, request) {
       method: "local_material_segment",
     };
   }
-  throw new Error(
-    "方向与表面相切或未找到有效壁厚 / tangent direction or no material segment",
+  throw localizedError(
+    "方向与表面相切或未找到有效壁厚", "tangent direction or no material segment",
   );
 }
 export function measureShape(shape, requests, scope, revision) {
@@ -435,7 +436,7 @@ export function measureShape(shape, requests, scope, revision) {
       }
       case "axis_distance": {
         const a = naturalAxis(entity(shape, request.from, scope, revision)), b = naturalAxis(entity(shape, request.to, scope, revision));
-        if (!a || !b) throw new Error("轴距测量需使用圆柱面、圆边或直线 / axis distance requires cylinders, circles or lines");
+        if (!a || !b) throw localizedError("轴距测量需使用圆柱面、圆边或直线", "axis distance requires cylinders, circles or lines");
         const u = a.direction, v = b.direction, w = b.origin.map((n, i) => n - a.origin[i]);
         const cross = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]], length = Math.hypot(...cross);
         value = length > 1e-10 ? Math.abs(w.reduce((sum, n, i) => sum + n * cross[i], 0)) / length
@@ -457,7 +458,7 @@ export function measureShape(shape, requests, scope, revision) {
         const pair = distancePair(request);
         const projected = request.kind === "projected_distance";
         value = projected ? pair.projections[request.axis] : pair.value;
-        if (!Number.isFinite(value)) throw new Error("当前几何不支持此测量 / unsupported measurement");
+        if (!Number.isFinite(value)) throw localizedError("当前几何不支持此测量", "unsupported measurement");
         return { kind: request.kind, ...pair, value, unit: "mm", ...(projected ? { axis: request.axis } : {}) };
       }
       case "angle": {
@@ -511,8 +512,8 @@ export function measureShape(shape, requests, scope, revision) {
       }
     }
     if (!Number.isFinite(value))
-      throw new Error(
-        `当前几何不支持此测量 / unsupported measurement: ${request.kind}`,
+      throw localizedError(
+        "当前几何不支持此测量", "unsupported measurement", `: ${request.kind}`,
       );
     return { kind: request.kind, value, unit };
   });
@@ -538,7 +539,7 @@ export function checkShape(shape, checks, scope, revision) {
         ? Infinity
         : check.expected + (check.tolerance ?? 1e-6));
     if (min > max)
-      throw new Error("检查下限不能大于上限 / invalid check range");
+      throw localizedError("检查下限不能大于上限", "invalid check range");
     return {
       ...measured[i],
       ...(check.name ? { name: check.name } : {}),

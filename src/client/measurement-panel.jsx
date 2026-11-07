@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
-import { errorKey } from "./locale.js";
+import { errorDetail, errorKey } from "../shared/errors.js";
 import { GeometryPanel } from "./geometry-panel.jsx";
 
 const number = value => value.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
@@ -55,7 +55,7 @@ export function MeasurementPanel({ targets, onClose, project, request, onResult,
   const [minimum, maximum] = current.items || [];
   const accuracy = item => item.approximate ? t("measurementAccuracy", { accuracy: item.accuracy }) : undefined;
   return <GeometryPanel title={t(targets.length === 1 ? "geometryParameters" : "measureDistance")} onClose={onClose} t={t}
-    error={current.error && { key: current.error.uiKey || errorKey(current.error.message), detail: current.error.message }}>
+    error={current.error && { key: current.error.uiKey || errorKey(current.error.message), detail: errorDetail(current.error) }}>
     <div aria-live="polite" aria-busy={!!current.loading}>
       {current.loading && <span className="mc-loading"><StateDot state="ongoing" />{t("measuring")}</span>}
       {geometry && <dl className="mc-measurement-values mc-measurement-properties">

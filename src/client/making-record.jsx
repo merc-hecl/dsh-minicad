@@ -4,6 +4,7 @@ import { Button, SegmentedTabs, StateDot, Tag, IconCloseOutlineRegular,
   IconRefreshOutlineRegular, pointerModality } from "@deepseek-ai/dsh-client-ui-primitives";
 import { Viewport } from "./viewport.jsx";
 import { ErrorDetails } from "./workbench-dialog.jsx";
+import { errorDetail } from "../shared/errors.js";
 
 function FrameThumbnail({ entry, load, selected, onSelect, date }) {
   const mount = useRef(null), canvas = useRef(null);
@@ -74,7 +75,7 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
   }, []);
   useEffect(() => {
     request("process_history", { projectId: project.id, sourceFile: project.sourceFile }, controller.current.signal)
-      .then(setRuns).catch(error => { if (error.name !== "AbortError") setError(error.message); });
+      .then(setRuns).catch(error => { if (error.name !== "AbortError") setError(errorDetail(error)); });
     return () => { controller.current.abort(); cache.current.clear(); onTranscriptTarget(null); };
   }, []);
   const allRuns = useMemo(() => {
@@ -129,7 +130,7 @@ export function MakingRecord({ project, progress, request, t, language, onClose,
     let disposed = false;
     setLoading(true); setDesign(null); setError(null);
     load(focus).then(value => { if (!disposed) setDesign(value); })
-      .catch(error => { if (!disposed && error.name !== "AbortError") setError(error.message); })
+      .catch(error => { if (!disposed && error.name !== "AbortError") setError(errorDetail(error)); })
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
   }, [focus?.key, load]);

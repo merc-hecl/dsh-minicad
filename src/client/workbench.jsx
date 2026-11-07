@@ -24,7 +24,7 @@ import {
   pointerModality,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { Viewport } from "./viewport.jsx";
-import { errorKey } from "./locale.js";
+import { errorDetail, errorKey } from "../shared/errors.js";
 import { PluginIcon } from "./plugin-icon.jsx";
 import { ErrorDetails, WorkbenchDialog } from "./workbench-dialog.jsx";
 import { DesignNavigator } from "./design-navigator.jsx";
@@ -147,7 +147,7 @@ export function Workbench({
   const loadController = useRef(new AbortController());
   const showError = (e) => {
     if (e.name === "AbortError" || e.code === "ABORT_ERR") return;
-    if (alive.current) setError({ key: e.uiKey || errorKey(e.message || ""), detail: e.message || String(e) });
+    if (alive.current) setError({ key: e.uiKey || errorKey(e.message || ""), detail: errorDetail(e) });
   };
   const api = async (method, params = {}) => {
     const render = method === "get" && params.geometry !== false;
@@ -325,7 +325,7 @@ export function Workbench({
         setProgress(state.progress || null);
         if (state.projects) setProjects(state.projects);
         if (state.error && state.error !== lastStatusError.current)
-          setError({ key: errorKey(state.error), detail: state.error });
+          setError({ key: errorKey(state.error), detail: state.errorDetail ?? state.error });
         lastStatusError.current = state.error || "";
         if (state.title && state.title !== projectRef.current?.title) {
           setProject((current) => current ? { ...current, title: state.title } : current);

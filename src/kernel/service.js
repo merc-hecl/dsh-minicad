@@ -24,6 +24,7 @@ try {
     JSON.stringify({
       id: request.id,
       error: String(error.message || error),
+      localized: error.localized,
       status: error.status || 400,
       operationIndex: error.operationIndex,
       operation: error.operation,

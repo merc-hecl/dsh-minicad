@@ -1,3 +1,4 @@
+import { localizedError } from "../shared/errors.js";
 import { Assembly, assembly, partInfo, inspectFit } from "./assembly.js";
 export { Assembly, inspectFit };
 import * as cad from "@classcad/smlibwasm";
@@ -27,7 +28,7 @@ export function readShape(bytes, name, parts) {
   const shape = cad.fromFile(bytes, name);
   if (parts) {
     const bodies = shape instanceof cad.Part ? [shape] : [...shape];
-    if (bodies.length !== parts.length) throw new Error("零件存储不完整 / incomplete assembly storage");
+    if (bodies.length !== parts.length) throw localizedError("零件存储不完整", "incomplete assembly storage");
     return assembly(parts.map((part, i) => ({ ...part, shape: bodies[i] })));
   }
   if (shape instanceof cad.ShapeList) return assembly(shape.map((body, i) => ({ id: `part-${i + 1}`, name: body.name || `Part ${i + 1}`, shape: body })));
@@ -63,8 +64,12 @@ export function buildShape(
     checkpoint: (part, label = "") => checkpoint ? checkpoint(part, label) : part,
     readModel: (name) => readModel(root, name, assets, onRead),
   };
+  const missingBuild = {
+    zh: "建模源码必须定义 build(parameters, cad) 函数",
+    en: "Model source must define build(parameters, cad)",
+  };
   const fn = new Script(
-    `(function(parameters,cad,require,__filename,__dirname,console){\n${source}\nif(typeof build !== 'function') throw new Error('建模源码必须定义 build(parameters, cad) 函数');\nreturn build(parameters,cad);\n})`,
+    `(function(parameters,cad,require,__filename,__dirname,console){\n${source}\nif(typeof build !== 'function') throw Object.assign(new Error(${JSON.stringify(missingBuild.zh)}), {localized: ${JSON.stringify(missingBuild)}});\nreturn build(parameters,cad);\n})`,
     { filename, lineOffset: -1 },
   ).runInThisContext();
   return fn(parameters, api, require, filename, dirname(filename),
@@ -78,7 +83,7 @@ export function values(input, parameters = {}) {
       typeof input.parameter === "string"
     ) {
       if (!Object.hasOwn(parameters, input.parameter))
-        throw new Error(`参数不存在 / missing parameter: ${input.parameter}`);
+        throw localizedError("参数不存在", "missing parameter", `: ${input.parameter}`);
       return parameters[input.parameter];
     }
     return Object.fromEntries(
@@ -111,7 +116,7 @@ function profile(spec) {
       sketch = cad.Polygon(...spec.points);
       break;
     default:
-      throw new Error("不支持的轮廓 / unsupported profile");
+      throw localizedError("不支持的轮廓", "unsupported profile");
   }
   if (spec.plane) sketch = sketch.on(cad.Plane[spec.plane]);
   return placed(sketch, spec);
@@ -134,7 +139,7 @@ function path(spec) {
         leftHanded: spec.leftHanded,
       });
     default:
-      throw new Error("不支持的路径 / unsupported path");
+      throw localizedError("不支持的路径", "unsupported path");
   }
 }
 function primitive(spec, context) {
@@ -157,14 +162,14 @@ function primitive(spec, context) {
       break;
     case "extrude":
       if (!spec.amount)
-        throw new Error("拉伸量不能为零 / extrusion amount must be nonzero");
+        throw localizedError("拉伸量不能为零", "extrusion amount must be nonzero");
       shape = profile(spec.profile).extrude(spec.amount);
       break;
     case "revolve":
       direction(spec.axis);
       if (!spec.angle)
-        throw new Error(
-          "旋转成型角度不能为零 / revolution angle must be nonzero",
+        throw localizedError(
+          "旋转成型角度不能为零", "revolution angle must be nonzero",
         );
       shape = profile(spec.profile).revolve(
         new cad.Axis(spec.origin || [0, 0, 0], spec.axis),
@@ -187,16 +192,16 @@ function primitive(spec, context) {
       break;
     case "import":
       if (!context.readModel)
-        throw new Error(
-          "资源导入需要任务工作目录 / import requires task context",
+        throw localizedError(
+          "资源导入需要任务工作目录", "import requires task context",
         );
       shape = context.readModel(spec.file);
       break;
     default:
-      throw new Error("不支持的建模操作 / unsupported modeling operation");
+      throw localizedError("不支持的建模操作", "unsupported modeling operation");
   }
   if (!(shape instanceof cad.Part || shape instanceof Assembly))
-    throw new Error("操作必须生成实体 / operation must produce a solid Part");
+    throw localizedError("操作必须生成实体", "operation must produce a solid Part");
   return placed(shape, spec);
 }
 const primitiveOps = new Set([
@@ -216,7 +221,7 @@ function applyOperation(part, op, base, context) {
     const next = primitive(op, context);
     return part ? part[op.mode || "fuse"](next) : next;
   }
-  if (!part) throw new Error("请先创建实体 / create a solid first");
+  if (!part) throw localizedError("请先创建实体", "create a solid first");
   switch (op.op) {
     case "cut":
     case "fuse":
@@ -270,7 +275,7 @@ function applyOperation(part, op, base, context) {
       else {
         direction(op.axis);
         if (!op.angle)
-          throw new Error("阵列角度不能为零 / pattern angle must be nonzero");
+          throw localizedError("阵列角度不能为零", "pattern angle must be nonzero");
       }
       const seed = op.tool ? primitive(op.tool, context) : part;
       let copies = seed;
@@ -285,13 +290,13 @@ function applyOperation(part, op, base, context) {
         copies = copies.fuse(copy);
       }
       if (!op.tool && op.mode && op.mode !== "fuse")
-        throw new Error(
-          "切除或求交阵列需提供 tool / cut/intersect patterns require a tool",
+        throw localizedError(
+          "切除或求交阵列需提供 tool", "cut/intersect patterns require a tool",
         );
       return op.tool ? part[op.mode || "fuse"](copies) : copies;
     }
     default:
-      throw new Error(`不支持的建模操作 / unsupported operation: ${op.op}`);
+      throw localizedError("不支持的建模操作", "unsupported operation", `: ${op.op}`);
   }
 }
 function publicOperation(value) {
@@ -316,9 +321,9 @@ export function editShape(part, operations, parameters = {}, context = {}) {
         const next = editShape(selected.shape, [local], {}, { ...context, checkpoint: undefined, referenceBase: base });
         part = assembly(part.parts.map(item => item.id === partId ? { ...item, shape: next } : item));
       } else if (op.part !== undefined) {
-        throw new Error("此模型不是多零件模型 / part requires an assembly");
+        throw localizedError("此模型不是多零件模型", "part requires an assembly");
       } else if (op.target !== undefined) {
-        if (!part) throw new Error("请先创建实体 / create a solid first");
+        if (!part) throw localizedError("请先创建实体", "create a solid first");
         const solids = part.solids();
         const selected = select(part, "solids", op.target, base, solids).one();
         const rest = solids.filter((item) => item !== selected);
@@ -331,11 +336,11 @@ export function editShape(part, operations, parameters = {}, context = {}) {
         context.checkpoint(part, "", raw.op);
     } catch (cause) {
       throw Object.assign(
-        new Error(
-          `第 ${index + 1} 个操作 (${raw.op}) 失败 / operation ${index + 1} failed: ${cause.message}`,
-          { cause },
+        localizedError(
+          `第 ${index + 1} 个操作 (${raw.op}) 失败：${cause.localized?.zh ?? cause.message}`,
+          `Operation ${index + 1} (${raw.op}) failed: ${cause.localized?.en ?? cause.message}`,
         ),
-        { operationIndex: index, operation: raw.op },
+        { cause, operationIndex: index, operation: raw.op },
       );
     }
   }
@@ -347,7 +352,7 @@ export function normalizeOperations(operations, shape, revision, scope) {
     !operations.length ||
     operations.length > 100
   )
-    throw new Error("请提供 1 至 100 个建模操作 / provide 1 to 100 operations");
+    throw localizedError("请提供 1 至 100 个建模操作", "provide 1 to 100 operations");
   return operations.map((input, index) => {
     try {
       validate(input, operationSchema, `operations[${index}]`);
@@ -369,11 +374,11 @@ export function normalizeOperations(operations, shape, revision, scope) {
       return op;
     } catch (cause) {
       throw Object.assign(
-        new Error(
-          `第 ${index + 1} 个操作失败 / operation ${index + 1} failed: ${cause.message}`,
-          { cause },
+        localizedError(
+          `第 ${index + 1} 个操作失败：${cause.localized?.zh ?? cause.message}`,
+          `Operation ${index + 1} failed: ${cause.localized?.en ?? cause.message}`,
         ),
-        { operationIndex: index, operation: input?.op },
+        { cause, operationIndex: index, operation: input?.op },
       );
     }
   });
@@ -392,7 +397,7 @@ export function describeShape(shape) {
     !Number.isFinite(shape.volume) ||
     shape.volume <= 0
   )
-    throw new Error("模型必须包含有效的封闭实体；当前版本未被覆盖");
+    throw localizedError("模型必须包含有效的封闭实体；当前版本未被覆盖", "The model must contain valid closed solids. The previous version is preserved.");
   const box = shape.bbox(),
     size = vector(box.size);
   const metrics = {
@@ -451,7 +456,7 @@ export function previewShape(shape) {
       face += shape.parts[i].shape.faces().length;
       edge += topologyItems(shape.parts[i].shape, "edges").length;
     });
-    if (lists.faceIndices.reduce((n, a) => n + a.length, 0) > 500000) throw new Error("预览网格超过 50 万三角形 / preview exceeds 500,000 triangles");
+    if (lists.faceIndices.reduce((n, a) => n + a.length, 0) > 500000) throw localizedError("预览网格超过 50 万三角形", "preview exceeds 500,000 triangles");
     return Object.fromEntries(Object.entries(lists).map(([name, blocks]) => {
       const array = new (name.includes("Indices") || name === "indices" ? Uint32Array : Float32Array)(blocks.reduce((n, a) => n + a.length, 0));
       let offset = 0;
@@ -472,7 +477,7 @@ export function previewShape(shape) {
     0,
   );
   if (cornerCount / 3 > 500000)
-    throw new Error("预览网格超过 50 万三角形，请简化模型");
+    throw localizedError("预览网格超过 50 万三角形，请简化模型", "The preview exceeds 500,000 triangles. Simplify the model.");
   const positions = new Float32Array(cornerCount * 3);
   const normals = new Float32Array(positions.length);
   const indices = new Uint32Array(cornerCount);
@@ -559,14 +564,14 @@ export function exportShape(shape, format) {
       if (bodies.length !== solids.length || bodies.some((body, i) => !body.isValid() ||
         Math.abs(body.volume - solids[i].volume) > Math.max(0.001, solids[i].volume * 1e-6) ||
         ["min", "max"].some(corner => vector(body.bbox()[corner]).some((v, axis) => Math.abs(v - vector(solids[i].bbox()[corner])[axis]) > 0.001))))
-        throw new Error("STEP 回读校验失败 / STEP round-trip failed");
+        throw localizedError("STEP 回读校验失败", "STEP round-trip failed");
     } finally { bodies.forEach(body => body.dispose()); }
     return Buffer.from(text);
   }
   if (format === "smb") {
-    if (parts.length !== 1) throw new Error("多零件请导出 SMP 或 STEP / export an assembly as SMP or STEP");
+    if (parts.length !== 1) throw localizedError("多零件请导出 SMP 或 STEP", "export an assembly as SMP or STEP");
     return Buffer.from(cad.toSmb(parts[0], { ascii: false }));
   }
   if (format === "stl") return Buffer.from(cad.toStl(parts));
-  throw new Error("不支持的导出格式");
+  throw localizedError("不支持的导出格式", "Unsupported export format");
 }

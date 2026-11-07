@@ -1,3 +1,4 @@
+import { localizedError } from "../shared/errors.js";
 import { execFile, spawn } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -53,11 +54,11 @@ export function createModelOpener(ctx, config, call) {
       return [{ id: "freecad", name: "FreeCAD", available: !!await freecad() }];
     },
     async open(args, signal) {
-      if (args.application !== "freecad") throw new Error("不支持的模型应用 / unsupported model application");
+      if (args.application !== "freecad") throw localizedError("不支持的模型应用", "unsupported model application");
       const executable = await freecad();
-      if (!executable) throw new Error("未检测到 FreeCAD，请安装或配置应用路径 / FreeCAD not found; install it or configure its executable");
+      if (!executable) throw localizedError("未检测到 FreeCAD，请安装或配置应用路径", "FreeCAD not found; install it or configure its executable");
       const project = await call("get", { projectId: args.projectId, sourceFile: args.sourceFile, geometry: false }, signal);
-      if (!project.head) throw new Error("请先完成建模");
+      if (!project.head) throw localizedError("请先完成建模", "Build a model first");
       const model = await call("export", { projectId: project.id, sourceFile: project.sourceFile,
         revision: project.head, format: "step" }, signal);
       signal?.throwIfAborted();
@@ -82,8 +83,8 @@ function launch(executable, file) {
       if (error) reject(error); else resolve();
     };
     const timer = setTimeout(() => finish(), 500);
-    child.once("error", error => finish(new Error(`FreeCAD 启动失败 / could not launch FreeCAD: ${error.message}`)));
+    child.once("error", error => finish(localizedError("FreeCAD 启动失败", "could not launch FreeCAD", `: ${error.message}`)));
     child.once("exit", (code, signal) => finish(code === 0 ? null
-      : new Error(`FreeCAD 启动失败 / could not launch FreeCAD (${code ?? signal})`)));
+      : localizedError("FreeCAD 启动失败", "could not launch FreeCAD", ` (${code ?? signal})`)));
   });
 }

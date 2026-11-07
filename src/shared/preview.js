@@ -1,10 +1,11 @@
+import { localizedError } from "./errors.js";
 // Revision-local preview transport. All blocks are aligned, little-endian,
 // and can be used directly as GPU attributes without flattening JSON arrays.
 const MAGIC = 0x3156434d; // MCV1
 const HEADER = 32;
 const fail = () => {
-  throw new Error(
-    "预览数据无效，请重新加载 / invalid preview data; reload the model",
+  throw localizedError(
+    "预览数据无效，请重新加载", "The preview data is invalid. Reload the model.",
   );
 };
 

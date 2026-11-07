@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Button, Menu, StateDot, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconCloseOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 import { ErrorDetails } from "./workbench-dialog.jsx";
+import { errorDetail } from "../shared/errors.js";
 
 export function VersionDiff({ project, request, onResult, onClose, t, language }) {
   const versions = [...project.revisions].sort((a, b) => b.revision - a.revision);
@@ -14,7 +15,7 @@ export function VersionDiff({ project, request, onResult, onClose, t, language }
     setResult(null); setError(null); onResult(null);
     request("compare", { projectId: project.id, sourceFile: project.sourceFile, baseRevision, targetRevision }, controller.signal)
       .then(data => { if (!disposed) { setResult(data); onResult(data); } })
-      .catch(error => { if (!disposed && error.name !== "AbortError") setError(error.message); });
+      .catch(error => { if (!disposed && error.name !== "AbortError") setError(errorDetail(error)); });
     return () => { disposed = true; controller.abort(); onResult(null); };
   }, [project.id, project.sourceFile, baseRevision, targetRevision, request, onResult]);
   const number = new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en-US", { maximumSignificantDigits: 6 });

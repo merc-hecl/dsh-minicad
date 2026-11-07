@@ -1,6 +1,6 @@
 import z from "@deepseek-ai/schemastery";
 import { createWorker } from "./worker.js";
-import { errorKey } from "../shared/errors.js";
+import { errorKey, localizedError } from "../shared/errors.js";
 import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
@@ -55,7 +55,7 @@ export async function apply(ctx, config = {}) {
   const call = async (method, args, signal) => {
     if (!["build", "edit", "restore", "update_parameters", "commit", "variants", "set_geometry_id_format"].includes(method)) return worker.call(method, args, signal);
     if (active.has(args.projectId))
-      throw new Error("当前设计正在构建，请稍后重试");
+      throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
     const controller = new AbortController();
     const abort = () => controller.abort();
     if (signal?.aborted) controller.abort();
@@ -173,7 +173,7 @@ export async function apply(ctx, config = {}) {
   );
   ctx.on("agent/error", ({ agent, error }) => {
     if (bySession.has(agent.id))
-      lastError.set(agent.id, String(error?.message || error));
+      lastError.set(agent.id, { message: String(error?.message || error), localized: error?.localized });
   });
   ctx.on("agent/status", ({ agent, status }) => {
     if (status === "running" && bySession.has(agent.id)) lastError.delete(agent.id);
@@ -191,7 +191,7 @@ export async function apply(ctx, config = {}) {
   }
   async function relocateDesign(method, args, signal) {
     const before = await call("get", { projectId: args.projectId, geometry: false });
-    if (designBusy(before)) throw new Error("当前设计正在构建，请稍后重试");
+    if (designBusy(before)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
     active.set(before.id, new AbortController());
     try {
       // Resolve cold Sessions while their old workspace still exists. DSH's
@@ -200,7 +200,7 @@ export async function apply(ctx, config = {}) {
         const found = await ctx.sessionController.resolveAgent(sessionId);
         if (found.error) throw found.error;
       }
-      if (sessionRunning(before)) throw new Error("当前设计正在构建，请稍后重试");
+      if (sessionRunning(before)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
       signal?.throwIfAborted();
       const result = await call(method, { ...args, directoryName: undefined });
       try { await alignDirectory(result, undefined, before.sessions); }
@@ -246,7 +246,7 @@ export async function apply(ctx, config = {}) {
     if (method === "create" || method === "open_design") return ensureSession(await call(method, args));
     if (method === "new_session") {
       const project = await call("get", { projectId: args.projectId, geometry: false });
-      if (active.has(project.id)) throw new Error("当前设计正在构建，请稍后重试");
+      if (active.has(project.id)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
       return createSession(project);
     }
     if (method === "select_session") {
@@ -256,8 +256,8 @@ export async function apply(ctx, config = {}) {
     }
     if (method === "fork_session") {
       const project = await call("get", { projectId: args.projectId, geometry: false });
-      if (!project.sessions.includes(args.sessionId)) throw new Error("会话不属于当前设计 / session does not belong to this design");
-      if (active.has(project.id)) throw new Error("当前设计正在构建，请稍后重试");
+      if (!project.sessions.includes(args.sessionId)) throw localizedError("会话不属于当前设计", "session does not belong to this design");
+      if (active.has(project.id)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
       const created = await ctx.sessionController.fork({ sessionId: args.sessionId, increaseTitle: true, allowMigration: false });
       const bound = await call("bind", { projectId: project.id, sessionId: created.sessionId });
       bySession.set(created.sessionId, project.id);
@@ -267,13 +267,13 @@ export async function apply(ctx, config = {}) {
     if (method === "rename") return relocateDesign(method, args, signal);
     if (method === "fork_project") {
       const source = await call("get", { projectId: args.projectId, geometry: false });
-      if (designBusy(source)) throw new Error("当前设计正在构建，请稍后重试");
+      if (designBusy(source)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
       const branch = await call("fork_project", { projectId: source.id, path: args.path, title: args.title }, signal);
       return ensureSession(branch);
     }
     if (method === "close_design") {
       const project = await call("get", { projectId: args.projectId, geometry: false });
-      if (designBusy(project)) throw new Error("当前设计正在构建，请稍后重试");
+      if (designBusy(project)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
       const result = await call("close_design", args);
       for (const sessionId of project.sessions) { bySession.delete(sessionId); lastError.delete(sessionId); }
       return result;
@@ -286,6 +286,7 @@ export async function apply(ctx, config = {}) {
         geometry: false,
       });
       if (!inFlight) await alignDirectory(p, signal);
+      const error = lastError.get(p.activeSessionId);
       return {
         head: p.head,
         models: p.models,
@@ -302,7 +303,8 @@ export async function apply(ctx, config = {}) {
         })),
         running:
           designBusy(p),
-        error: lastError.get(p.activeSessionId) || null,
+        error: error?.message || null,
+        errorDetail: error?.localized,
       };
     }
     if (method === "prompt" || method === "cancel" || method === "model") {
@@ -332,9 +334,9 @@ export async function apply(ctx, config = {}) {
       }
       const text = String(args.text || "").trim();
       if (!text || text.length > 30000)
-        throw new Error("请输入不超过 30000 字的需求");
+        throw localizedError("请输入不超过 30000 字的需求", "Enter a requirement of up to 30,000 characters");
       if (typeof args.requestId !== "string" || args.requestId.length > 100)
-        throw new Error("缺少消息标识");
+        throw localizedError("缺少消息标识", "Missing message identifier");
       lastError.delete(p.activeSessionId);
       const refs = p.attachments.map(({ id, name, pages }) => ({
         id,
@@ -360,10 +362,10 @@ export async function apply(ctx, config = {}) {
       return result;
     }
     if (!clientMethods.has(method))
-      throw Object.assign(new Error("不支持的操作"), { status: 404 });
+      throw Object.assign(localizedError("不支持的操作", "Unsupported operation"), { status: 404 });
     if (method === "restore" || method === "select_model") {
       const project = building.get(args.projectId) || await call("get", { projectId: args.projectId, geometry: false }, signal);
-      if (designBusy(project)) throw new Error("当前设计正在构建，请稍后重试");
+      if (designBusy(project)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
     }
     const result = await call(method, args, signal);
     if (method === "get") { const project = await ensureSession(result); await alignDirectory(project, signal); return project; }
@@ -378,12 +380,12 @@ export async function apply(ctx, config = {}) {
           requestBody: "buffered",
           fetch: async (request) => {
             try {
-              if (disposed) return json({ error: "插件已卸载" }, 503);
+              if (disposed) throw Object.assign(localizedError("插件已卸载", "The plugin has been unloaded"), { status: 503 });
               return await fetch(request);
             } catch (error) {
               const message = String(error.message || error);
               return json(
-                { error: message, code: errorKey(message) },
+                { error: message, code: errorKey(message), localized: error.localized },
                 error.status || 400,
               );
             }
@@ -394,7 +396,8 @@ export async function apply(ctx, config = {}) {
   }
   route("/api/minicad/rpc", ["POST"], async (request) => {
     const body = await request.text();
-    if (body.length > 29 * 1024 * 1024) return json({ error: "请求过大" }, 413);
+    if (body.length > 29 * 1024 * 1024)
+      throw Object.assign(localizedError("请求过大", "The request exceeds the size limit"), { status: 413 });
     const { method, params = {} } = JSON.parse(body);
     return json(await rpc(method, params, request.signal));
   });
