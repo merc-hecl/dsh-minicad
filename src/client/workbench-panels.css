@@ -1,5 +1,8 @@
-/* A single review stage and an independent native conversation scrollport. */
-:is(.mc-making-record, .mc-version-library) {
+/* Version branches, saved previews and their modeling checkpoints share one panel. */
+.mc-version-library {
+  display: grid;
+  grid-template-rows: auto minmax(80px, 22%) minmax(0, 1fr);
+  container: mc-version-library / inline-size;
   position: absolute;
   inset: var(--mc-content-top) var(--mc-gutter) var(--mc-gutter) var(--mc-panel-left);
   z-index: 3;
@@ -8,8 +11,7 @@
   overflow: hidden;
   transition: opacity var(--mc-motion-fast) ease, transform var(--mc-motion-fast) var(--mc-ease-out);
 }
-.mc-making-record { display: flex; flex-direction: column; container: mc-record / inline-size; }
-@starting-style { :is(.mc-making-record, .mc-version-library) { opacity: 0; transform: translateY(4px); } }
+@starting-style { .mc-version-library { opacity: 0; transform: translateY(4px); } }
 .mc-record-bar {
   display: flex; align-items: center; gap: 12px; flex: none;
   min-height: 52px; padding: 8px 12px 8px 20px;
@@ -17,19 +19,16 @@
 }
 .mc-record-bar h1 { flex: none; margin: 0; font-size: 14px; line-height: 22px; font-weight: 500; }
 .mc-record-project { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--mc-muted); }
-.mc-record-switch { display: none; flex: none; }
-.mc-record-body { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr); }
-.mc-record-model { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .mc-record-toolbar { display: flex; flex-wrap: wrap; align-items: center; flex: none; gap: 8px; min-height: 44px; padding: 8px 12px 4px 20px; }
 .mc-record-kind { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mc-muted); font-size: 12px; }
-.mc-record-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.mc-record-stage { position: relative; flex: 1 0 160px; min-height: 160px; overflow: hidden; }
 .mc-record-stage .mc-viewport { inset: 8px 12px; }
 .mc-record-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--mc-muted); font-size: 12px; pointer-events: none; }
 .mc-record-error { position: absolute; inset: 16px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; isolation: isolate; background: transparent; font-size: 13px; }
 .mc-record-error-content { display: flex; flex-direction: column; gap: 8px; }
 .mc-record-detail { flex: none; display: flex; flex-direction: column; gap: 2px; min-height: 48px; padding: 4px 20px 10px; }
 .mc-record-detail p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; }
-.mc-record-detail > span { color: var(--mc-muted); font-size: 11px; line-height: 16px; }
+.mc-record-detail > time { color: var(--mc-muted); font-size: 11px; line-height: 16px; }
 .mc-record-reel { flex: none; min-width: 0; padding: 8px 12px 10px; border-top: 1px solid var(--mc-border); }
 .mc-record-reel-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 4px 8px; color: var(--mc-muted); font-size: 11px; line-height: 18px; }
 .mc-record-scope { flex: 1; min-width: 0; }
@@ -38,7 +37,6 @@
 .mc-record-runs button { flex: none; gap: 6px; }
 .mc-record-run-title { max-width: min(360px, 45vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mc-record-runs [aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
-.mc-record-runs > span { font-size: 12px; }
 .mc-record-frames { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 0 4px; margin: 0; list-style: none; }
 .mc-record-frames > li { flex: 0 0 104px; min-width: 0; }
 .mc-record-frames .mc-record-frame { width: 100%; height: auto; padding: 6px; border: 1px solid transparent; border-radius: 8px; }
@@ -48,36 +46,11 @@
 .mc-record-frame-content > span { display: flex; gap: 5px; align-items: baseline; min-width: 0; font-size: 11px; line-height: 18px; }
 .mc-record-frame-content strong { flex: none; font-size: inherit; font-weight: 500; }
 .mc-record-frame-content > span > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mc-muted); }
-.mc-record-frames > li[data-version] { flex-basis: 164px; }
-.mc-record-frames li[data-version] .mc-record-frame { padding: 8px; }
-.mc-record-frames li[data-version] .mc-record-frame-content { width: 146px; gap: 4px; }
-.mc-record-frames li[data-version] canvas { width: 146px; height: 80px; }
-.mc-record-frames li[data-version] .mc-record-frame-content > span { flex-direction: column; align-items: stretch; gap: 2px; text-align: left; font-size: 12px; }
-.mc-record-frames li[data-version] strong { color: var(--mc-text); }
-.mc-record-frames li[data-version] .mc-record-frame-content > span > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; height: 36px; white-space: normal; overflow-wrap: anywhere; }
-.mc-record-frame-content small { display: block; text-align: left; font-size: 10px; line-height: 16px; color: var(--mc-muted); }
-.mc-record-conversation { display: flex; flex-direction: column; min-height: 0; min-width: 0; border-left: 1px solid var(--mc-border); }
-.mc-record-conversation-heading { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 10px; font-size: 13px; line-height: 20px; }
-.mc-record-conversation-heading > span + span { color: var(--mc-muted); font-size: 11px; }
-.mc-record-transcript { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; --dsh-chat-content-width: 100%; --dsh-composer-side-clearance: 0px; }
-.mc-record-transcript > div { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
-/* Native quote hover cards measure their inline anchor, excluding bubble padding.
-   Include that padding in the anchor bounds without changing the message layout. */
-.mc-record-transcript [data-message-bubble] span:has(> [data-quote-preview]) {
-  display: inline-block; max-width: 100%; padding-block: 10px; margin-block: -10px; vertical-align: top;
-}
-.mc-workbench:is([data-record-open], [data-version-library-open]) > :is(.mc-empty, .mc-viewport) { visibility: hidden; }
+.mc-workbench[data-version-library-open] > :is(.mc-empty, .mc-viewport) { visibility: hidden; }
 
-.mc-version-library {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  container: mc-version-library / inline-size;
-}
-.mc-version-library[data-selection] {
-  grid-template-rows: auto minmax(104px, 32%) minmax(0, 1fr);
-}
 .mc-version-count { flex: none; color: var(--mc-muted); font-size: 12px; }
 .mc-revision-tree { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.mc-revision-empty { padding: 12px 20px; color: var(--mc-muted); font-size: 12px; }
 .mc-revision-tree-graph { position: relative; }
 .mc-revision-tree-graph > svg { position: absolute; inset: 0; pointer-events: none; }
 .mc-revision-tree-graph path { stroke: var(--dsw-alias-label-caption); stroke-width: 1.4px; }
@@ -97,21 +70,11 @@
 .mc-version-library .mc-revision-node[aria-current="true"] { color: var(--mc-accent); }
 .mc-version-library .mc-revision-node[aria-pressed="true"] { border-color: var(--mc-accent); background: var(--mc-selected); }
 .mc-revision-detail {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(200px, 34%);
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: auto;
   border-top: 1px solid var(--mc-border);
-}
-.mc-revision-stage { position: relative; min-height: 160px; overflow: hidden; }
-.mc-revision-stage .mc-viewport { inset: 8px 12px; }
-.mc-revision-information {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  padding: 16px 20px;
-  border-left: 1px solid var(--mc-border);
 }
 .mc-revision-meta {
   display: flex;
@@ -127,44 +90,20 @@
 .mc-revision-meta strong { color: var(--mc-accent); font-weight: inherit; }
 .mc-revision-base-label { color: var(--mc-muted); font-weight: 400; }
 .mc-revision-direction { flex: none; color: var(--mc-muted); }
-.mc-revision-information h3 {
-  margin: 0;
-  overflow-wrap: anywhere;
-  font-size: 14px;
-  line-height: 21px;
-  font-weight: 600;
-}
-.mc-revision-information > time { color: var(--mc-muted); font-size: 11px; line-height: 17px; }
-.mc-revision-footer { margin-top: auto; display: flex; justify-content: flex-end; }
-.mc-revision-footer > button { min-height: 36px; }
-@container mc-version-library (max-width: 490px) {
-  .mc-revision-detail { grid-template-columns: minmax(0, 1fr); }
-  .mc-revision-information { border-left: 0; border-top: 1px solid var(--mc-border); padding: 12px; }
-}
-@container mc-record (max-width: 820px) {
-  .mc-record-switch { display: block; }
-  .mc-record-body { grid-template-columns: minmax(0, 1fr); }
-  .mc-record-conversation { border-left: 0; }
-  .mc-record-model, .mc-record-conversation { grid-area: 1 / 1; }
-  .mc-making-record[data-mode="model"] .mc-record-conversation,
-  .mc-making-record[data-mode="conversation"] .mc-record-model { display: none; }
-  .mc-record-conversation-heading { display: none; }
-}
 @container mc-workbench (max-width: 760px) {
   .mc-record-bar { gap: 8px; padding-left: 12px; }
   .mc-record-project { display: none; }
-  .mc-record-switch { margin-left: auto; }
 }
 /* DSH publishes the current keyboard modality; frequent key actions stay immediate. */
-html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-making-record, .mc-version-library, .mc-task-status-details, .mc-task-status, .mc-sidebar) {
+html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-version-library, .mc-task-status-details, .mc-task-status, .mc-sidebar) {
   transition: none; animation: none;
 }
-.mc-native-input[data-instant], .mc-making-record[data-instant], .mc-task-status[data-instant], .mc-task-status[data-instant] .mc-task-status-details {
+.mc-native-input[data-instant], .mc-task-status[data-instant], .mc-task-status[data-instant] .mc-task-status-details {
   transition: none; animation: none;
 }
 .mc-workbench .mc-sidebar[data-instant] { transition: none; }
 @media (prefers-reduced-motion: reduce) {
-  .mc-native-input, .mc-task-status, .mc-task-status::before, .mc-task-status-mark, .mc-task-status-details, .mc-making-record, .mc-version-library, .mc-sidebar { animation: none !important; transition: none !important; }
+  .mc-native-input, .mc-task-status, .mc-task-status::before, .mc-task-status-mark, .mc-task-status-details, .mc-version-library, .mc-sidebar { animation: none !important; transition: none !important; }
 }
 
 .mc-inspection {

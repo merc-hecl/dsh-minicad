@@ -29,7 +29,6 @@ import { ErrorDetails, WorkbenchDialog } from "./workbench-dialog.jsx";
 import { DesignNavigator } from "./design-navigator.jsx";
 import { ConversationDock } from "./conversation-dock.jsx";
 import { SelectionTools } from "./selection-tools.jsx";
-import { MakingRecord } from "./making-record.jsx";
 import { VersionDiff } from "./version-diff.jsx";
 import { VersionLibrary } from "./version-library.jsx";
 import { SolidViewIcon, WireframeViewIcon, TransparentViewIcon, SelectGeometryIcon } from "./viewport-tool-icons.jsx";
@@ -53,15 +52,16 @@ const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
 };
 
 export function Workbench({
-  locale, t, enter, back, request, addGeometryReference, SessionProvider, renderSlot, retainSession, sessionCatalog, workspaceCatalog, renameConversation,
+  locale, t, enter, back, openSessionRecord, request, addGeometryReference, SessionProvider, renderSlot, retainSession, sessionCatalog, workspaceCatalog, renameConversation,
   contextMenus, shortcutCatalog,
 }) {
   const workbench = useRef(null);
   const dock = useRef(null);
   const canvasPress = useRef(null);
+  const initialProject = useRef(null);
   const [statusTarget, setStatusTarget] = useState(null);
   useLayoutEffect(() => {
-    enter(workbench.current);
+    initialProject.current = enter(workbench.current);
   }, []);
   const language = useSyncExternalStore(
     locale.subscribe,
@@ -114,16 +114,15 @@ export function Workbench({
     [value, setValue] = useState("");
   const [sessionReference, setSessionReference] = useState(null);
   const [reference, setReference] = useState(null);
-  const [historyOpen, setHistoryOpen] = useState(false), [transcriptTarget, setTranscriptTarget] = useState(null);
   const [versionLibraryOpen, setVersionLibraryOpen] = useState(false);
   const closeVersionLibrary = useCallback(() => setVersionLibraryOpen(false), []);
   const [diffOpen, setDiffOpen] = useState(false), [diff, setDiff] = useState(null);
   const [progress, setProgress] = useState(null), [processDesign, setProcessDesign] = useState(null);
   const [nativeRunning, setNativeRunning] = useState(false);
   useEffect(() => {
-    if (narrow && (historyOpen || versionLibraryOpen || diffOpen)) setPanelCollapsed(true);
-  }, [narrow, historyOpen, versionLibraryOpen, diffOpen]);
-  useLayoutEffect(() => { setSelectionTargets([]); setMeasurementResult(null); setActiveTool(null); }, [measurementKey, !!processDesign, historyOpen, diffOpen]);
+    if (narrow && (versionLibraryOpen || diffOpen)) setPanelCollapsed(true);
+  }, [narrow, versionLibraryOpen, diffOpen]);
+  useLayoutEffect(() => { setSelectionTargets([]); setMeasurementResult(null); setActiveTool(null); }, [measurementKey, !!processDesign, versionLibraryOpen, diffOpen]);
   useEffect(() => { setDiffOpen(false); setDiff(null); }, [project?.id, project?.modelFile]);
   useLayoutEffect(closeVersionLibrary, [closeVersionLibrary, project?.id, project?.modelFile]);
   useEffect(() => {
@@ -193,7 +192,6 @@ export function Workbench({
   async function createConversation(task = project) {
     await action(async () => {
       await api("new_session", { projectId: task.id });
-      setHistoryOpen(false);
       if (selection.current === task.id) setProject(await api("get", { projectId: task.id }));
       else await load(task.id);
       await refreshList();
@@ -203,7 +201,7 @@ export function Workbench({
     await action(async () => {
       await api("select_session", { projectId, sessionId });
       if (selection.current === projectId) {
-        setHistoryOpen(false); setActiveTool(null);
+        setActiveTool(null);
         setProject(await api("get", { projectId }));
       } else await load(projectId);
       await refreshList();
@@ -213,13 +211,13 @@ export function Workbench({
     const task = projects.find(item => item.sessions.includes(sessionId));
     await action(async () => {
       await api("fork_session", { projectId: task.id, sessionId });
-      if (selection.current === task.id) { setHistoryOpen(false); setActiveTool(null); setProject(await api("get", { projectId: task.id })); }
+      if (selection.current === task.id) { setActiveTool(null); setProject(await api("get", { projectId: task.id })); }
       else await load(task.id);
       await refreshList();
     });
   }
   async function load(id) {
-    setHistoryOpen(false); setProgress(null); setProcessDesign(null); processKey.current = "";
+    setProgress(null); setProcessDesign(null); processKey.current = "";
     setActiveTool(null);
     loadController.current.abort();
     loadController.current = new AbortController();
@@ -246,7 +244,7 @@ export function Workbench({
     }
   }
   function clearSelection() {
-    setHistoryOpen(false); setProgress(null); setProcessDesign(null); processKey.current = "";
+    setProgress(null); setProcessDesign(null); processKey.current = "";
     setActiveTool(null);
     loadController.current.abort();
     loadController.current = new AbortController();
@@ -264,7 +262,7 @@ export function Workbench({
     refreshList()
       .then(async (p) => {
         if (!alive.current) return;
-        const first = p[0];
+        const first = p.find(item => item.id === initialProject.current) || p[0];
         if (!first) { clearSelection(); return; }
         await load(first.id);
       })
@@ -392,7 +390,7 @@ export function Workbench({
       const next = new AbortController();
       loadController.current = next;
       dismissVersionLibrary();
-      setHistoryOpen(false); setDiffOpen(false);
+      setDiffOpen(false);
       setProgress(null); setProcessDesign(null); processKey.current = "";
       setProject(await withPreview(data, next));
       await refreshList();
@@ -459,8 +457,8 @@ export function Workbench({
     });
   }
   const design = project?.design;
-  const modelSwitchDisabled = busy || running || nativeRunning || diffOpen || historyOpen || versionLibraryOpen || !!processDesign;
-  const selectionActive = selecting && !!project && !modal && !processDesign && !historyOpen && !versionLibraryOpen && !diffOpen && !appMenu;
+  const modelSwitchDisabled = busy || running || nativeRunning || diffOpen || versionLibraryOpen || !!processDesign;
+  const selectionActive = selecting && !!project && !modal && !processDesign && !versionLibraryOpen && !diffOpen && !appMenu;
   const pickingActive = selectionActive && !modelMenu;
   const hasAssemblyParts = design?.parts?.length > 1;
   const hasModelChoices = project?.models.length > 1;
@@ -479,7 +477,6 @@ export function Workbench({
       className="mc-workbench"
       data-layout-width={layoutWidth}
       data-project-panel-collapsed={panelCollapsed || undefined}
-      data-record-open={historyOpen || undefined}
       data-version-library-open={versionLibraryOpen || undefined}
       data-native-dialog-open={!!renameTarget || !!picker || undefined}
       lang={language === "zh" ? "zh" : "en"}
@@ -505,7 +502,7 @@ export function Workbench({
           && event.target.matches("#mc-view-model-panel > canvas")) dock.current?.dismiss();
       }}
       onDoubleClick={event => {
-        if (!historyOpen && event.target.matches("#mc-view-model-panel > canvas")) {
+        if (event.target.matches("#mc-view-model-panel > canvas")) {
           event.preventDefault(); dock.current?.reveal({ x: event.clientX, y: event.clientY });
         }
       }}
@@ -518,8 +515,7 @@ export function Workbench({
         }
         dock.current?.keyDown(event);
         if (event.defaultPrevented) return;
-        if (historyOpen && event.key === "Escape" && !event.defaultPrevented && !event.target.closest('[role="dialog"],[role="menu"]')) { event.preventDefault(); setHistoryOpen(false); }
-        else if (diffOpen && event.key === "Escape" && !event.defaultPrevented && !event.target.closest('[role="dialog"],[role="menu"]')) { event.preventDefault(); setDiffOpen(false); }
+        if (diffOpen && event.key === "Escape" && !event.defaultPrevented && !event.target.closest('[role="dialog"],[role="menu"]')) { event.preventDefault(); setDiffOpen(false); }
         else if (event.key === "Escape" && selecting && !busy && !event.defaultPrevented && !event.isComposing && !event.target.closest('[role="dialog"],[role="menu"]')) {
           event.preventDefault(); setSelectionInstant(true); clearGeometrySelection(); setSelecting(false);
         }
@@ -527,7 +523,7 @@ export function Workbench({
     >
       <Viewport
         id="mc-view-model-panel"
-        active={!historyOpen && !versionLibraryOpen}
+        active={!versionLibraryOpen}
         sidebarCollapsed={panelCollapsed}
         design={displayedDesign}
         diff={displayedDiff}
@@ -560,37 +556,38 @@ export function Workbench({
             label={t(panelCollapsed ? "expandProjects" : "collapseProjects")}
             aria-expanded={!panelCollapsed} aria-controls="mc-design-library"
             onClick={() => {
-              if (narrow && panelCollapsed) { setHistoryOpen(false); closeVersionLibrary(); setDiffOpen(false); }
+              if (narrow && panelCollapsed) { closeVersionLibrary(); setDiffOpen(false); }
               setPanelCollapsed(value => !value);
             }} />
           <div className="mc-header-document">
             <span className="mc-crumb" title={project?.title || t("app")}>
               {project?.title || t("app")}
             </span>
-            {project?.head > 0 && <Btn className="mc-header-version" icon={IconBranchOutlineRegular}
-              label={`${t("versionLibrary")} · ${t("current")} v${project.head}`}
+            {project && <Btn className="mc-header-version" icon={IconBranchOutlineRegular}
+              label={project.head > 0 ? `${t("versionLibrary")} · ${t("current")} v${project.head}` : t("versionLibrary")}
               aria-expanded={versionLibraryOpen} aria-controls={versionLibraryOpen ? "mc-version-library" : undefined}
-              onClick={() => { setHistoryOpen(false); setDiffOpen(false); setVersionLibraryOpen(value => !value); }} />}
+              onClick={() => { setDiffOpen(false); setVersionLibraryOpen(value => !value); }} />}
           </div>
         </div>
         <div ref={setStatusTarget} className="mc-header-status" />
         <nav className="mc-header-actions mc-panel" aria-label={t("workbenchTools")}>
           <div className="mc-header-action-group">
-            <Btn icon={IconRefreshOutlineRegular} label={t("resetView")} disabled={historyOpen} onClick={() => setResetView(value => value + 1)} />
+            <Btn icon={IconRefreshOutlineRegular} label={t("resetView")} disabled={versionLibraryOpen} onClick={() => setResetView(value => value + 1)} />
             <Btn icon={currentDisplayMode === "wire" ? WireframeViewIcon : currentDisplayMode === "transparent" ? TransparentViewIcon : SolidViewIcon}
               label={`${t("displayMode")} · ${modeLabel(currentDisplayMode)}`}
               aria-label={t("switchDisplayMode", { mode: modeLabel(nextDisplayMode) })}
-              disabled={historyOpen} onClick={() => setDisplayMode(nextDisplayMode)} />
+              disabled={versionLibraryOpen} onClick={() => setDisplayMode(nextDisplayMode)} />
             <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selectionActive}
               aria-expanded={hasAssemblyParts || hasModelChoices ? inspectionVisible : undefined} aria-controls={inspectionVisible ? "mc-model-inspection" : undefined}
-              disabled={!project || !!processDesign || busy || diffOpen || historyOpen || versionLibraryOpen}
+              disabled={!project || !!processDesign || busy || diffOpen || versionLibraryOpen}
               onClick={() => { clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
           </div>
           <div className="mc-header-action-group">
             <Btn icon={IconCompareSplitOutlineRegular} label={t("compareVersion")} disabled={!project || project.revisions.length < 2} aria-pressed={diffOpen}
-              onClick={() => { closeVersionLibrary(); setHistoryOpen(false); setDiffOpen(value => !value); }} />
-            <Btn icon={IconFlatListOutlineRegular} label={t("makingRecord")} disabled={!project} aria-pressed={historyOpen}
-              onClick={() => { closeVersionLibrary(); setDiffOpen(false); setHistoryOpen(value => !value); }} />
+              onClick={() => { closeVersionLibrary(); setDiffOpen(value => !value); }} />
+            <Btn icon={IconFlatListOutlineRegular} label={t("sessionRecord")}
+              disabled={busy || !project?.activeSessionId || sessionReference?.sessionId !== project.activeSessionId}
+              onClick={() => action(() => openSessionRecord(project, workbench.current))} />
           </div>
           {project && renderSlot("minicad.directoryActions", { absolutePath: project.workspaceDirectory,
             projectId: project.id, modelFile: project.modelFile, hasModel: project.head > 0, onMenuOpenChange: setAppMenu })}
@@ -640,21 +637,18 @@ export function Workbench({
         onClose={() => { clearGeometrySelection(); setSelecting(false); }} t={t} />}
       {diffOpen && project && <VersionDiff key={`${project.id}:${project.modelFile}`} project={project} request={request}
         onResult={setDiff} onClose={() => setDiffOpen(false)} t={t} language={language} />}
-      {historyOpen && project && <MakingRecord key={`${project.id}:${project.modelFile}`} project={project} progress={progress}
-        request={request} t={t} language={language}
-        onClose={() => setHistoryOpen(false)} onTranscriptTarget={setTranscriptTarget} />}
-      {versionLibraryOpen && project?.head > 0 && <VersionLibrary key={`${project.id}:${project.modelFile}`} project={project}
+      {versionLibraryOpen && project && <VersionLibrary key={`${project.id}:${project.modelFile}`} project={project} progress={progress}
         request={request} language={language} disabled={busy || running || nativeRunning}
         onClose={dismissVersionLibrary} onSelect={selectRevision} t={t} />}
-      <ConversationDock key={project?.activeSessionId || "none"} ref={dock} t={t} hidden={historyOpen || versionLibraryOpen}
+      <ConversationDock key={project?.activeSessionId || "none"} ref={dock} t={t} hidden={versionLibraryOpen}
         running={running} statusTarget={statusTarget} revision={project?.head || 0} latestRevision={project?.revisions[0]?.revision || 0}
-        onRecord={() => { closeVersionLibrary(); setDiffOpen(false); setHistoryOpen(true); }}
+        onSessionRecord={() => action(() => openSessionRecord(project, workbench.current))}
         onStart={() => setError(null)}
         onCancel={() => action(() => api("cancel", { projectId: selected }))} onRunning={setNativeRunning}>
         {callbacks => <>
         {sessionReference && project && sessionReference.sessionId === project.activeSessionId ? (
           <SessionProvider session={sessionReference}>
-            {renderSlot("minicad.composer", { ...callbacks, transcriptTarget })}
+            {renderSlot("minicad.composer", callbacks)}
           </SessionProvider>
         ) : selected || loading ? <span role="status" className="mc-loading mc-muted"><StateDot state="ongoing" />{t("loading")}</span> : (
           <Btn icon={IconPlusOutlineRegular} onClick={() => setPicker({ type: "open" })}>{t("openDesignFolder")}</Btn>

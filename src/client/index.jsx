@@ -1,10 +1,11 @@
 import React from "react";
+import { createSnapshotStore } from "@deepseek-ai/dsh-client-store";
 import { registerGeometryReferences } from "./geometry-reference.jsx";
 import { Composer } from "./composer.jsx";
 import { registerCompactComposer } from "./compact-composer.jsx";
 import { createDesignCatalog, registerMainWorkspaces, mirrorNativeSlot } from "./main-workspaces.jsx";
 import { DirectoryOpenAction } from "./directory-open-action.jsx";
-import { StateDot } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, StateDot, IconChevronLeftOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 import { decodePreview } from "../shared/preview.js";
 const Workbench = React.lazy(() => import(__MINICAD_WORKBENCH_URL__).then((asset) => ({ default: asset.createModule(__MINICAD_REQUIRE__).Workbench })));
 import { PluginIcon } from "./plugin-icon.jsx";
@@ -81,16 +82,25 @@ export function apply(ctx) {
     const current = workbench.closest("[data-sidebar-collapsed]") !== null;
     if (current !== collapsed) ctx.layout.toggleSidebar();
   };
-  let returnContext;
+  let returnContext, resumeProjectId;
+  const recordReturn = createSnapshotStore(null);
   const enterWorkbench = element => {
+    setSidebarCollapsed(element, true);
+    if (resumeProjectId) {
+      const projectId = resumeProjectId;
+      resumeProjectId = undefined;
+      return projectId;
+    }
+    recordReturn.set(null);
     const selection = { ...ctx.uiWorkspace.selection.getSnapshot() };
     const workspace = ctx.workspaces.list.getSnapshot().items.find(item => item.sessionIds.includes(selection.sessionId));
     const design = designCatalog.getSnapshot().find(item => item.sessions.includes(selection.sessionId)
       || item.directory === workspace?.path);
     returnContext = { selection, workspaceId: workspace?.workspaceId, designId: design?.id };
-    setSidebarCollapsed(element, true);
+    return design?.id;
   };
   const leaveWorkbench = async element => {
+    recordReturn.set(null);
     setSidebarCollapsed(element, false);
     const { selection = {}, workspaceId, designId } = returnContext || {};
     const workspaces = ctx.workspaces.list.getSnapshot();
@@ -112,6 +122,23 @@ export function apply(ctx) {
     if (workspace) await ctx.uiWorkspace.openWorkspace(workspace.workspaceId);
     else ctx.uiWorkspace.clearMain(); // Respect DSH's policy when its default workspace is unavailable.
   };
+  const openSessionRecord = (project, element) => {
+    recordReturn.set({ projectId: project.id, sessionId: project.activeSessionId });
+    setSidebarCollapsed(element, false);
+    ctx.uiWorkspace.openSession(project.activeSessionId);
+  };
+  // DSH 0.2.2-rc.1 owns the entire Conversation and right Sidebar. Add only
+  // a return action to its public Session header seat; keep its layout intact.
+  ctx.slots.inject("conversation.session.header.actions", () => ctx.slots.register({
+    name: "conversation.session.header.actions", id: "minicad-return", order: 0, locale: "minicad",
+  }, ({ sessionId, t }) => {
+    const target = React.useSyncExternalStore(recordReturn.subscribe, recordReturn.getSnapshot);
+    return target?.sessionId === sessionId ? <Button variant="ghost" size="sm"
+      icon={<IconChevronLeftOutlineRegular size={14} />} onClick={() => {
+        resumeProjectId = target.projectId;
+        ctx.layout.selectPanel("minicad");
+      }}>{t("returnWorkbench")}</Button> : null;
+  }));
   ctx.slots.inject("main", () =>
     ctx.slots.register(
       {
@@ -140,6 +167,7 @@ export function apply(ctx) {
           locale={locale}
           enter={enterWorkbench}
           back={leaveWorkbench}
+          openSessionRecord={openSessionRecord}
           request={request}
           addGeometryReference={addGeometryReference}
           SessionProvider={SessionProvider}

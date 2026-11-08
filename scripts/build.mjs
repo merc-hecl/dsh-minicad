@@ -5,6 +5,7 @@ const external = [
   "react",
   "react-dom",
   "react/jsx-runtime",
+  "@deepseek-ai/dsh-client-store",
   "@deepseek-ai/dsh-client-ui-primitives",
 ];
 // A real second network module. DSH supplies its existing require function so

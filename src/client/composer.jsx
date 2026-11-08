@@ -1,14 +1,10 @@
-import React, { createContext, useContext, useEffect, useRef, useSyncExternalStore } from "react";
-import { createPortal } from "react-dom";
+import React, { useEffect, useRef, useSyncExternalStore } from "react";
 import { CompactComposerContext } from "./compact-composer.jsx";
 
-const TranscriptTarget = createContext(null);
 function WorkbenchViews({ renderSlot }) {
-  const target = useContext(TranscriptTarget);
   // Keep DSH's draft-persistence binding mounted even when Chat is not read.
   // An unmatched view filter avoids loading/rendering a hidden transcript.
-  const view = renderSlot("conversation.session", { view: target ? "chat" : "minicad.folded" });
-  return target ? createPortal(view, target) : <div hidden>{view}</div>;
+  return <div hidden>{renderSlot("conversation.session", { view: "minicad.folded" })}</div>;
 }
 const COMPOSER_SLOTS = { views: WorkbenchViews };
 const EMPTY_TODOS = [];
@@ -42,7 +38,7 @@ function latestLiveTool(members, nodes) {
 }
 
 export function Composer({ renderFactorySlot, useSession, useInput, useSessionStatus, useProjection, useChat, useConversation, sessionId,
-  transcriptTarget, onSubmitted, onSessionState, onRestored, minicadT, chatT, modelDirectory }) {
+  onSubmitted, onSessionState, onRestored, minicadT, chatT, modelDirectory }) {
   const session = useSession(s => s);
   const input = useInput(s => s);
   const models = useSyncExternalStore(modelDirectory.subscribe, modelDirectory.getSnapshot);
@@ -96,7 +92,7 @@ export function Composer({ renderFactorySlot, useSession, useInput, useSessionSt
     current.draft = input.draft;
   }, [session.running, session.pendingSubmissions, session.promptError, input.draft, input.attachmentIds, input.occurrences,
     interaction, turnId, reason, todos, summary, activity, activityDetail, modelName, chatT]);
-  return <CompactComposerContext.Provider value={minicadT}><TranscriptTarget.Provider value={transcriptTarget}>
+  return <CompactComposerContext.Provider value={minicadT}>
     {renderFactorySlot("conversation.content", { variant: "embedded", phase: "active", hero: false }, { slots: COMPOSER_SLOTS })}
-  </TranscriptTarget.Provider></CompactComposerContext.Provider>;
+  </CompactComposerContext.Provider>;
 }

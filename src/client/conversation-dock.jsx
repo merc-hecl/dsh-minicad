@@ -8,7 +8,7 @@ import { useFloatingInput } from "./use-floating-input.js";
 
 const EMPTY = { running: false, waiting: false, pending: false, todos: [], activities: [] };
 export const ConversationDock = forwardRef(function ConversationDock({ children, running,
-  hidden, t, statusTarget, revision, latestRevision, onCancel, onRunning, onStart, onRecord }, ref) {
+  hidden, t, statusTarget, revision, latestRevision, onCancel, onRunning, onStart, onSessionRecord }, ref) {
   const [open, setOpen] = useState(false), [expanded, setExpanded] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [native, setNative] = useState(EMPTY), [pending, setPending] = useState(false);
@@ -100,7 +100,7 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
         </details>}
         <div className="mc-task-status-actions">
           <Button variant="ghost" size="sm" onClick={() => native.waiting ? setExpanded(false) : reveal()}>{t(native.waiting ? "answer" : "openInput")}</Button>
-          <Button variant="ghost" size="sm" onClick={() => { closeExpanded(); onRecord(); }}>{t("makingRecord")}</Button>
+          <Button variant="ghost" size="sm" onClick={() => { closeExpanded(); onSessionRecord(); }}>{t("sessionRecord")}</Button>
           {!alive && !native.waiting && <Button variant="ghost" size="sm" onClick={() => { setFeedback(null); setDismissed(true); closeExpanded(); }}>{t("dismissStatus")}</Button>}
         </div>
       </div>
