@@ -52,7 +52,7 @@ const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
 };
 
 export function Workbench({
-  locale, t, enter, back, openSessionRecord, request, addGeometryReference, SessionProvider, renderSlot, retainSession, sessionCatalog, workspaceCatalog, renameConversation,
+  locale, t, enter, back, request, addGeometryReference, SessionProvider, renderSlot, retainSession, sessionCatalog, workspaceCatalog, renameConversation,
   contextMenus, shortcutCatalog,
 }) {
   const workbench = useRef(null);
@@ -115,6 +115,17 @@ export function Workbench({
   const [sessionReference, setSessionReference] = useState(null);
   const [reference, setReference] = useState(null);
   const [versionLibraryOpen, setVersionLibraryOpen] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false), [recordHost, setRecordHost] = useState(null);
+  const recordNeedsRoom = recordOpen && layoutWidth !== "wide";
+  const sidebarCollapsed = panelCollapsed || recordNeedsRoom;
+  const closeSessionRecord = useCallback(() => {
+    setRecordOpen(false);
+    workbench.current?.querySelector(".mc-session-record-toggle")?.focus({ preventScroll: true });
+  }, []);
+  const openSessionRecord = () => {
+    setVersionLibraryOpen(false); setDiffOpen(false);
+    setRecordOpen(true);
+  };
   const closeVersionLibrary = useCallback(() => setVersionLibraryOpen(false), []);
   const [diffOpen, setDiffOpen] = useState(false), [diff, setDiff] = useState(null);
   const [progress, setProgress] = useState(null), [processDesign, setProcessDesign] = useState(null);
@@ -125,6 +136,7 @@ export function Workbench({
   useLayoutEffect(() => { setSelectionTargets([]); setMeasurementResult(null); setActiveTool(null); }, [measurementKey, !!processDesign, versionLibraryOpen, diffOpen]);
   useEffect(() => { setDiffOpen(false); setDiff(null); }, [project?.id, project?.modelFile]);
   useLayoutEffect(closeVersionLibrary, [closeVersionLibrary, project?.id, project?.modelFile]);
+  useLayoutEffect(() => { setRecordOpen(false); }, [project?.id, project?.activeSessionId, project?.modelFile]);
   useEffect(() => {
     if (!selectionTargets.length || (activeTool === "measure" && selectionTargets.length > 2)) setActiveTool(null);
     setMeasurementResult(null);
@@ -476,8 +488,9 @@ export function Workbench({
       ref={workbench}
       className="mc-workbench"
       data-layout-width={layoutWidth}
-      data-project-panel-collapsed={panelCollapsed || undefined}
+      data-project-panel-collapsed={sidebarCollapsed || undefined}
       data-version-library-open={versionLibraryOpen || undefined}
+      data-session-record-open={recordOpen || undefined}
       data-native-dialog-open={!!renameTarget || !!picker || undefined}
       lang={language === "zh" ? "zh" : "en"}
       tabIndex={-1}
@@ -507,6 +520,10 @@ export function Workbench({
         }
       }}
       onKeyDown={event => {
+        if (recordOpen && event.key === "Escape" && !event.defaultPrevented && !event.isComposing
+          && !event.target.closest('input,textarea,[contenteditable="true"],[role="dialog"],[role="menu"],[data-trigger-menu]')) {
+          event.preventDefault(); closeSessionRecord(); return;
+        }
         if (versionLibraryOpen && event.key === "Escape" && !event.defaultPrevented
           && !event.target.closest('[role="dialog"],[role="menu"]')) {
           event.preventDefault();
@@ -524,7 +541,7 @@ export function Workbench({
       <Viewport
         id="mc-view-model-panel"
         active={!versionLibraryOpen}
-        sidebarCollapsed={panelCollapsed}
+        sidebarCollapsed={sidebarCollapsed}
         design={displayedDesign}
         diff={displayedDiff}
         wire={wire}
@@ -553,11 +570,11 @@ export function Workbench({
             onClick={() => action(() => back(workbench.current))}
           />
           <Btn className="mc-library-toggle" icon={IconPanelLeftOutlineRegular}
-            label={t(panelCollapsed ? "expandProjects" : "collapseProjects")}
-            aria-expanded={!panelCollapsed} aria-controls="mc-design-library"
+            label={t(sidebarCollapsed ? "expandProjects" : "collapseProjects")}
+            aria-expanded={!sidebarCollapsed} aria-controls="mc-design-library"
             onClick={() => {
-              if (narrow && panelCollapsed) { closeVersionLibrary(); setDiffOpen(false); }
-              setPanelCollapsed(value => !value);
+              if ((narrow || recordNeedsRoom) && sidebarCollapsed) { closeVersionLibrary(); setDiffOpen(false); setRecordOpen(false); }
+              setPanelCollapsed(!sidebarCollapsed);
             }} />
           <div className="mc-header-document">
             <span className="mc-crumb" title={project?.title || t("app")}>
@@ -566,7 +583,7 @@ export function Workbench({
             {project && <Btn className="mc-header-version" icon={IconBranchOutlineRegular}
               label={project.head > 0 ? `${t("versionLibrary")} · ${t("current")} v${project.head}` : t("versionLibrary")}
               aria-expanded={versionLibraryOpen} aria-controls={versionLibraryOpen ? "mc-version-library" : undefined}
-              onClick={() => { setDiffOpen(false); setVersionLibraryOpen(value => !value); }} />}
+              onClick={() => { setRecordOpen(false); setDiffOpen(false); setVersionLibraryOpen(value => !value); }} />}
           </div>
         </div>
         <div ref={setStatusTarget} className="mc-header-status" />
@@ -584,17 +601,18 @@ export function Workbench({
           </div>
           <div className="mc-header-action-group">
             <Btn icon={IconCompareSplitOutlineRegular} label={t("compareVersion")} disabled={!project || project.revisions.length < 2} aria-pressed={diffOpen}
-              onClick={() => { closeVersionLibrary(); setDiffOpen(value => !value); }} />
-            <Btn icon={IconFlatListOutlineRegular} label={t("sessionRecord")}
+              onClick={() => { setRecordOpen(false); closeVersionLibrary(); setDiffOpen(value => !value); }} />
+            <Btn className="mc-session-record-toggle" icon={IconFlatListOutlineRegular} label={t("sessionRecord")}
               disabled={busy || !project?.activeSessionId || sessionReference?.sessionId !== project.activeSessionId}
-              onClick={() => action(() => openSessionRecord(project, workbench.current))} />
+              aria-expanded={recordOpen} aria-controls={recordOpen ? "mc-session-record-host" : undefined}
+              onClick={() => recordOpen ? closeSessionRecord() : openSessionRecord()} />
           </div>
           {project && renderSlot("minicad.directoryActions", { absolutePath: project.workspaceDirectory,
             projectId: project.id, modelFile: project.modelFile, hasModel: project.head > 0, onMenuOpenChange: setAppMenu })}
         </nav>
       </header>
       <aside id="mc-design-library" className="mc-sidebar mc-panel" aria-label={t("projects")}
-        aria-hidden={panelCollapsed} inert={panelCollapsed ? "" : undefined} data-instant={!pointerModality() || undefined}>
+        aria-hidden={sidebarCollapsed} inert={sidebarCollapsed ? "" : undefined} data-instant={!pointerModality() || undefined}>
           <DesignNavigator projects={projects} selected={selected} currentSessionId={project?.activeSessionId} language={language} t={t}
             sessionState={sessionState} workspaceState={workspaceState} renderTaskSlot={renderSlot}
             contextMenus={contextMenus} shortcutCatalog={shortcutCatalog}
@@ -640,15 +658,19 @@ export function Workbench({
       {versionLibraryOpen && project && <VersionLibrary key={`${project.id}:${project.modelFile}`} project={project} progress={progress}
         request={request} language={language} disabled={busy || running || nativeRunning}
         onClose={dismissVersionLibrary} onSelect={selectRevision} t={t} />}
+      <div id="mc-session-record-host" className="mc-session-record-host" ref={setRecordHost} />
       <ConversationDock key={project?.activeSessionId || "none"} ref={dock} t={t} hidden={versionLibraryOpen}
+        embedded={recordOpen}
         running={running} statusTarget={statusTarget} revision={project?.head || 0} latestRevision={project?.revisions[0]?.revision || 0}
-        onSessionRecord={() => action(() => openSessionRecord(project, workbench.current))}
+        onSessionRecord={openSessionRecord} onReveal={closeSessionRecord}
         onStart={() => setError(null)}
         onCancel={() => action(() => api("cancel", { projectId: selected }))} onRunning={setNativeRunning}>
         {callbacks => <>
         {sessionReference && project && sessionReference.sessionId === project.activeSessionId ? (
           <SessionProvider session={sessionReference}>
-            {renderSlot("minicad.composer", callbacks)}
+            {renderSlot("minicad.composer", { ...callbacks, record: {
+              host: recordHost, open: recordOpen, title: project.title, onClose: closeSessionRecord,
+            } })}
           </SessionProvider>
         ) : selected || loading ? <span role="status" className="mc-loading mc-muted"><StateDot state="ongoing" />{t("loading")}</span> : (
           <Btn icon={IconPlusOutlineRegular} onClick={() => setPicker({ type: "open" })}>{t("openDesignFolder")}</Btn>

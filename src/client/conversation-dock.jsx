@@ -8,7 +8,7 @@ import { useFloatingInput } from "./use-floating-input.js";
 
 const EMPTY = { running: false, waiting: false, pending: false, todos: [], activities: [] };
 export const ConversationDock = forwardRef(function ConversationDock({ children, running,
-  hidden, t, statusTarget, revision, latestRevision, onCancel, onRunning, onStart, onSessionRecord }, ref) {
+  hidden, embedded, t, statusTarget, revision, latestRevision, onCancel, onRunning, onStart, onSessionRecord, onReveal }, ref) {
   const [open, setOpen] = useState(false), [expanded, setExpanded] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [native, setNative] = useState(EMPTY), [pending, setPending] = useState(false);
@@ -22,10 +22,11 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
     : native.terminal === "aborted" ? "stopped" : null;
   const phase = native.waiting ? "waiting" : alive ? "working" : !dismissed && native.failure ? "error"
     : feedback ? terminalPhase || feedback : null;
-  const visible = !hidden && (open || native.waiting);
+  const visible = !hidden && !embedded && (open || native.waiting);
   const togglePinned = () => setPinned(value => !value);
   const floating = useFloatingInput(input, visible, native.waiting, statusTarget, togglePinned);
   const reveal = point => {
+    if (embedded) onReveal();
     floating.revealAt(pinned ? undefined : point); setOpen(true); setExpanded(false);
   };
   const dismiss = () => {
@@ -34,7 +35,7 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
     input.current?.closest(".mc-workbench")?.focus({ preventScroll: true });
   };
   useImperativeHandle(ref, () => ({ reveal, dismiss, keyDown(event) {
-    if (event.defaultPrevented || event.isComposing || hidden) return;
+    if (event.defaultPrevented || event.isComposing || hidden || embedded) return;
     if (event.key === "Escape" && event.target.closest('[role="dialog"],[role="menu"],[data-trigger-menu]')) return;
     if (event.key === "Escape" && floating.cancelDrag()) { event.preventDefault(); return; }
     const editing = event.target.closest('input,textarea,[contenteditable="true"],button,a,[role="button"],[role="tab"],[role="dialog"],[role="menu"]');

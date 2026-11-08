@@ -1,0 +1,64 @@
+.mc-session-record-host { position: absolute; inset: 0; pointer-events: none; }
+.mc-session-record {
+  position: absolute;
+  inset: var(--mc-content-top) var(--mc-gutter) var(--mc-gutter) var(--mc-panel-left);
+  z-index: 4;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+  container: mc-session-record / inline-size;
+}
+.mc-session-record[hidden] { display: none; }
+.mc-session-reader {
+  display: flex; flex: none; flex-direction: column;
+  width: 57%; min-width: min(330px, 100%); max-width: 100%; height: 100%; min-height: 0;
+  pointer-events: auto;
+}
+.mc-session-reader-bar {
+  display: flex; flex: none; align-items: center; gap: 12px;
+  /* Match the design header's 2px top offset and 4px lower gap, including the divider. */
+  padding: calc(var(--mc-panel-padding) + 2px) calc(var(--mc-panel-padding) + 4px) 3px;
+  border-bottom: 1px solid var(--mc-border);
+}
+.mc-session-reader-bar strong {
+  flex: 1; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mc-session-reader-actions { display: flex; flex: none; align-items: center; gap: 4px; min-height: var(--mc-panel-heading-height); }
+.mc-session-reader-actions > button { flex: none; }
+.mc-session-reader-content { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.mc-session-reader-mount, .mc-native-session-container { display: flex; flex-direction: column; min-height: 0; min-width: 0; width: 100%; }
+.mc-session-reader-mount, .mc-session-reader-mount > .mc-native-session-container { flex: 1; }
+.mc-session-record-views, .mc-session-record-views > div { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.mc-session-reader [data-conversation-content] { flex: 1; min-height: 0; --dsh-chat-content-width: 100%; --dsh-composer-side-clearance: 0px; }
+/* Preserve the mounted editor and draft; pending native interactions keep their seat. */
+.mc-session-reader:not([data-waiting]) [data-composer-seat] { display: none; }
+.mc-session-reader-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--mc-muted); font-size: 13px; pointer-events: none; }
+.mc-session-timeline {
+  display: flex; flex: none; align-items: center; justify-content: center; gap: 8px;
+  min-width: 0; padding: 8px 12px; border-top: 1px solid var(--mc-border);
+}
+.mc-session-timeline > button { flex: none; }
+.mc-session-position { flex: none; min-width: 5ch; text-align: center; font-size: 12px; color: var(--mc-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mc-session-scrubber {
+  flex: 0 1 180px; min-width: 32px; height: 28px; margin: 0 4px;
+  appearance: none; background: transparent; cursor: ew-resize;
+}
+.mc-session-scrubber::-webkit-slider-runnable-track { height: 3px; border-radius: 999px; background: var(--mc-border); }
+.mc-session-scrubber::-webkit-slider-thumb {
+  appearance: none; width: 10px; height: 10px; margin-top: -3.5px;
+  border: 0; border-radius: 50%; background: var(--mc-accent);
+}
+.mc-session-scrubber:disabled { cursor: default; }
+.mc-session-scrubber:disabled::-webkit-slider-thumb { background: var(--mc-muted); }
+.mc-session-scrubber:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 3px; border-radius: var(--dsw-radius-sm); }
+@container mc-session-record (max-width: 650px) {
+  .mc-session-reader { width: 72%; min-width: min(290px, 100%); }
+}
+@container mc-workbench (max-width: 760px) {
+  .mc-session-reader { width: 100%; min-width: 0; }
+  .mc-session-reader-bar { gap: 8px; }
+  .mc-session-timeline { padding: 6px 8px; gap: 4px; }
+}

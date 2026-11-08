@@ -12,6 +12,8 @@
   --mc-top-inset: 0px;
   --mc-gutter: 20px;
   --mc-panel-gap: 24px;
+  --mc-panel-padding: 14px;
+  --mc-panel-heading-height: 36px;
   --mc-sidebar-width: 256px;
   --mc-sidebar-rail: var(--mc-sidebar-width);
   --mc-header-top: calc(10px + var(--mc-top-inset));
@@ -327,7 +329,8 @@ body[data-ds-dark-theme] .mc-diff-legend [data-diff-kind="unchanged"] i { backgr
 .mc-panel,
 .mc-open-in-app-split,
 .mc-dialog[role="dialog"],
-body:has(.mc-workbench[data-native-dialog-open]) [role="dialog"] {
+body:has(.mc-workbench[data-native-dialog-open]) [role="dialog"],
+body:has(.mc-workbench[data-session-record-open]) [role="dialog"] {
   isolation: isolate;
   background: transparent;
 }
@@ -350,6 +353,7 @@ body:has(.mc-workbench[data-native-dialog-open]) [role="dialog"] {
 .mc-open-in-app-split::before,
 .mc-dialog[role="dialog"]::before,
 body:has(.mc-workbench[data-native-dialog-open]) [role="dialog"]::before,
+body:has(.mc-workbench[data-session-record-open]) [role="dialog"]::before,
 .mc-task-status-details::before,
 .mc-task-status::after,
 .mc-compact-composer [data-composer-card]::before,
@@ -366,11 +370,13 @@ body:has(.mc-workbench[data-native-dialog-open]) [role="dialog"]::before,
 /* Keep the native dismissal hit area, but do not darken or blur the canvas.
    Modal renders this mask beside its dialog in a body portal. */
 [role="presentation"]:has(> .mc-dialog[role="dialog"]) > [aria-hidden="true"],
-body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [role="dialog"]) > [aria-hidden="true"] {
+body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [role="dialog"]) > [aria-hidden="true"],
+body:has(.mc-workbench[data-session-record-open]) [role="presentation"]:has(> [role="dialog"]) > [aria-hidden="true"] {
   backdrop-filter: none;
 }
 [role="presentation"]:has(> .mc-dialog[role="dialog"]) > [aria-hidden="true"]::after,
-body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [role="dialog"]) > [aria-hidden="true"]::after {
+body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [role="dialog"]) > [aria-hidden="true"]::after,
+body:has(.mc-workbench[data-session-record-open]) [role="presentation"]:has(> [role="dialog"]) > [aria-hidden="true"]::after {
   background: transparent;
 }
 .mc-navigation-readout {
@@ -383,7 +389,7 @@ body:has(.mc-workbench[data-native-dialog-open]) [role="presentation"]:has(> [ro
   left: var(--mc-gutter);
   bottom: var(--mc-gutter);
   width: var(--mc-sidebar-width);
-  padding: 14px;
+  padding: var(--mc-panel-padding);
   display: flex;
   flex-direction: column;
   gap: 12px;

@@ -1,10 +1,16 @@
-import React, { useEffect, useRef, useSyncExternalStore } from "react";
+import React, { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { CompactComposerContext } from "./compact-composer.jsx";
+import { SessionRecord } from "./session-record.jsx";
 
+const SessionRecordContext = createContext(false);
 function WorkbenchViews({ renderSlot }) {
+  const visible = useContext(SessionRecordContext);
   // Keep DSH's draft-persistence binding mounted even when Chat is not read.
   // An unmatched view filter avoids loading/rendering a hidden transcript.
-  return <div hidden>{renderSlot("conversation.session", { view: "minicad.folded" })}</div>;
+  return <div hidden={!visible} className={visible ? "mc-session-record-views" : undefined}>
+    {renderSlot("conversation.session", { view: visible ? "chat" : "minicad.folded" })}
+  </div>;
 }
 const COMPOSER_SLOTS = { views: WorkbenchViews };
 const EMPTY_TODOS = [];
@@ -38,7 +44,7 @@ function latestLiveTool(members, nodes) {
 }
 
 export function Composer({ renderFactorySlot, useSession, useInput, useSessionStatus, useProjection, useChat, useConversation, sessionId,
-  onSubmitted, onSessionState, onRestored, minicadT, chatT, modelDirectory }) {
+  onSubmitted, onSessionState, onRestored, minicadT, chatT, modelDirectory, record, loadEarlier }) {
   const session = useSession(s => s);
   const input = useInput(s => s);
   const models = useSyncExternalStore(modelDirectory.subscribe, modelDirectory.getSnapshot);
@@ -48,6 +54,20 @@ export function Composer({ renderFactorySlot, useSession, useInput, useSessionSt
   const todos = useProjection("todos") ?? EMPTY_TODOS;
   const chat = useChat(s => s);
   const conversation = useConversation(s => s);
+  const inlineHost = useRef(null);
+  const [readerTarget, setReaderTarget] = useState(null);
+  // Only this unowned outer node moves. React keeps the same native Conversation,
+  // Lexical editor, draft binding and pending interactions mounted inside it.
+  const [nativeMount] = useState(() => {
+    const element = document.createElement("div");
+    element.className = "mc-native-session-container";
+    return element;
+  });
+  useLayoutEffect(() => {
+    const target = record.open ? readerTarget : inlineHost.current;
+    target?.append(nativeMount);
+    return () => nativeMount.remove();
+  }, [nativeMount, record.open, record.open ? readerTarget : null]);
   const turnId = chat.timeline.turnOrder.at(-1);
   const turn = chat.timeline.turns.get(turnId);
   const grouped = conversation.views.grouped("chat");
@@ -92,7 +112,12 @@ export function Composer({ renderFactorySlot, useSession, useInput, useSessionSt
     current.draft = input.draft;
   }, [session.running, session.pendingSubmissions, session.promptError, input.draft, input.attachmentIds, input.occurrences,
     interaction, turnId, reason, todos, summary, activity, activityDetail, modelName, chatT]);
-  return <CompactComposerContext.Provider value={minicadT}>
-    {renderFactorySlot("conversation.content", { variant: "embedded", phase: "active", hero: false }, { slots: COMPOSER_SLOTS })}
-  </CompactComposerContext.Provider>;
+  return <SessionRecordContext.Provider value={record.open}>
+    <CompactComposerContext.Provider value={minicadT}>
+      <div ref={inlineHost} className="mc-inline-composer-host" />
+      {createPortal(renderFactorySlot("conversation.content", { variant: "embedded", phase: "active", hero: false }, { slots: COMPOSER_SLOTS }), nativeMount)}
+      {record.host && createPortal(<SessionRecord {...record} turns={chat.navigation.items()} session={session} empty={!chat.timeline.turnOrder.length} waiting={!!interaction}
+        loadEarlier={loadEarlier} onReaderTarget={setReaderTarget} t={minicadT} />, record.host)}
+    </CompactComposerContext.Provider>
+  </SessionRecordContext.Provider>;
 }

@@ -263,7 +263,7 @@
 .mc-design-navigator-sectionHeader {
   box-sizing: border-box;
   border-radius: var(--dsw-radius-md);
-  height: 36px;
+  height: var(--mc-panel-heading-height);
   color: var(--dsw-alias-label-tertiary);
   flex: none;
   justify-content: flex-end;
