@@ -166,6 +166,9 @@ const operation = (op, fields, optional = {}) =>
     ...Object.keys(fields),
   ]);
 const operationDescriptions = {
+  add_part: "Create an independent member from tool in an empty model or existing assembly. For an existing standalone Part, copy_part first creates the assembly while preserving the source.",
+  copy_part: "Keep the source and create an independent copy with new id and name. In an assembly, part is the existing source ID. For a standalone Part, part assigns the original its first stable ID and converts the model to an assembly. center is a translation vector; rotate runs before translation. Names, geometry and colors of the original are preserved.",
+  remove_part: "Remove the assembly member selected by its stable part ID. At least one valid solid must remain for publication.",
   box: "Create a centered box with size [X,Y,Z]. Use center and rotate to place it, and mode to combine it with the current solid.",
   cylinder: "Create a centered Z-axis cylinder. Use radius and height for its dimensions, and mode cut for a cylindrical hole.",
   sphere: "Create a sphere of the given radius, with center and mode controlling placement and combination.",
@@ -199,7 +202,7 @@ const operationDescriptions = {
 };
 const operationGroups = [
   {
-    description: 'Manage independent parts without merging their geometry. Create an assembly with add_part; add every member with a stable id and meaningful name. copy_part preserves the source and places an independent copy.',
+    description: 'Manage independent parts without merging their geometry. Create an assembly with add_part or copy an existing standalone Part using {"op":"copy_part","part":"base","id":"copy","name":"Base copy","center":[0,25,0]}. part assigns the original its stable ID when first converting it to an assembly.',
     operations: [
       object({ op: { const: "add_part" }, id: text, name: text, tool: primitiveSchema }),
       object({ op: { const: "remove_part" }, part: text }),
@@ -279,6 +282,7 @@ const entity = object({
   kind: choices(["faces", "edges", "solids"]),
   selector: reference,
 });
+entity.description = "Select exactly one face, edge or solid. For the distance between whole parts, use kind:solids with selector:{part:'id',one:true}; selecting all faces of a part is ambiguous.";
 const endpoint = { anyOf: [text, entity, object({ point: vector })] };
 const orientation = { anyOf: [text, entity, object({ direction: vector })] };
 const measure = (kind, fields = {}, optional = {}) =>

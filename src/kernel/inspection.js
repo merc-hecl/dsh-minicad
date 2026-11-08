@@ -1,6 +1,7 @@
 import { localizedError } from "../shared/errors.js";
 import { Assembly } from "./assembly.js";
 import { solidNames, entityInfo } from "./naming.js";
+import { colorHex } from "./colors.js";
 import {
   defaultIdFormats,
   geometryLabel,
@@ -204,11 +205,17 @@ export function queryShape(
     const owner = owningPart(shape, topologyKind, index);
     const entity = entities.find(entity => topologyKind === "solids" ? entity.index === index : entity[topologyKind]?.includes(index));
     return { ...describeItem(item, index, topologyKind, scope, revision, idFormats),
+      ...appearance(shape, item, topologyKind, owner),
       ...(entity ? { entityName: entity.name } : {}),
       ...(owner ? { part: owner.id, partName: owner.name } : {}),
       ...(edgeParameters ? { samples: edgeParameters.map(t => ({ t, point: vector(item.pointAt(t)) })) } : {}),
       ...(kind === "holes" ? { hole: cylindricalHole(shape, item) } : {}) };
   });
+}
+function appearance(shape, item, kind, owner) {
+  if (!["faces", "solids"].includes(kind)) return {};
+  const color = colorHex(item.color);
+  return { color, effectiveColor: color || colorHex((owner?.shape || shape).color) };
 }
 function owningPart(shape, kind, index) {
   if (!(shape instanceof Assembly)) return null;
@@ -239,7 +246,8 @@ export function describeReference(
       scope,
       revision,
       idFormats,
-    ), ...(entity ? { entityName: entity.name } : {}), ...(owner ? { part: owner.id, partName: owner.name } : {}) },
+    ), ...appearance(shape, topologyItems(shape, kind)[index], kind, owner),
+      ...(entity ? { entityName: entity.name } : {}), ...(owner ? { part: owner.id, partName: owner.name } : {}) },
   };
 }
 function describeItem(item, index, kind, scope, revision, idFormats) {

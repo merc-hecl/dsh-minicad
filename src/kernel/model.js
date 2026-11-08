@@ -1,8 +1,8 @@
 import { localizedError } from "../shared/errors.js";
 import { Assembly, assembly, partInfo, inspectFit } from "./assembly.js";
-export { inspectFit };
+export { inspectFit, partInfo };
 import * as cad from "@classcad/smlibwasm";
-import { Color } from "three/src/math/Color.js";
+import { packedColor as previewColor } from "./colors.js";
 import { readFileSync } from "node:fs";
 import { dirname, sep } from "node:path";
 import { createRequire } from "node:module";
@@ -365,6 +365,11 @@ export function editShape(part, operations, parameters = {}, context = {}) {
         part.part(op.part);
         part = assembly(part.parts.filter(item => item.id !== op.part));
       } else if (op.op === "copy_part") {
+        if (!part) throw localizedError("请先创建实体", "create a solid first");
+        if (!(part instanceof Assembly)) {
+          const name = part.solids().length === 1 ? solidNames(part)[0] : part.name || "";
+          part = assembly([{ id: op.part, name, shape: part }]);
+        }
         const source = part.part(op.part);
         part = assembly([...part.parts, { id: op.id, name: validName(op.name), shape: placed(source.shape, op) }]);
       } else if (part instanceof Assembly) {
@@ -511,23 +516,6 @@ export function compareShapes(base, target) {
     removed: describe(() => target.cut(base)),
     unchanged: describe(() => base.intersect(target)),
   };
-}
-
-// Encode sRGB as packed RGB + 1 so zero means the viewport's default color.
-function previewColor(color) {
-  if (color == null) return 0;
-  if (typeof color === "string") {
-    const name = color.toLowerCase().replaceAll(" ", "");
-    if (Object.hasOwn(Color.NAMES, name)) return Color.NAMES[name] + 1;
-    const hex = color.replace(/^#+/, "");
-    if (/^[0-9a-f]{6}$/i.test(hex)) return parseInt(hex, 16) + 1;
-    if (/^[0-9a-f]{3}$/i.test(hex)) return parseInt([...hex].map(c => c + c).join(""), 16) + 1;
-    return 0;
-  }
-  const [r, g, b] = [color[0], color[1], color[2]];
-  const scale = Math.max(r, g, b) > 1 ? 1 : 255;
-  const byte = value => Math.round(Math.max(0, Math.min(255, value * scale)));
-  return ((byte(r) << 16) | (byte(g) << 8) | byte(b)) + 1;
 }
 
 export function previewShape(shape) {

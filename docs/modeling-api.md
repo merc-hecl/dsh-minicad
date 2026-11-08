@@ -15,7 +15,7 @@
 | `cad_commit` | 原子保存已试算的候选，检查版本与工作文件未变化，并运行随附尺寸检查 |
 | `cad_measure` | 批量测量几何，不修改模型 |
 | `cad_check` | 批量检查测量结果是否满足目标与公差或上下限，不修改模型 |
-| `cad_api` | 按符号或 `Class.member` 定位安装版本的声明，支持 `offset` / `limit` 分页 |
+| `cad_api` | 按符号或 `Class.member` 定位安装版本的声明；`topic:"minicad"` 查询插件辅助 API，支持 `offset` / `limit` 分页 |
 | `cad_fit` | 检查两个零件的间隙与干涉，不修改模型 |
 | `cad_variants` | 复制当前 SMP 并执行各规格的独立操作，可逐个导出 |
 | `cad_export` | 导出指定建模文件的已保存版本，可指定零件 |
@@ -75,11 +75,15 @@ function build(parameters, cad) {
 
 选择器支持 `radius`、可选 `tolerance`、`axisDirection`、`through` 和 `closedWall`。圆边、球面和圆柱面的查询结果包含 `geometricCenter: [x,y,z]`，分别表示圆心、球心和圆柱面轴向范围在轴线上的中点。面的 `center` 表示面积重心。孔段还通过 `hole.center` 返回轴向中点。
 
+`parts` 和 `solids` 查询返回工件的 `color`；`faces`（包括孔壁查询）返回面本身的 `color` 和包含工件继承色的 `effectiveColor`。颜色统一为 `#RRGGBB`，未设置时为 `null`。核验颜色可直接查询已保存模型或 `runId` 候选，无需为读取颜色重新执行建模。
+
 - `distance` 是表面最短距离；`center_distance` 是圆、球、圆柱的几何中心或显式点之间的距离；`axis_distance` 是无限轴线之间的最短距离。检查孔中心距通常应选轴距，而不是孔壁间隙。
 - `coordinate` 读取 `geometricCenter` 的指定 X、Y 或 Z 分量，可用于尺寸检查。`span` 读取所选几何沿世界 X/Y/Z 的包围尺寸。
 - `count` 按 `entityKind: "faces" | "edges" | "solids" | "holes"` 和可选选择器统计数量。配合孔径、贯穿性、孔轴位置和局部板厚检查，可识别少孔、开口孔和半厚台阶。
 
 `cad_api` 可查询 `Part.volume`、`Face.axis`、`Sketch.extrude` 等，默认返回最多 6000 字符，`limit` 最大 12000；按 `nextOffset` 继续读取同一 topic/symbol，避免把截断声明当作完整 API。实体基本体默认居中，XY 轮廓拉伸从其平面向正向延伸；`center` 是平移，不是统一的中心对齐方式。
+
+`assembly`、`Assembly.part`、`current`、`edit`、`checkpoint`、`readModel` 和 `log` 是 MiniCAD 的辅助 API，使用 `cad_api({topic:"minicad",symbol:"assembly"})` 查询；它们不在 SMLib 的 `parts` / `operations` 分类中。
 
 ### 现成操作与自定义代码
 
@@ -88,7 +92,7 @@ function build(parameters, cad) {
 | 操作 | 主要参数与语义 |
 | --- | --- |
 | `add_part` | `id`、`name`、`tool`；向零件集合添加独立实体，空模型可直接创建集合 |
-| `copy_part` | `part`、新 `id`、`name`，可选 `center` 平移与 `rotate`；保留原件并增加独立副本 |
+| `copy_part` | `part`、新 `id`、`name`，可选 `center` 平移与 `rotate`；已有集合中 `part` 指定源零件 ID，普通 Part 则用它为原件分配首个稳定 ID 并转成集合；保留原件并增加独立副本 |
 | `remove_part` | `part`；删除指定零件，发布时模型仍需有有效实体 |
 | `revolve` | `profile`、世界坐标 `axis`、`angle`，可选 `origin`；角度为 -360～360 度且不能为零 |
 | `loft` | 两个以上依次排列的 `sections`，可选 `ruled`、`smooth`、`closed` |
@@ -156,6 +160,8 @@ function build(parameters, cad) {
 
 自定义代码定义 `build(parameters, cad)` 并返回有效、正体积的 `cad.Part` 或 `cad.assembly` 多零件集合。`cad` 提供 SMLib 函数、同一套 `cad.edit(part, operations, parameters)`，以及任务内资源读取：
 
+`source` 是普通 JavaScript 脚本，不含 `import` / `export`。SMLib 符号通过 `cad.Box`、`cad.Location` 等访问，或在函数内从 `cad` 解构；它们不是全局变量。
+
 ```javascript
 function build(parameters, cad) {
   return cad.Box(parameters.length, 40, 8).cut(cad.Cylinder(4, 10)).named("孔板");
@@ -187,6 +193,8 @@ function build(parameters, cad) {
 - `angle`：两个平面的法向、直线方向、圆/圆柱等旋转轴，或 `{ direction: [x,y,z] }` 的夹角，范围 0～180 度。
 - `thickness`：给定实体内或表面的 `point` 和非零 `direction`，返回穿过该点的一段连续材料厚度及出入口点。它是局部方向测厚，不是全模型最小壁厚；空腔中的点、切向或无法判定的测量会被拒绝。
 - `size`：沿 `axis: "x" | "y" | "z"` 的包围盒尺寸；`volume`、`area`、`length`、`radius`、`diameter` 返回相应几何量。单实体尺寸、体积和壁厚可指定 `target`；面/边属性通过 `entity: { kind, selector }` 定位。
+
+每个 `from` / `to` / `entity` 必须定位一个几何。测量两个整件之间的距离时，分别使用 `{kind:"solids",selector:{part:"base",one:true}}` 与另一零件的选择器；选择一个零件的全部面不能代表单个测量对象。含多个实体的零件应进一步筛选到目标实体。
 
 尺寸检查示例：
 
@@ -221,7 +229,18 @@ function build(p, cad) {
 }
 ```
 
-- `cad_query(kind: "parts")` 返回 ID、名称、尺寸、体积和预览几何范围。
+普通 Part 的 `parts` 查询为空；可直接用 `copy_part` 保留原模型并创建独立复制件。例如下列批次把 Y 向尺寸为 20 mm 的孔板沿 +Y 复制，留下 5 mm 间隙，并将复制件工件色设为赤红色：
+
+```json
+[
+  { "op": "copy_part", "part": "base", "id": "copy", "name": "孔板CP", "center": [0, 25, 0] },
+  { "op": "color", "part": "copy", "color": "#DC143C" }
+]
+```
+
+`part:"base"` 为原件分配稳定 ID，原件名称、位置、几何和颜色保持不变。复制保留面覆盖色；如需覆盖这些面色，用 `color` 的 `faces` 指定范围修改或清除。
+
+- `cad_query(kind: "parts")` 返回 ID、名称、颜色、尺寸、体积和预览几何范围。
 - 查询面、边或实体时，选择器可加 `part: "lid"`。查询结果包含所属零件 `part` 和 `partName`，几何 ID 仍绑定整个模型文件和版本。
 - `cad_edit` 的每个操作用 `part: "lid"` 指定零件，例如 `{op:"translate",part:"lid",by:[0,0,10]}`。零件内仍使用原有布尔、面编辑等操作，其他零件保持独立。使用 `add_part`、`copy_part`、`remove_part` 管理零件；复杂修改也可通过 `cad_build` 的 `cad.current` 完成。
 - 测量指定零件可用 `target: {part:"lid",one:true}`；测厚必须定位一个实体。

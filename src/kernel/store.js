@@ -744,7 +744,7 @@ export class Store {
       const revision = candidate ? candidate.run.candidateRevision : row.head;
       const result = { modelFile, revision, ...(candidate ? { runId: args.runId, committed: false } : {}) };
       if (method === "query" && args.kind === "parts")
-        return { ...result, kind: "parts", items: saved.state.parts || [] };
+        return { ...result, kind: "parts", items: api.partInfo(shape) || [] };
       if (method === "geometry_annotation") {
         const describe = reference => {
           const { kind, geometry: item } = api.describeReference(

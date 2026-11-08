@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const apiTopics = ["parts", "shapes", "curves", "sketches", "operations", "surfaces",
-  "sheetmetal", "geometry", "exporters", "align", "locations", "profiles", "face_edit", "deformations"];
+  "sheetmetal", "geometry", "exporters", "align", "locations", "profiles", "face_edit", "deformations", "minicad"];
 
 // Locate declarations, not the first mention in an import or a comment.
 export function readApi({ topic, symbol, offset = 0, limit = 6000 }) {
@@ -12,7 +12,7 @@ export function readApi({ topic, symbol, offset = 0, limit = 6000 }) {
   if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 12000)
     throw localizedError("API 分页范围无效", "invalid API page range");
   const root = fileURLToPath(new URL("./dist/", import.meta.resolve("@classcad/smlibwasm/package.json")));
-  const text = fs.readFileSync(join(root, `${topic}.d.ts`), "utf8");
+  const text = fs.readFileSync(topic === "minicad" ? new URL("./minicad.d.ts", import.meta.url) : join(root, `${topic}.d.ts`), "utf8");
   const declarations = [...text.matchAll(/^export (?:declare )?(?:abstract )?(?:class|interface|function|type|const|enum) (\w+)/gm)];
   let start = 0, end = text.length, header = "";
   if (symbol) {
@@ -41,6 +41,9 @@ export function readApi({ topic, symbol, offset = 0, limit = 6000 }) {
       if (start < declarations[found].index || text.slice(start, memberStart).includes(";")) start = memberStart;
       const nextMember = /^    (?:\/\*\*|(?:static )?(?:get )?[\w$]+[(:<])/m.exec(text.slice(memberStart + match[0].length, end));
       end = nextMember ? memberStart + match[0].length + nextMember.index : end;
+    } else {
+      const documentation = /\/\*\*(?:(?!\*\/)[\s\S])*\*\/\s*$/.exec(text.slice(0, start));
+      if (documentation) start = documentation.index;
     }
   }
   const selected = text.slice(start, end), page = selected.slice(offset, offset + limit);

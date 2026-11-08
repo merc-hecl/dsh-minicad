@@ -1,6 +1,7 @@
 import { localizedError } from "../shared/errors.js";
 import * as cad from "@classcad/smlibwasm";
 import { namedShape, solidNames, setSolidNames } from "./naming.js";
+import { colorHex } from "./colors.js";
 
 // An assembly is a collection, never a Boolean union. IDs belong to the design,
 // while face/edge indices remain revision-local like ordinary model references.
@@ -50,7 +51,7 @@ export function partInfo(shape) {
   return shape.parts.map(({ id, name, shape }) => {
     const faceCount = shape.faces().length;
     const edgeCount = shape.edges().union(shape.edges({ seams: true })).length;
-    const item = { id, name, faceStart: face, faceCount, edgeStart: edge, edgeCount,
+    const item = { id, name, color: colorHex(shape.color), faceStart: face, faceCount, edgeStart: edge, edgeCount,
       volume: shape.volume, size: [...shape.bbox().size], center: [...shape.bbox().center] };
     face += faceCount; edge += edgeCount;
     return item;

@@ -15,7 +15,7 @@ For both new models and incremental edits, assess the existing `cad_edit` operat
 | `cad_commit` | Atomically publish an evaluated candidate after checking its base revision, unchanged working files and supplied dimensions |
 | `cad_measure` | Measure geometry in batches without changing the model |
 | `cad_check` | Check measured values against targets and tolerances or limits without changing the model |
-| `cad_api` | Locate installed declarations by symbol or `Class.member`, with `offset` / `limit` paging |
+| `cad_api` | Locate installed declarations by symbol or `Class.member`; use `topic:"minicad"` for plugin helpers, with `offset` / `limit` paging |
 | `cad_fit` | Check clearance and interference between named parts without changing geometry |
 | `cad_variants` | Copy the current SMP and apply explicit operations for independent variants |
 | `cad_export` | Export a saved revision of a specified model file, optionally one part |
@@ -75,22 +75,26 @@ For edges, optional `edgeParameters: [0,0.5,1]` adds `samples: [{t,point}]` to e
 
 Selectors support `radius`, optional `tolerance`, `axisDirection`, `through` and `closedWall`. Queries return `geometricCenter: [x,y,z]` for circular edges, spherical faces and cylindrical faces. It gives the circle center, sphere center or midpoint of the cylindrical face's axial extent on its axis. A face's `center` gives its area centroid. Bore segments also expose the axial midpoint in `hole.center`.
 
+`parts` and `solids` queries return body `color`; `faces` (including bore wall queries) return explicit face `color` and `effectiveColor` with body inheritance applied. Colors use `#RRGGBB`, or `null` when unset. Inspect saved models or `runId` candidates directly to verify appearance without rerunning a build for logs.
+
 - `distance` measures minimum surface separation; `center_distance` measures geometric circle/sphere/cylinder centers or explicit points; `axis_distance` measures the minimum separation of infinite axes. Hole spacing usually calls for axis distance, not wall gap.
 - `coordinate` reads the selected X, Y or Z component of `geometricCenter` for dimensional checks. `span` reads an entity's world-axis bounding size.
 - `count` counts matching `entityKind: "faces" | "edges" | "solids" | "holes"` with an optional selector. Combine diameter, through clearance, axis position and local thickness checks to detect missing bores, side openings and half-depth steps.
 
 `cad_api` accepts `Part.volume`, `Face.axis`, `Sketch.extrude`, etc. Pages default to 6000 characters with a maximum `limit` of 12000; follow `nextOffset` for the same topic/symbol. Primitives are centered by default, whereas an XY profile extrusion extends from its plane. `center` translates geometry; it is not a common alignment rule.
 
+`assembly`, `Assembly.part`, `current`, `edit`, `checkpoint`, `readModel` and `log` are MiniCAD helpers. Query them with `cad_api({topic:"minicad",symbol:"assembly"})`; they are not in SMLib's `parts` / `operations` topics.
+
 The MiniCAD preset includes the standard DSH filesystem, search, shell, skill and dependency tools. A file @mention is a path reference, not an uploaded PDF page. Read the actual file, render its pages using an available PDF renderer, and read the images with an image-capable model. Do not assume a parser is installed. `cad_read_project.referenceFiles` lists task resources/references; `attachments` represents only MiniCAD's reference catalog, not DSH session attachments.
 
 ### Ready-made operations and custom code
 
-`cad_edit` groups operations by solid creation and combination, local edits, transforms and patterns, and appearance. A single call can mix operations from any group and runs them in array order.
+`cad_edit` groups operations by part management, solid creation and combination, local edits, transforms and patterns, and appearance. A single call can mix operations from any group and runs them in array order.
 
 | Operation | Main parameters and semantics |
 | --- | --- |
 | `add_part` | `id`, `name`, `tool`; add an independent part or start an assembly from an empty model |
-| `copy_part` | `part`, new `id`, `name`, optional translation `center` and `rotate`; retain the original and add an independent copy |
+| `copy_part` | `part`, new `id`, `name`, optional translation `center` and `rotate`; in an assembly, `part` selects the source ID; for a standalone Part, it assigns the original its first stable ID and converts the model into an assembly; retain the original and add an independent copy |
 | `remove_part` | `part`; remove a member; a published model must still contain a valid solid |
 | `revolve` | `profile`, world-space `axis`, `angle`, optional `origin`; nonzero angle from -360 to 360 degrees |
 | `loft` | Two or more ordered `sections`; optional `ruled`, `smooth`, `closed` |
@@ -156,7 +160,9 @@ For example, create a plate and cut three holes in one batch:
 
 Each operation can select one independent solid with `target`, such as `{ nearest: [10, 0, 0], one: true }` or a current solid query ID. Only that solid is edited, then unioned with untouched solids; bodies that touch or overlap after editing may merge. Without `target`, the operation acts on the entire Part. The kernel enforces required fields, numeric bounds, vector lengths and unknown-field rejection. Failures include a zero-based `operationIndex`; a failed batch preserves the previous revision.
 
-Custom source defines `build(parameters, cad)` and returns a valid `cad.Part` with positive volume. `cad` exposes SMLib functions, the same `cad.edit(part, operations, parameters)`, and task-local resource loading:
+Custom source defines `build(parameters, cad)` and returns a valid positive-volume `cad.Part` or a `cad.assembly` collection. `cad` exposes SMLib functions, the same `cad.edit(part, operations, parameters)`, and task-local resource loading:
+
+`source` is a plain JavaScript script without `import` / `export`. Access SMLib names through `cad.Box`, `cad.Location`, etc., or destructure them from `cad` inside the function; they are not globals.
 
 ```javascript
 function build(parameters, cad) {
@@ -189,6 +195,8 @@ The workbench uses the same geometry query as `cad_query` for one selected targe
 - `angle`: 0–180 degrees between plane normals, line directions, rotation axes of circles/cylinders, or explicit `{ direction: [x,y,z] }` vectors.
 - `thickness`: a `point` in/on a solid and a nonzero `direction` identify one continuous material segment. Returns its thickness and entry/exit points. This is local directional thickness, not the global minimum wall thickness. Cavity points, tangencies and indeterminate measurements are rejected.
 - `size`: bounding-box extent along `axis: "x" | "y" | "z"`; `volume`, `area`, `length`, `radius` and `diameter` return the corresponding property. Size, volume and thickness accept a single-solid `target`; face/edge properties use `entity: { kind, selector }`.
+
+Each `from` / `to` / `entity` must resolve to one shape. For the distance between whole parts, use `{kind:"solids",selector:{part:"base",one:true}}` and the other part's selector. Selecting every face of a part does not identify one measurement object. Narrow a part containing multiple solids to the intended solid.
 
 Example dimensional checks:
 
@@ -223,7 +231,18 @@ function build(p, cad) {
 }
 ```
 
-- `cad_query(kind:"parts")` lists IDs, labels, dimensions, volumes and preview ranges. Geometry selectors accept `part:"lid"`; geometry results include `part` and `partName`. Geometry IDs remain scoped to the model file and revision.
+A standalone Part has an empty `parts` query. Use `copy_part` directly to retain it and create an independent copy. For a plate measuring 20 mm along Y, this batch copies it along +Y with a 5 mm gap and sets the copy's body color to crimson:
+
+```json
+[
+  { "op": "copy_part", "part": "base", "id": "copy", "name": "Plate copy", "center": [0, 25, 0] },
+  { "op": "color", "part": "copy", "color": "#DC143C" }
+]
+```
+
+`part:"base"` assigns the original its stable ID, preserving its name, position, geometry and colors. Copies retain face overrides; use the `color` operation's `faces` field to change or clear those overrides when needed.
+
+- `cad_query(kind:"parts")` lists IDs, labels, colors, dimensions, volumes and preview ranges. Geometry selectors accept `part:"lid"`; geometry results include `part` and `partName`. Geometry IDs remain scoped to the model file and revision.
 - Each `cad_edit` operation specifies `part:"lid"`, e.g. `{op:"translate",part:"lid",by:[0,0,10]}`. Existing operations edit that member without merging other parts. Use `add_part`, `copy_part` and `remove_part` to manage members, or explicitly script a complex change through `cad.current`.
 - Measurements can target `{part:"lid",one:true}`. Thickness requires a single solid target.
 - `cad_fit` takes `modelFile`, `expectedRevision`, `pairs:[{from:"base",to:"lid"}]` and optional `tolerance` (default 0.001 mm). It reports minimum surface distance, interference volume and `contact`, `separated` or `interference`; it neither solves constraints nor changes geometry.

@@ -113,3 +113,65 @@ test("assembly bore queries and face edits retain component ownership; STEP acce
   assert.equal(back.length, 2); near(back.reduce((sum, p) => sum + p.volume, 0), 1125);
   back.forEach(p => p.dispose()); twoSolids.dispose();
 }));
+
+test("copying a standalone plate creates independent named colored parts with a checked gap", { timeout: 90000 }, () => workspace(async (worker, project) => {
+  const target = { projectId: project.id, modelFile: "model.smp" };
+  const built = await worker.call("edit", { ...target, expectedRevision: 0, operations: [
+    { op: "box", size: [40, 20, 5], name: "孔阵列底板" },
+    { op: "cut", tool: { shape: "cylinder", radius: 2, height: 10 } },
+    { op: "color", color: "#CD7F32" },
+    { op: "color", faces: { position: "top" }, color: "#FF8000" },
+  ] });
+  const before = await readFile(join(project.directory, "model.smp"));
+  const trial = await worker.call("edit", { ...target, expectedRevision: 1, commit: false,
+    operations: [
+      { op: "copy_part", part: "base", id: "copy", name: "孔阵列底板CP", center: [0, 25, 0] },
+      { op: "color", part: "copy", color: "#DC143C" },
+      { op: "color", part: "copy", faces: { position: "top" }, color: null },
+    ] });
+  const candidate = { ...target, expectedRevision: 1, runId: trial.runId };
+  assert.equal((await worker.call("get", target)).head, 1);
+  const parts = (await worker.call("query", { ...candidate, kind: "parts" })).items;
+  assert.deepEqual(parts.map(p => [p.id, p.name, p.color]), [
+    ["base", "孔阵列底板", "#CD7F32"], ["copy", "孔阵列底板CP", "#DC143C"],
+  ]);
+  near(parts[0].volume, 4000 - 20 * Math.PI); near(parts[1].volume, parts[0].volume);
+  near(parts[0].center[1], 0); near(parts[1].center[1], 25);
+  const faces = (await worker.call("query", { ...candidate, kind: "faces" })).items;
+  const top = faces.find(f => f.part === "base" && f.normal?.[2] === 1);
+  assert.equal(top.color, "#FF8000"); assert.equal(top.effectiveColor, "#FF8000");
+  for (const face of faces.filter(f => f.part === "copy")) {
+    assert.equal(face.color, null); assert.equal(face.effectiveColor, "#DC143C");
+  }
+  const checks = [{ measurement: { kind: "distance",
+    from: { kind: "solids", selector: { part: "base" } },
+    to: { kind: "solids", selector: { part: "copy" } } }, expected: 5, tolerance: 0.001 }];
+  await assert.rejects(worker.call("commit", { ...candidate,
+    checks: [{ ...checks[0], expected: 6 }] }), /检查|check/i);
+  assert.deepEqual(await readFile(join(project.directory, "model.smp")), before);
+  const saved = await worker.call("commit", { ...candidate, checks });
+  assert.equal(saved.head, 2); assert.equal(saved.design.validation.passed, true);
+  near(saved.design.metrics.volume, 2 * built.design.metrics.volume);
+  // Every worker geometry request reloads the saved SMP in a fresh process.
+  const solids = (await worker.call("query", { ...target, expectedRevision: 2, kind: "solids" })).items;
+  assert.deepEqual(solids.map(s => [s.entityName, s.color]), [["孔阵列底板", "#CD7F32"], ["孔阵列底板CP", "#DC143C"]]);
+  const original = (await worker.call("query", { ...target, expectedRevision: 2, kind: "faces",
+    selector: { part: "base", position: "top", one: true } })).items[0];
+  assert.equal(original.effectiveColor, "#FF8000");
+  for (const format of ["smp", "step"]) {
+    const exported = await worker.call("export", { ...target, revision: 2, format });
+    const bodies = cad.fromFile(Buffer.from(exported.data, "base64"), `plates.${format}`);
+    try {
+      assert.equal(bodies.length, 2);
+      assert.deepEqual(bodies.map(b => b.name), ["孔阵列底板", "孔阵列底板CP"]);
+      near(bodies[1].bbox().min.y - bodies[0].bbox().max.y, 5);
+      for (const [i, rgb] of [[0, [205, 127, 50]], [1, [220, 20, 60]]])
+        assert.deepEqual(bodies[i].color.map(c => Math.round(c * 255)), rgb);
+    } finally { bodies.forEach(b => b.dispose()); }
+  }
+  const third = await worker.call("edit", { ...target, expectedRevision: 2, operations: [
+    { op: "copy_part", part: "copy", id: "spare", name: "备用孔板", center: [0, 25, 0] },
+  ] });
+  assert.deepEqual(third.design.parts.map(p => p.id), ["base", "copy", "spare"]);
+  near(third.design.parts[2].center[1], 50);
+}));

@@ -181,4 +181,9 @@ test("installed API lookup locates class members and pages complete declarations
   assert.equal(second.offset, 100);
   assert.notEqual(first.declarations, second.declarations);
   assert.ok(first.symbols.includes("Part"));
+  const helpers = readApi({ topic: "minicad", symbol: "assembly" });
+  assert.match(helpers.declarations, /assembly\(parts:/);
+  assert.match(helpers.declarations, /Independent parts in world coordinates/);
+  assert.ok(helpers.symbols.includes("current"));
+  assert.match(readApi({ topic: "minicad", symbol: "Assembly.part" }).declarations, /part\(id: string\)/);
 });
