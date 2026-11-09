@@ -1,98 +1,56 @@
-/* Version branches, saved previews and their modeling checkpoints share one panel. */
+/* History controls overlay the shared model canvas. */
 .mc-version-library {
-  display: grid;
-  grid-template-rows: auto minmax(80px, 22%) minmax(0, 1fr);
-  container: mc-version-library / inline-size;
-  position: absolute;
-  inset: var(--mc-content-top) var(--mc-gutter) var(--mc-gutter) var(--mc-panel-left);
-  z-index: 3;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  transition: opacity var(--mc-motion-fast) ease, transform var(--mc-motion-fast) var(--mc-ease-out);
+  position: absolute; inset: var(--mc-content-top) var(--mc-gutter) var(--mc-gutter) var(--mc-panel-left);
+  z-index: 3; min-width: 0; min-height: 0; pointer-events: none;
 }
-@starting-style { .mc-version-library { opacity: 0; transform: translateY(4px); } }
-.mc-record-bar {
-  display: flex; align-items: center; gap: 12px; flex: none;
-  min-height: 52px; padding: 8px 12px 8px 20px;
-  border-bottom: 1px solid var(--mc-border);
+.mc-revision-detail { position: absolute; inset: 0; min-width: 0; min-height: 0; }
+.mc-record-toolbar {
+  position: absolute; top: 0; left: 0; max-width: 100%; display: flex; flex-wrap: wrap;
+  align-items: center; gap: 8px; padding: 8px 10px; pointer-events: auto;
 }
-.mc-record-bar h1 { flex: none; margin: 0; font-size: 14px; line-height: 22px; font-weight: 500; }
-.mc-record-project { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--mc-muted); }
-.mc-record-toolbar { display: flex; flex-wrap: wrap; align-items: center; flex: none; gap: 8px; min-height: 44px; padding: 8px 12px 4px 20px; }
-.mc-record-kind { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mc-muted); font-size: 12px; }
-.mc-record-stage { position: relative; flex: 1 0 160px; min-height: 160px; overflow: hidden; }
-.mc-record-stage .mc-viewport { inset: 8px 12px; }
-.mc-record-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--mc-muted); font-size: 12px; pointer-events: none; }
-.mc-record-error { position: absolute; inset: 16px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; isolation: isolate; background: transparent; font-size: 13px; }
+.mc-record-toolbar > strong { font-size: 14px; font-weight: 500; white-space: nowrap; }
+.mc-library-preview-status { position: absolute; inset: 64px 0 260px; pointer-events: none; }
+.mc-record-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--mc-muted); font-size: 12px; }
+.mc-record-error { position: absolute; inset: 16px; padding: 16px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; isolation: isolate; background: transparent; font-size: 13px; pointer-events: auto; }
 .mc-record-error-content { display: flex; flex-direction: column; gap: 8px; }
-.mc-record-detail { flex: none; display: flex; flex-direction: column; gap: 2px; min-height: 48px; padding: 4px 20px 10px; }
-.mc-record-detail p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; }
-.mc-record-detail > time { color: var(--mc-muted); font-size: 11px; line-height: 16px; }
-.mc-record-reel { flex: none; min-width: 0; padding: 8px 12px 10px; border-top: 1px solid var(--mc-border); }
-.mc-record-reel-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 4px 8px; color: var(--mc-muted); font-size: 11px; line-height: 18px; }
-.mc-record-scope { flex: 1; min-width: 0; }
-.mc-record-count { flex: none; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.mc-record-runs { display: flex; gap: 4px; overflow-x: auto; padding: 0 4px 8px; scrollbar-width: thin; }
+.mc-record-reel { position: absolute; bottom: 0; left: 0; right: 200px; max-height: min(45%, 320px); display: flex; flex-direction: column; gap: 8px; min-width: 0; pointer-events: auto; }
+.mc-record-reel[data-scope="process"] { max-height: calc(100% - 72px); }
+.mc-record-reel-heading { position: relative; isolation: isolate; display: flex; align-items: center; gap: 6px; padding: 5px 9px; flex: none; align-self: flex-start; max-width: 100%; }
+.mc-record-count { color: var(--mc-muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mc-record-scrubber { width: 140px; min-width: 32px; accent-color: var(--mc-accent); }
+.mc-record-runs { position: relative; isolation: isolate; display: flex; gap: 4px; overflow-x: auto; padding: 4px; flex: none; scrollbar-width: thin; }
 .mc-record-runs button { flex: none; gap: 6px; }
-.mc-record-run-title { max-width: min(360px, 45vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-record-run-title { max-width: min(240px, 35vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mc-record-runs [aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
-.mc-record-frames { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 0 4px; margin: 0; list-style: none; }
-.mc-record-frames > li { flex: 0 0 104px; min-width: 0; }
-.mc-record-frames .mc-record-frame { width: 100%; height: auto; padding: 6px; border: 1px solid transparent; border-radius: 8px; }
-.mc-record-frames .mc-record-frame[aria-current="step"] { border-color: var(--mc-accent); background: var(--mc-bg); }
-.mc-record-frame-content { display: flex; flex-direction: column; width: 90px; min-width: 0; gap: 2px; }
-.mc-record-frame-content canvas { display: block; width: 90px; height: 48px; }
-.mc-record-frame-content > span { display: flex; gap: 5px; align-items: baseline; min-width: 0; font-size: 11px; line-height: 18px; }
+.mc-record-frames { display: flex; gap: 12px; overflow-x: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px 2px 6px; margin: 0; list-style: none; flex: none; }
+.mc-record-frames > li { flex: 0 0 148px; min-width: 0; }
+.mc-record-frames .mc-record-frame { position: relative; isolation: isolate; width: 100%; height: auto; padding: 8px; border: 1px solid var(--mc-border); border-radius: 12px; }
+.mc-record-frames .mc-record-frame[aria-current="step"] { border-color: var(--mc-accent); }
+.mc-record-frame-content { display: flex; flex-direction: column; width: 100%; min-width: 0; gap: 2px; }
+.mc-model-thumbnail { display: block; min-width: 0; width: 100%; }
+.mc-model-thumbnail canvas { display: block; width: 100%; height: 64px; }
+.mc-record-frame-content > span:last-child { display: flex; gap: 5px; align-items: baseline; min-width: 0; font-size: 11px; line-height: 18px; }
 .mc-record-frame-content strong { flex: none; font-size: inherit; font-weight: 500; }
-.mc-record-frame-content > span > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mc-muted); }
-.mc-workbench[data-version-library-open] > :is(.mc-empty, .mc-viewport) { visibility: hidden; }
-
-.mc-version-count { flex: none; color: var(--mc-muted); font-size: 12px; }
-.mc-revision-tree { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.mc-record-frame-content > span:last-child > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mc-muted); }
+.mc-revision-tree { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 2px; }
 .mc-revision-empty { padding: 12px 20px; color: var(--mc-muted); font-size: 12px; }
 .mc-revision-tree-graph { position: relative; }
 .mc-revision-tree-graph > svg { position: absolute; inset: 0; pointer-events: none; }
 .mc-revision-tree-graph path { stroke: var(--dsw-alias-label-caption); stroke-width: 1.4px; }
-.mc-revision-tree-graph path[data-branch] { stroke: var(--mc-accent); }
 .mc-version-library .mc-revision-node {
-  position: absolute;
-  gap: 6px;
-  justify-content: center;
-  padding-inline: 8px;
-  border: 1px solid var(--mc-border);
-  border-radius: 9px;
-  background: var(--mc-bg);
-  font-size: 13px;
+  position: absolute; display: flex; flex-direction: column; justify-content: flex-start; gap: 0;
+  padding: 7px 9px; border: 1px solid var(--mc-border); border-radius: 12px; isolation: isolate;
 }
-.mc-revision-node strong { font-weight: 600; font-variant-numeric: tabular-nums; }
-.mc-revision-node > span { color: var(--mc-accent); font-size: 10px; }
-.mc-version-library .mc-revision-node[aria-current="true"] { color: var(--mc-accent); }
-.mc-version-library .mc-revision-node[aria-pressed="true"] { border-color: var(--mc-accent); background: var(--mc-selected); }
-.mc-revision-detail {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: auto;
-  border-top: 1px solid var(--mc-border);
-}
-.mc-revision-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  color: var(--mc-text);
-  font-size: 13px;
-  line-height: 18px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.mc-revision-meta strong { color: var(--mc-accent); font-weight: inherit; }
-.mc-revision-base-label { color: var(--mc-muted); font-weight: 400; }
-.mc-revision-direction { flex: none; color: var(--mc-muted); }
-@container mc-workbench (max-width: 760px) {
-  .mc-record-bar { gap: 8px; padding-left: 12px; }
-  .mc-record-project { display: none; }
+.mc-revision-card-heading { display: flex; justify-content: space-between; align-items: center; width: 100%; font-size: 12px; line-height: 18px; }
+.mc-revision-card-heading strong { font-weight: 500; font-variant-numeric: tabular-nums; }
+.mc-revision-card-heading > span { color: var(--mc-accent); font-size: 11px; }
+.mc-revision-card-summary { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: var(--mc-muted); font-size: 11px; line-height: 16px; }
+.mc-version-library .mc-revision-node[aria-pressed="true"] { border-color: var(--mc-accent); }
+.mc-workbench[data-version-library-open] > .mc-empty { visibility: hidden; }
+@container mc-workbench (max-width: 900px) {
+  .mc-record-reel { right: 0; bottom: 80px; max-height: min(38%, 260px); }
+  .mc-workbench[data-version-library-open] .mc-view-cube { display: none; }
+  .mc-library-preview-status { bottom: 300px; }
 }
 /* DSH publishes the current keyboard modality; frequent key actions stay immediate. */
 html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-version-library, .mc-task-status-details, .mc-task-status, .mc-sidebar) {

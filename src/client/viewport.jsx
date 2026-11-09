@@ -56,7 +56,7 @@ const diffColors = {
   added: [0x16834a, 0x61d994], removed: [0xc33a48, 0xff7b86], unchanged: [0x94a0b0, 0x8f9caf],
 };
 
-export function Viewport({ id, active = true, presentation = "workbench", sidebarCollapsed = false, design, diff, wire, transparent = false, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, onError, t }) {
+export function Viewport({ id, active = true, presentation = "workbench", historyOpen = false, sidebarCollapsed = false, design, diff, wire, transparent = false, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
@@ -515,10 +515,12 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
         const sidebar = owner?.hasAttribute("data-project-panel-collapsed") ? null : rect(".mc-sidebar");
         if (sidebar?.width) area.left = sidebar.right - viewport.left + 24;
         // The composer overlays the canvas; opening it must not change framing.
-        for (const selector of [".mc-header", ".mc-version-diff"]) {
+        for (const selector of [".mc-header", ".mc-version-diff", ".mc-record-toolbar"]) {
           const box = rect(selector);
           if (box?.height) area.top = Math.max(area.top, box.bottom - viewport.top + 16);
         }
+        const history = rect(".mc-record-reel");
+        if (history?.height) area.bottom = Math.min(area.bottom, history.top - viewport.top - 16);
         const navigation = rect(".mc-navigation");
         if (navigation?.width && navigation.top - viewport.top < area.bottom && navigation.bottom - viewport.top > area.top)
           area.right = Math.min(area.right, navigation.left - viewport.left - 16);
@@ -837,6 +839,16 @@ export function Viewport({ id, active = true, presentation = "workbench", sideba
     s.invalidate();
   }, [transparent, design?.previewData]);
   useEffect(() => { runtime.current?.setActive(active); }, [active]);
+  useLayoutEffect(() => {
+    const state = runtime.current;
+    if (!state) return;
+    const observer = new ResizeObserver(() => state.scheduleFit());
+    const owner = mount.current?.closest(".mc-workbench");
+    for (const selector of [".mc-record-reel", ".mc-record-toolbar"])
+      if (owner?.querySelector(selector)) observer.observe(owner.querySelector(selector));
+    state.scheduleFit();
+    return () => observer.disconnect();
+  }, [historyOpen]);
   useLayoutEffect(() => { runtime.current?.positionSelection(); }, [sidebarCollapsed]);
   useEffect(() => {
     const s = runtime.current;

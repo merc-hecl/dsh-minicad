@@ -1,9 +1,9 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Button, IconCloseOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
-import { RevisionRecord } from "./revision-record.jsx";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
+import { RevisionRecord, ModelThumbnail } from "./revision-record.jsx";
 import { errorDetail } from "../shared/errors.js";
 
-const columnWidth = 140, rowHeight = 64, nodeWidth = 106, nodeHeight = 36;
+const columnWidth = 180, rowHeight = 128, nodeWidth = 148, nodeHeight = 108;
 
 function layoutRevisions(revisions) {
   const children = new Map();
@@ -22,14 +22,13 @@ function layoutRevisions(revisions) {
     for (let index = branches.length - 1; index >= 0; index--)
       stack.push({ entry: branches[index], column: column + 1, lane: index === 0 ? lane : undefined });
   }
-  return { nodes, width: depth * columnWidth + 6, height: nextLane * rowHeight + 10 };
+  return { nodes, width: depth * columnWidth + 8, height: nextLane * rowHeight + 18 };
 }
 
-export function VersionLibrary({ project, progress, request, language, disabled, onSelect, onClose, t }) {
+export function VersionLibrary({ project, progress, request, language, disabled, onSelect, onClose, onPreview, t }) {
   const [selected, setSelected] = useState(project.head);
   const [runs, setRuns] = useState([]), [historyError, setHistoryError] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(true);
-  const tree = useRef(null);
   const { nodes, width, height } = useMemo(() => layoutRevisions(project.revisions), [project.revisions]);
   const entry = nodes.get(selected) || nodes.get(project.head);
   useEffect(() => {
@@ -46,18 +45,11 @@ export function VersionLibrary({ project, progress, request, language, disabled,
     if (progress?.modelFile === project.modelFile) items.set(progress.id, progress);
     return [...items.values()];
   }, [runs, progress, project.modelFile]);
-  useLayoutEffect(() => {
-    tree.current?.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const tree = useCallback(element => {
+    element?.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [entry?.revision]);
 
-  return <section id="mc-version-library" className="mc-version-library mc-panel"
-    aria-labelledby="mc-version-library-title">
-    <header className="mc-record-bar">
-      <h1 id="mc-version-library-title">{t("versionLibrary")}</h1>
-      <span className="mc-record-project" title={project.title}>{project.title}</span>
-      <span className="mc-version-count">{t("versionCount", { count: nodes.size })}</span>
-      <Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={16} />} aria-label={t("close")} onClick={onClose} />
-    </header>
+  const renderVersions = load => <>
     <div ref={tree} className="mc-revision-tree">
       <div className="mc-revision-tree-graph" style={{ width, height }}>
         <svg width={width} height={height} fill="none" aria-hidden="true">
@@ -72,19 +64,24 @@ export function VersionLibrary({ project, progress, request, language, disabled,
         </svg>
         {[...nodes.values()].map(node => {
           const current = node.revision === project.head;
-          return <Button key={node.revision} className="mc-revision-node" variant="ghost" size="sm"
+          return <Button key={node.revision} className="mc-revision-node mc-panel" variant="ghost" size="sm"
             style={{ left: node.x, top: node.y, width: nodeWidth, height: nodeHeight }}
             aria-current={current || undefined} aria-pressed={node.revision === entry?.revision}
             onClick={() => setSelected(node.revision)}>
-            <strong>v{node.revision}</strong>
-            {current && <span>{t("current")}</span>}
+            <span className="mc-revision-card-heading"><strong>v{node.revision}</strong>
+              {current && <span>{t("current")}</span>}</span>
+            <ModelThumbnail entry={{ key: `v${node.revision}`, revision: node.revision }} load={load} />
+            <span className="mc-revision-card-summary" title={node.summary}>{node.summary || t("savedVersion")}</span>
           </Button>;
         })}
       </div>
       {!nodes.size && <div className="mc-revision-empty">{t("noSavedVersions")}</div>}
     </div>
+  </>;
+  return <section id="mc-version-library" className="mc-version-library" aria-label={t("versionLibrary")}>
     <RevisionRecord key={entry?.revision || "unsaved"} project={project} entry={entry} runs={allRuns}
       historyError={historyError} historyLoading={historyLoading}
-      request={request} language={language} disabled={disabled} onSelect={onSelect} t={t} />
+      request={request} language={language} disabled={disabled} onSelect={onSelect} onClose={onClose}
+      onPreview={onPreview} onCurrent={() => setSelected(project.head)} renderVersions={renderVersions} t={t} />
   </section>;
 }

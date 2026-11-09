@@ -115,6 +115,7 @@ export function Workbench({
   const [sessionReference, setSessionReference] = useState(null);
   const [reference, setReference] = useState(null);
   const [versionLibraryOpen, setVersionLibraryOpen] = useState(false);
+  const [libraryDesign, setLibraryDesign] = useState(null);
   const [recordOpen, setRecordOpen] = useState(false), [recordHost, setRecordHost] = useState(null);
   const recordNeedsRoom = recordOpen && layoutWidth !== "wide";
   const sidebarCollapsed = panelCollapsed || recordNeedsRoom;
@@ -126,7 +127,7 @@ export function Workbench({
     setVersionLibraryOpen(false); setDiffOpen(false);
     setRecordOpen(true);
   };
-  const closeVersionLibrary = useCallback(() => setVersionLibraryOpen(false), []);
+  const closeVersionLibrary = useCallback(() => { setVersionLibraryOpen(false); setLibraryDesign(null); }, []);
   const [diffOpen, setDiffOpen] = useState(false), [diff, setDiff] = useState(null);
   const [progress, setProgress] = useState(null), [processDesign, setProcessDesign] = useState(null);
   const [nativeRunning, setNativeRunning] = useState(false);
@@ -479,9 +480,9 @@ export function Workbench({
   const currentDisplayMode = diffOpen && transparent ? "solid" : displayMode;
   const nextDisplayMode = displayModes[(displayModes.indexOf(currentDisplayMode) + 1) % displayModes.length];
   const modeLabel = mode => t(mode === "transparent" ? "transparentView" : mode);
-  const originalDesign = diffOpen ? design : processDesign || design;
+  const originalDesign = versionLibraryOpen ? libraryDesign : diffOpen ? design : processDesign || design;
   const displayedDesign = useMemo(() => originalDesign && ({ ...originalDesign,
-    previewData: visiblePreview(originalDesign.previewData, originalDesign.parts, diffOpen ? [] : hiddenParts) }), [originalDesign, hiddenParts, diffOpen]);
+    previewData: visiblePreview(originalDesign.previewData, originalDesign.parts, diffOpen || versionLibraryOpen ? [] : hiddenParts) }), [originalDesign, hiddenParts, diffOpen, versionLibraryOpen]);
   const displayedDiff = diffOpen && diff?.projectId === project?.id && diff?.modelFile === project?.modelFile ? diff : null;
   return (
     <div
@@ -515,7 +516,7 @@ export function Workbench({
           && event.target.matches("#mc-view-model-panel > canvas")) dock.current?.dismiss();
       }}
       onDoubleClick={event => {
-        if (event.target.matches("#mc-view-model-panel > canvas")) {
+        if (!versionLibraryOpen && event.target.matches("#mc-view-model-panel > canvas")) {
           event.preventDefault(); dock.current?.reveal({ x: event.clientX, y: event.clientY });
         }
       }}
@@ -540,7 +541,7 @@ export function Workbench({
     >
       <Viewport
         id="mc-view-model-panel"
-        active={!versionLibraryOpen}
+        historyOpen={versionLibraryOpen}
         sidebarCollapsed={sidebarCollapsed}
         design={displayedDesign}
         diff={displayedDiff}
@@ -583,17 +584,17 @@ export function Workbench({
             {project && <Btn className="mc-header-version" icon={IconBranchOutlineRegular}
               label={project.head > 0 ? `${t("versionLibrary")} · ${t("current")} v${project.head}` : t("versionLibrary")}
               aria-expanded={versionLibraryOpen} aria-controls={versionLibraryOpen ? "mc-version-library" : undefined}
-              onClick={() => { setRecordOpen(false); setDiffOpen(false); setVersionLibraryOpen(value => !value); }} />}
+              onClick={() => { setRecordOpen(false); setDiffOpen(false); setLibraryDesign(null); setVersionLibraryOpen(value => !value); }} />}
           </div>
         </div>
         <div ref={setStatusTarget} className="mc-header-status" />
         <nav className="mc-header-actions mc-panel" aria-label={t("workbenchTools")}>
           <div className="mc-header-action-group">
-            <Btn icon={IconRefreshOutlineRegular} label={t("resetView")} disabled={versionLibraryOpen} onClick={() => setResetView(value => value + 1)} />
+            <Btn icon={IconRefreshOutlineRegular} label={t("resetView")} onClick={() => setResetView(value => value + 1)} />
             <Btn icon={currentDisplayMode === "wire" ? WireframeViewIcon : currentDisplayMode === "transparent" ? TransparentViewIcon : SolidViewIcon}
               label={`${t("displayMode")} · ${modeLabel(currentDisplayMode)}`}
               aria-label={t("switchDisplayMode", { mode: modeLabel(nextDisplayMode) })}
-              disabled={versionLibraryOpen} onClick={() => setDisplayMode(nextDisplayMode)} />
+              onClick={() => setDisplayMode(nextDisplayMode)} />
             <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selectionActive}
               aria-expanded={hasAssemblyParts || hasModelChoices ? inspectionVisible : undefined} aria-controls={inspectionVisible ? "mc-model-inspection" : undefined}
               disabled={!project || !!processDesign || busy || diffOpen || versionLibraryOpen}
@@ -657,7 +658,7 @@ export function Workbench({
         onResult={setDiff} onClose={() => setDiffOpen(false)} t={t} language={language} />}
       {versionLibraryOpen && project && <VersionLibrary key={`${project.id}:${project.modelFile}`} project={project} progress={progress}
         request={request} language={language} disabled={busy || running || nativeRunning}
-        onClose={dismissVersionLibrary} onSelect={selectRevision} t={t} />}
+        onClose={dismissVersionLibrary} onSelect={selectRevision} onPreview={setLibraryDesign} t={t} />}
       <div id="mc-session-record-host" className="mc-session-record-host" ref={setRecordHost} />
       <ConversationDock key={project?.activeSessionId || "none"} ref={dock} t={t} hidden={versionLibraryOpen}
         embedded={recordOpen}

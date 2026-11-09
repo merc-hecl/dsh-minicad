@@ -1,12 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, SegmentedTabs, StateDot, Tag,
-  IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular,
-  IconRefreshOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
-import { Viewport } from "./viewport.jsx";
+import { Button, StateDot, Tag, IconCloseOutlineRegular,
+  IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 import { ErrorDetails } from "./workbench-dialog.jsx";
 import { errorDetail } from "../shared/errors.js";
 
-function FrameThumbnail({ entry, load, selected, onSelect }) {
+export function ModelThumbnail({ entry, load }) {
   const mount = useRef(null), canvas = useRef(null);
   useEffect(() => {
     let disposed = false;
@@ -38,32 +36,37 @@ function FrameThumbnail({ entry, load, selected, onSelect }) {
     observer.observe(mount.current);
     return () => { disposed = true; observer.disconnect(); };
   }, [entry.key, load]);
+  return <span ref={mount} className="mc-model-thumbnail"><canvas ref={canvas} width={192} height={112} aria-hidden="true" /></span>;
+}
+
+function FrameThumbnail({ entry, load, selected, onSelect }) {
+  const mount = useRef(null);
   useEffect(() => {
     if (selected) mount.current.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [selected]);
   return <li ref={mount}>
-    <Button className="mc-record-frame" variant="ghost" aria-current={selected ? "step" : undefined}
+    <Button className="mc-record-frame mc-panel" variant="ghost" aria-current={selected ? "step" : undefined}
       aria-label={`${entry.label} · ${entry.title}`} title={entry.title} onClick={() => onSelect(entry.key)}>
-      <span className="mc-record-frame-content"><canvas ref={canvas} width={192} height={112} aria-hidden="true" />
+      <span className="mc-record-frame-content"><ModelThumbnail entry={entry} load={load} />
         <span><strong>{entry.label}</strong><span>{entry.title}</span></span>
       </span>
     </Button>
   </li>;
 }
 
-export function RevisionRecord({ project, entry, runs, historyError, historyLoading, request, t, language, disabled, onSelect }) {
+export function RevisionRecord({ project, entry, runs, historyError, historyLoading, request, t, language, disabled, onSelect, onClose, onPreview, onCurrent, renderVersions }) {
   const [scope, setScope] = useState(entry ? "version" : "process");
   const [selectedRun, setSelectedRun] = useState(null), [selectedStep, setSelectedStep] = useState(null);
   const [design, setDesign] = useState(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState(null);
-  const [reset, setReset] = useState(0);
   const reel = useRef(null);
   const controller = useRef(new AbortController()), cache = useRef(new Map());
   useEffect(() => {
     const container = reel.current;
     const scrollRecords = event => {
-      const strip = event.target.closest(".mc-record-frames, .mc-record-runs");
+      const strip = event.target.closest(".mc-record-frames, .mc-record-runs, .mc-revision-tree");
       if (!strip || event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY) || strip.scrollWidth <= strip.clientWidth) return;
+      if (strip.matches(".mc-revision-tree") && strip.scrollHeight > strip.clientHeight && !event.shiftKey) return;
       const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? parseFloat(getComputedStyle(strip).lineHeight)
         : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? strip.clientWidth : 1;
       event.preventDefault();
@@ -129,47 +132,42 @@ export function RevisionRecord({ project, entry, runs, historyError, historyLoad
   const dateFormatter = new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
     month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
   });
-  const date = focus && dateFormatter.format(focus.created * 1000);
+  useEffect(() => { onPreview(design); }, [design, onPreview]);
   const failure = error || (scope === "process" ? historyError : null);
   const pending = loading || (scope === "process" && !focus && historyLoading);
   return <section className="mc-revision-detail" aria-label={t("recordModel")}>
-    <div className="mc-record-toolbar">
-      {entry && <div className="mc-revision-meta">
-        {entry.parent !== null && <><span><span className="mc-revision-base-label">{t("revisionBase")}</span> v{entry.parent}</span>
-          <IconChevronRightOutlineRegular className="mc-revision-direction" size={12} aria-hidden="true" /></>}
-        <strong>v{entry.revision}</strong>
-      </div>}
+    <header className="mc-record-toolbar mc-panel">
+      <strong>{t("versionLibrary")}{entry ? ` · v${entry.revision}` : ""}</strong>
+      {entry && <Tag tone="neutral">{t(entry.revision === project.head ? "current" : "revisionPreview")}</Tag>}
       {focus?.runId && <Tag tone="neutral">{focus.label}</Tag>}
-      <span className="mc-record-kind">{focus ? t(focus.runId ? "checkpointPreview" : "savedVersion") : t("modelingProcess")}</span>
-      <Button variant="ghost" size="sm" icon={<IconRefreshOutlineRegular size={16} />} aria-label={t("resetView")} onClick={() => setReset(value => value + 1)} />
-      {entry && <Button variant={entry.revision === project.head ? "ghost" : "primary"} size="sm"
-        disabled={entry.revision === project.head || disabled} onClick={() => onSelect(entry.revision)}>
-        {entry.revision === project.head ? t("currentVersion") : t("switchVersion", { n: entry.revision })}
+      {entry && <Button variant="ghost" size="sm" onClick={() => changeScope(scope === "version" ? "process" : "version")}>
+        {t(scope === "version" ? "modelingProcess" : "savedVersion")}
       </Button>}
-    </div>
-    <div className="mc-record-stage">
-      <Viewport presentation="record" design={design} resetToken={reset} t={t} onError={() => setError(t("webglError"))} />
+      {entry && (entry.revision !== project.head || scope === "process") && <Button variant="ghost" size="sm"
+        onClick={() => { setScope("version"); onCurrent(); }}>{t("returnCurrent")}</Button>}
+      {entry && entry.revision !== project.head && <Button variant="primary" size="sm"
+        disabled={disabled || scope === "process"} onClick={() => onSelect(entry.revision)}>
+        {t("switchVersion", { n: entry.revision })}
+      </Button>}
+      <Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={16} />} aria-label={t("close")} onClick={onClose} />
+    </header>
+    <div className="mc-library-preview-status">
       {pending && !failure && <div className="mc-record-placeholder" role="status"><StateDot state="ongoing" />{t("loading")}</div>}
       {!focus && !pending && !failure && <div className="mc-record-placeholder">{t("noProcessSteps")}</div>}
-      {failure && <div className="mc-record-error" role="alert"><div className="mc-record-error-content mc-panel-scroll">
+      {failure && <div className="mc-record-error mc-panel" role="alert"><div className="mc-record-error-content mc-panel-scroll">
         <span>{t("previewUnavailable")}</span><ErrorDetails detail={failure} t={t} />
       </div></div>}
     </div>
-    <div className="mc-record-detail">
-      {focus && <><p title={focus.title}>{focus.title}</p><time dateTime={new Date(focus.created * 1000).toISOString()}>{date}</time></>}
-    </div>
-    <footer ref={reel} className="mc-record-reel">
-      <div className="mc-record-reel-heading">
-        <div className="mc-record-scope"><SegmentedTabs label={t("recordContent")} value={scope} onChange={changeScope}
-          items={[...(entry ? [{ value: "version", label: t("savedVersion") }] : []),
-            { value: "process", label: t("modelingProcess") }]} /></div>
-        {scope === "process" && <><span className="mc-record-count" style={{ width: `${String(steps.length).length * 2 + 3}ch` }}>
-          {index >= 0 ? index + 1 : 0} / {steps.length}
-        </span>
+    <footer ref={reel} className="mc-record-reel" data-scope={scope}>
+      {scope === "version" && renderVersions(load)}
+      {scope === "process" && <div className="mc-record-reel-heading mc-panel">
+        <span className="mc-record-count">{index >= 0 ? index + 1 : 0} / {steps.length}</span>
         <Button variant="ghost" size="sm" icon={<IconChevronLeftOutlineRegular size={14} />} aria-label={t("previousStep")} disabled={index <= 0} onClick={() => setSelectedStep(steps[index - 1].key)} />
-        <Button variant="ghost" size="sm" icon={<IconChevronRightOutlineRegular size={14} />} aria-label={t("nextStep")} disabled={index < 0 || index >= steps.length - 1} onClick={() => setSelectedStep(steps[index + 1].key)} /></>}
-      </div>
-      {scope === "process" && <div className="mc-record-runs" aria-label={t("modelingRuns")}>
+        <input className="mc-record-scrubber" type="range" min={0} max={Math.max(0, steps.length - 1)} value={Math.max(0, index)}
+          disabled={!steps.length} aria-label={t("modelingProcess")} onChange={event => setSelectedStep(steps[Number(event.target.value)].key)} />
+        <Button variant="ghost" size="sm" icon={<IconChevronRightOutlineRegular size={14} />} aria-label={t("nextStep")} disabled={index < 0 || index >= steps.length - 1} onClick={() => setSelectedStep(steps[index + 1].key)} />
+      </div>}
+      {scope === "process" && <div className="mc-record-runs mc-panel" aria-label={t("modelingRuns")}>
         {processRuns.map(run => <Button key={run.id} variant="ghost" size="sm" aria-pressed={run.id === activeRun?.id}
           title={`${run.summary || t("modeling")} · ${dateFormatter.format(run.created * 1000)}`}
           onClick={() => { setSelectedRun(run.id); setSelectedStep(null); }}>
