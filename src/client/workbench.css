@@ -20,6 +20,8 @@
   --mc-header-height: 40px;
   --mc-content-top: calc(80px + var(--mc-top-inset));
   --mc-panel-left: calc(var(--mc-gutter) + var(--mc-sidebar-rail) + var(--mc-panel-gap));
+  /* The session record keeps its width when the design panel is collapsed. */
+  --mc-panel-left-expanded: calc(var(--mc-gutter) + var(--mc-sidebar-width) + var(--mc-panel-gap));
   --mc-canvas-left: var(--mc-panel-left);
   --mc-canvas-center: calc((100% + var(--mc-canvas-left) - var(--mc-gutter)) / 2);
   --mc-ease-out: cubic-bezier(.23, 1, .32, 1);
@@ -633,6 +635,7 @@ body[data-ds-dark-theme] .mc-cube-axis[data-axis="z"] {
   --mc-sidebar-width: 200px;
   --mc-canvas-left: var(--mc-gutter);
   --mc-panel-left: var(--mc-gutter);
+  --mc-panel-left-expanded: var(--mc-gutter);
 }
 @container mc-workbench (max-width: 760px) {
   .mc-bottom {
