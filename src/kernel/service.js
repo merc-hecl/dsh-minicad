@@ -19,7 +19,11 @@ try {
     break;
   }
 } catch (error) {
-  console.error(error.stack || error);
+  // Diagnostics returned to tools are English; keep the localized message for the workbench.
+  const english = error?.localized?.en;
+  const frames = error?.stack ? error.stack.split("\n").slice(1).join("\n") : "";
+  console.error(english === undefined ? error.stack || error
+    : frames ? `Error: ${english}\n${frames}` : `Error: ${english}`);
   process.stdout.write(
     JSON.stringify({
       id: request.id,

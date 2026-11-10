@@ -329,7 +329,7 @@ export function Workbench({
         setProgress(state.progress || null);
         if (state.projects) setProjects(state.projects);
         if (state.error && state.error !== lastStatusError.current)
-          setError({ key: errorKey(state.error), detail: state.errorDetail ?? state.error });
+          setError({ key: errorKey(state.errorDetail?.zh ?? state.error), detail: state.errorDetail ?? state.error });
         lastStatusError.current = state.error || "";
         if (state.title && state.title !== projectRef.current?.title) {
           setProject((current) => current ? { ...current, title: state.title } : current);

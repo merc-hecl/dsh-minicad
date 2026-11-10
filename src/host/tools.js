@@ -79,8 +79,14 @@ Reply in the user's language with the saved revision, what changed, what was che
               const details = { phase: error.phase, code: error.code, operationIndex: error.operationIndex,
                 operation: error.operation, runId: error.runId, diagnostics: error.diagnostics,
                 validation: error.validation };
-              if (Object.values(details).some(value => value !== undefined))
-                error.message += `\n${JSON.stringify(details)}`;
+              const diagnostic = Object.values(details).some(value => value !== undefined)
+                ? `\n${JSON.stringify(details)}` : "";
+              // Tool errors are returned to the model, which uses English for
+              // diagnostics; the workbench still renders the localized detail.
+              if (error?.localized?.en !== undefined)
+                error.message = `${error.localized.en}${diagnostic}`;
+              else if (diagnostic)
+                error.message += diagnostic;
               throw error;
             }
           },
