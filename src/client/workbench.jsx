@@ -18,6 +18,7 @@ import {
   IconCloseOutlineRegular,
   IconPanelLeftOutlineRegular,
   IconBranchOutlineRegular,
+  IconNewChatOutlineRegular,
   IconFlatListOutlineRegular,
   IconCompareSplitOutlineRegular,
   IconRefreshOutlineRegular,
@@ -586,6 +587,8 @@ export function Workbench({
               aria-expanded={versionLibraryOpen} aria-controls={versionLibraryOpen ? "mc-version-library" : undefined}
               onClick={() => { setRecordOpen(false); setDiffOpen(false); setLibraryDesign(null); setVersionLibraryOpen(value => !value); }} />}
           </div>
+          {project && sidebarCollapsed && <Btn className="mc-header-new-session" icon={IconNewChatOutlineRegular}
+            label={t("newSession")} disabled={busy} onClick={() => createConversation(project)} />}
         </div>
         <div ref={setStatusTarget} className="mc-header-status" />
         <nav className="mc-header-actions mc-panel" aria-label={t("workbenchTools")}>

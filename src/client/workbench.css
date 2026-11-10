@@ -250,6 +250,7 @@ html[data-platform="darwin"] .mc-workbench {
 }
 .mc-header-app.mc-panel { justify-self: start; width: max-content; max-width: 100%; gap: 4px; padding: 4px; border-radius: var(--dsw-radius-lg); }
 .mc-header-document { flex: 0 1 auto; max-width: 240px; padding-inline: 8px; }
+.mc-header-app:has(.mc-header-new-session) .mc-header-document { padding-right: 0; }
 .mc-header .mc-icon-button { flex: none; width: 32px; height: 32px; min-height: 0; padding: 0; }
 .mc-header-app :is(.mc-library-toggle, .mc-header-version)[aria-expanded="true"] {
   color: var(--mc-accent);
