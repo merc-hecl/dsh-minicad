@@ -141,9 +141,9 @@ export function RevisionRecord({ project, entry, runs, historyError, historyLoad
       {entry && <Tag tone="neutral">{t(entry.revision === project.head ? "current" : "revisionPreview")}</Tag>}
       {focus?.runId && <Tag tone="neutral">{focus.label}</Tag>}
       {entry && <Button variant="ghost" size="sm" onClick={() => changeScope(scope === "version" ? "process" : "version")}>
-        {t(scope === "version" ? "modelingProcess" : "savedVersion")}
+        {t(scope === "version" ? "viewProcess" : "viewVersion")}
       </Button>}
-      {entry && (entry.revision !== project.head || scope === "process") && <Button variant="ghost" size="sm"
+      {entry && entry.revision !== project.head && <Button variant="ghost" size="sm"
         onClick={() => { setScope("version"); onCurrent(); }}>{t("returnCurrent")}</Button>}
       {entry && entry.revision !== project.head && <Button variant="primary" size="sm"
         disabled={disabled || scope === "process"} onClick={() => onSelect(entry.revision)}>
@@ -167,18 +167,20 @@ export function RevisionRecord({ project, entry, runs, historyError, historyLoad
           disabled={!steps.length} aria-label={t("modelingProcess")} onChange={event => setSelectedStep(steps[Number(event.target.value)].key)} />
         <Button variant="ghost" size="sm" icon={<IconChevronRightOutlineRegular size={14} />} aria-label={t("nextStep")} disabled={index < 0 || index >= steps.length - 1} onClick={() => setSelectedStep(steps[index + 1].key)} />
       </div>}
-      {scope === "process" && <div className="mc-record-runs mc-panel" aria-label={t("modelingRuns")}>
-        {processRuns.map(run => <Button key={run.id} variant="ghost" size="sm" aria-pressed={run.id === activeRun?.id}
-          title={`${run.summary || t("modeling")} · ${dateFormatter.format(run.created * 1000)}`}
-          onClick={() => { setSelectedRun(run.id); setSelectedStep(null); }}>
-          <span className="mc-record-run-title">{run.summary || t("modeling")}</span>
-          <span className="mc-muted">{run.committedRevision ? `v${run.committedRevision}` : t(run.phase === "preview" ? "unsavedTrial" : `taskStatus.${run.phase}`)} · {dateFormatter.format(run.created * 1000)}</span>
-          <span className="mc-muted">{t("stepCount", { count: run.steps.length })}</span>
-        </Button>)}
+      {scope === "process" && <div className="mc-record-process mc-panel">
+        <div className="mc-record-runs" aria-label={t("modelingRuns")}>
+          {processRuns.map(run => <Button key={run.id} variant="ghost" size="sm" aria-pressed={run.id === activeRun?.id}
+            title={`${run.summary || t("modeling")} · ${dateFormatter.format(run.created * 1000)}`}
+            onClick={() => { setSelectedRun(run.id); setSelectedStep(null); }}>
+            <span className="mc-record-run-title">{run.summary || t("modeling")}</span>
+            <span className="mc-muted">{run.committedRevision ? `v${run.committedRevision}` : t(run.phase === "preview" ? "unsavedTrial" : `taskStatus.${run.phase}`)} · {dateFormatter.format(run.created * 1000)}</span>
+            <span className="mc-muted">{t("stepCount", { count: run.steps.length })}</span>
+          </Button>)}
+        </div>
+        <ol className="mc-record-frames" aria-label={t("modelingProcess")}>
+          {steps.map(entry => <FrameThumbnail key={entry.key} entry={entry} load={load} selected={entry.key === focus?.key} onSelect={setSelectedStep} />)}
+        </ol>
       </div>}
-      {scope === "process" && <ol className="mc-record-frames" aria-label={t("modelingProcess")}>
-        {steps.map(entry => <FrameThumbnail key={entry.key} entry={entry} load={load} selected={entry.key === focus?.key} onSelect={setSelectedStep} />)}
-      </ol>}
     </footer>
   </section>;
 }

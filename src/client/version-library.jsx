@@ -3,7 +3,7 @@ import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
 import { RevisionRecord, ModelThumbnail } from "./revision-record.jsx";
 import { errorDetail } from "../shared/errors.js";
 
-const columnWidth = 180, rowHeight = 128, nodeWidth = 148, nodeHeight = 108;
+const columnWidth = 180, rowHeight = 136, nodeWidth = 148, nodeHeight = 116;
 
 function layoutRevisions(revisions) {
   const children = new Map();

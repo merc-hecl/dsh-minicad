@@ -18,11 +18,12 @@
 .mc-record-reel-heading { position: relative; isolation: isolate; display: flex; align-items: center; gap: 6px; padding: 5px 9px; flex: none; align-self: flex-start; max-width: 100%; }
 .mc-record-count { color: var(--mc-muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mc-record-scrubber { width: 140px; min-width: 32px; accent-color: var(--mc-accent); }
-.mc-record-runs { position: relative; isolation: isolate; display: flex; gap: 4px; overflow-x: auto; padding: 4px; flex: none; scrollbar-width: thin; }
+.mc-record-process { display: flex; flex-direction: column; gap: 4px; flex: none; min-width: 0; padding: 8px; overflow: hidden; }
+.mc-record-runs { position: relative; display: flex; gap: 4px; overflow-x: auto; padding: 0 2px; flex: none; scrollbar-width: thin; }
 .mc-record-runs button { flex: none; gap: 6px; }
 .mc-record-run-title { max-width: min(240px, 35vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mc-record-runs [aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
-.mc-record-frames { display: flex; gap: 12px; overflow-x: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px 2px 6px; margin: 0; list-style: none; flex: none; }
+.mc-record-frames { display: flex; gap: 12px; overflow-x: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 2px 2px; margin: 0; list-style: none; flex: none; }
 .mc-record-frames > li { flex: 0 0 148px; min-width: 0; }
 .mc-record-frames .mc-record-frame { position: relative; isolation: isolate; width: 100%; height: auto; padding: 8px; border: 1px solid var(--mc-border); border-radius: 12px; }
 .mc-record-frames .mc-record-frame[aria-current="step"] { border-color: var(--mc-accent); }
