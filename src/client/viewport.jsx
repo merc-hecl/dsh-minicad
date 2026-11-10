@@ -56,7 +56,7 @@ const diffColors = {
   added: [0x16834a, 0x61d994], removed: [0xc33a48, 0xff7b86], unchanged: [0x94a0b0, 0x8f9caf],
 };
 
-export function Viewport({ id, active = true, presentation = "workbench", historyOpen = false, sidebarCollapsed = false, design, diff, wire, transparent = false, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, onError, t }) {
+export function Viewport({ id, active = true, presentation = "workbench", historyOpen = false, sidebarCollapsed = false, design, diff, wire, transparent = false, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, section = null, explode = 0, explodeAxis = "radial", onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
@@ -77,6 +77,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       return;
     }
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.localClippingEnabled = true;
     renderer.setClearColor(0x000000, 0);
     el.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
@@ -154,6 +155,9 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       controls,
       model,
       diffModel,
+      // Local clipping stays enabled; the plane parks far away when unused so
+      // every material keeps a stable clipping array without recompiling.
+      clipping: [new THREE.Plane(new THREE.Vector3(0, 0, 1), 1e6)],
       span: 180,
       center: new THREE.Vector3(),
       bounds: new THREE.Box3(),
@@ -161,6 +165,12 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       wire: false,
       defaultView: true,
       orbitDistance: camera.position.length(),
+      section: null,
+      sectionActive: false,
+      explode: 0,
+      explodeAxis: "radial",
+      explodedActive: false,
+      transparent: false,
     };
     let turn = null, cubeDrag = null, fitFrame = 0;
     let renderFrame = 0, disposed = false, inView = true;
@@ -182,6 +192,162 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
         item.geometry.dispose(); item.material.dispose(); selectionOverlay.remove(item);
       }
       invalidate();
+    };
+    // Section plane: the cut is only a view state, so picking skips geometry on
+    // the removed side instead of changing the model or the saved revision.
+    state.clipTest = point => !state.sectionActive || state.clipping[0].distanceToPoint(point) >= 0;
+    state.applySection = () => {
+      const plane = state.clipping[0];
+      const section = state.section;
+      let active = false;
+      if (section?.axis && !state.bounds.isEmpty()) {
+        const index = section.axis === "x" ? 0 : section.axis === "y" ? 1 : 2;
+        const min = state.bounds.min.getComponent(index), max = state.bounds.max.getComponent(index);
+        const position = Math.min(1, Math.max(0, Number(section.position) || 0));
+        // Keep the far side first, so the initial three-quarter view looks into
+        // the cut instead of at the removed half's outer surface.
+        const sign = (index === 1 ? 1 : -1) * (section.flip ? -1 : 1);
+        plane.normal.set(0, 0, 0).setComponent(index, sign);
+        plane.constant = -(min + (max - min) * position) * sign;
+        active = true;
+      }
+      if (!active) {
+        plane.normal.set(0, 0, 1);
+        plane.constant = 1e6;
+      }
+      state.sectionActive = active;
+      if (state.surface)
+        state.surface.material.side = active || state.transparent ? THREE.DoubleSide : THREE.FrontSide;
+      invalidate();
+    };
+    state.setSection = section => {
+      state.section = section;
+      state.applySection();
+    };
+    // Exploded view: parts keep their own preview slice and translate along the
+    // vector from the assembly centre to their bounding-box centre.
+    state.clearExploded = () => {
+      if (!state.explodedGroup) return;
+      for (const partGroup of state.explodedGroup.children)
+        partGroup.traverse(item => {
+          if (!item.geometry) return;
+          // Shared attributes belong to the assembled surface; remove them from
+          // this geometry before disposing so its buffers stay alive.
+          if (item.userData.sharedAttributes) {
+            item.geometry.deleteAttribute("position");
+            item.geometry.deleteAttribute("normal");
+            item.geometry.deleteAttribute("color");
+          }
+          item.geometry.dispose();
+          if (item.userData.ownMaterial) item.material.dispose();
+        });
+      state.model.remove(state.explodedGroup);
+      state.explodedGroup = null;
+    };
+    state.buildExploded = (preview, parts) => {
+      if (!preview || !parts || parts.length < 2 || !state.surface) return;
+      const group = new THREE.Group();
+      group.visible = false;
+      const position = state.surface.geometry.getAttribute("position");
+      const normal = state.surface.geometry.getAttribute("normal");
+      const color = state.surface.geometry.getAttribute("color");
+      const buckets = parts.map(() => []);
+      for (let triangle = 0; triangle < preview.faceIndices.length; triangle++) {
+        const face = preview.faceIndices[triangle];
+        for (let index = 0; index < parts.length; index++) {
+          const part = parts[index];
+          if (face >= part.faceStart && face < part.faceStart + part.faceCount) {
+            buckets[index].push(triangle);
+            break;
+          }
+        }
+      }
+      const center = state.bounds.getCenter(new THREE.Vector3());
+      // Axial mode keeps the order along one axis and adds a uniform gap, so
+      // parts separate even when their bounding-box centres coincide.
+      const axial = { x: [], y: [], z: [] };
+      for (const [axisIndex, key] of ["x", "y", "z"].entries()) {
+        const maxSize = Math.max(1e-6, ...parts.map(part => Math.abs(part.size?.[axisIndex] || 0)));
+        const span = Math.abs(state.bounds.max.getComponent(axisIndex) - state.bounds.min.getComponent(axisIndex));
+        const step = Math.max(maxSize * 1.25, span * 0.15);
+        const order = parts.map((_, partIndex) => partIndex)
+          .sort((left, right) => parts[left].center[axisIndex] - parts[right].center[axisIndex]);
+        order.forEach((partIndex, rank) => {
+          const offset = new THREE.Vector3();
+          offset.setComponent(axisIndex, (rank - (order.length - 1) / 2) * step);
+          axial[key][partIndex] = offset;
+        });
+      }
+      parts.forEach((part, index) => {
+        const partGroup = new THREE.Group();
+        const size = part.size || [0, 0, 0];
+        partGroup.userData.offsets = {
+          radial: new THREE.Vector3().fromArray(part.center).sub(center).multiplyScalar(1.4),
+          x: axial.x[index], y: axial.y[index], z: axial.z[index],
+        };
+        partGroup.userData.box = new THREE.Box3(
+          new THREE.Vector3(part.center[0] - size[0] / 2, part.center[1] - size[1] / 2, part.center[2] - size[2] / 2),
+          new THREE.Vector3(part.center[0] + size[0] / 2, part.center[1] + size[1] / 2, part.center[2] + size[2] / 2),
+        );
+        const triangles = buckets[index];
+        if (triangles.length) {
+          const indices = new Uint32Array(triangles.length * 3);
+          triangles.forEach((triangle, slot) => {
+            indices[slot * 3] = preview.indices[triangle * 3];
+            indices[slot * 3 + 1] = preview.indices[triangle * 3 + 1];
+            indices[slot * 3 + 2] = preview.indices[triangle * 3 + 2];
+          });
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", position);
+          geometry.setAttribute("normal", normal);
+          if (color) geometry.setAttribute("color", color);
+          geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+          const mesh = new THREE.Mesh(geometry, state.surface.material);
+          mesh.userData.sharedAttributes = true;
+          partGroup.add(mesh);
+        }
+        const segments = [];
+        for (let segment = 0; segment < preview.edgeIndices.length; segment++) {
+          const edge = preview.edgeIndices[segment];
+          if (edge < part.edgeStart || edge >= part.edgeStart + part.edgeCount) continue;
+          for (let value = 0; value < 6; value++) segments.push(preview.edges[segment * 6 + value]);
+        }
+        if (segments.length) {
+          const edgeGeometry = new LineSegmentsGeometry();
+          edgeGeometry.setPositions(segments);
+          const lines = new LineSegments2(edgeGeometry, new LineMaterial({
+            color: 0x9ca8b8, linewidth: 1, worldUnits: false, alphaToCoverage: true,
+            transparent: true, opacity: 0.65, depthWrite: false, clippingPlanes: state.clipping,
+          }));
+          lines.userData.ownMaterial = true;
+          partGroup.add(lines);
+        }
+        group.add(partGroup);
+      });
+      state.model.add(group);
+      state.explodedGroup = group;
+    };
+    state.applyExplode = () => {
+      const active = state.explode > 0 && !!state.explodedGroup;
+      if (state.explodedGroup) {
+        state.explodedGroup.visible = active;
+        for (const partGroup of state.explodedGroup.children) {
+          const offset = partGroup.userData.offsets?.[state.explodeAxis] || partGroup.userData.offsets?.radial;
+          if (offset) partGroup.position.copy(offset).multiplyScalar(state.explode);
+        }
+      }
+      if (state.surface) state.surface.visible = !active && !state.wire;
+      if (state.edges) state.edges.visible = !active;
+      state.explodedActive = active;
+      invalidate();
+    };
+    state.setExplode = explode => {
+      state.explode = Number.isFinite(explode) ? Math.max(0, Math.min(1, explode)) : 0;
+      state.applyExplode();
+    };
+    state.setExplodeAxis = axis => {
+      state.explodeAxis = ["x", "y", "z"].includes(axis) ? axis : "radial";
+      state.applyExplode();
     };
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2(), ndc = new THREE.Vector2();
@@ -215,7 +381,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       if (state.edgePicker) {
         const mmPerPixel = (camera.top-camera.bottom)/camera.zoom/rect.height;
         raycaster.params.Line.threshold = mmPerPixel * 6;
-        const hit = raycaster.intersectObject(state.edgePicker, false).find(hit => state.wire || !surfaceHit || hit.distance <= surfaceHit.distance + mmPerPixel * 6);
+        const hit = raycaster.intersectObject(state.edgePicker, false).find(hit => state.clipTest(hit.point) && (state.wire || !surfaceHit || hit.distance <= surfaceHit.distance + mmPerPixel * 6));
         if (hit) { index = preview.edgeIndices[Math.floor(hit.index / 2)]; kind = "edges"; point = hit.point; }
       }
       if (index === undefined) return null;
@@ -251,10 +417,10 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
         for (const item of diffModel.children) {
           if (item.isMesh && !item.isLineSegments2) raycaster.intersectObject(item, false, cursorHits);
         }
-      } else if (state.surface) {
+      } else if (state.surface && !state.explodedActive) {
         raycaster.intersectObject(state.surface, false, cursorHits);
       }
-      const hit = cursorHits[0];
+      const hit = cursorHits.find(candidate => state.diffActive || state.clipTest(candidate.point));
       cursorHits.length = 0;
       const gridHit = !hit && Math.abs(raycaster.ray.direction.z) > 0.04
         ? raycaster.ray.intersectPlane(xyPlane, gridPoint) : null;
@@ -277,7 +443,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       if (!preview || !state.surface) return;
       const rect = renderer.domElement.getBoundingClientRect();
       setPointerRay(event.clientX, event.clientY, rect);
-      const surfaceHit = raycaster.intersectObject(state.surface, false)[0];
+      const surfaceHit = raycaster.intersectObject(state.surface, false).find(hit => state.clipTest(hit.point));
       onPick(pickTarget(surfaceHit, rect), start.extend);
     };
     state.highlightPicks = targets => {
@@ -297,7 +463,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
           const geometry = new THREE.BufferGeometry();
           geometry.setAttribute("position", state.surface.geometry.getAttribute("position"));
           geometry.setIndex(new THREE.BufferAttribute(triangles, 1));
-          highlight = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: state.dark ? 0x8fb8ff : 0x2456a6, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+          highlight = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: state.dark ? 0x8fb8ff : 0x2456a6, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, clippingPlanes: state.clipping }));
           highlight.userData.sharedPosition = true;
         } else {
           const lines = [];
@@ -305,7 +471,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
             for (let j=0;j<6;j++) lines.push(preview.edges[i*6+j]);
           const geometry = new LineSegmentsGeometry();
           geometry.setPositions(lines);
-          highlight = new LineSegments2(geometry, new LineMaterial({ color: state.dark ? 0x8fb8ff : 0x2456a6, linewidth: 3, depthWrite: false }));
+          highlight = new LineSegments2(geometry, new LineMaterial({ color: state.dark ? 0x8fb8ff : 0x2456a6, linewidth: 3, depthWrite: false, clippingPlanes: state.clipping }));
         }
         selectionOverlay.add(highlight);
       }
@@ -319,9 +485,9 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
         const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...item.point), new THREE.Vector3(...item.otherPoint)]);
         const color = index ? 0xd49423 : 0x357aea;
         const line = new THREE.Line(geometry, new THREE.LineDashedMaterial({ color, depthTest: false, transparent: true, opacity: .95,
-          dashSize: index ? Math.max(item.value / 35, .05) : 1e10, gapSize: index ? Math.max(item.value / 60, .03) : 0 }));
+          dashSize: index ? Math.max(item.value / 35, .05) : 1e10, gapSize: index ? Math.max(item.value / 60, .03) : 0, clippingPlanes: state.clipping }));
         line.computeLineDistances(); line.renderOrder = 10; measurementOverlay.add(line);
-        const dots = new THREE.Points(geometry.clone(), new THREE.PointsMaterial({ color, size: 7, depthTest: false }));
+        const dots = new THREE.Points(geometry.clone(), new THREE.PointsMaterial({ color, size: 7, depthTest: false, clippingPlanes: state.clipping }));
         dots.renderOrder = 11; measurementOverlay.add(dots);
       }
       invalidate();
@@ -498,6 +664,10 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       camera.zoom = 1;
       const bounds = state.bounds.clone();
       if (state.diffBounds) bounds.copy(state.diffBounds);
+      else if (state.explodedGroup && state.explode > 0)
+        for (const partGroup of state.explodedGroup.children)
+          if (partGroup.children.length)
+            bounds.union(partGroup.userData.box.clone().translate(partGroup.position));
       const center = bounds.isEmpty() ? state.center : bounds.getCenter(new THREE.Vector3());
       const target = center.clone();
       if (!bounds.isEmpty()) {
@@ -778,9 +948,11 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     if (!s) return;
     s.clearPick();
     s.clearCursor();
+    s.clearExploded();
     s.surface = null;
     s.setSurfaceColor = null;
     s.edgePicker = null;
+    s.edges = null;
     for (const o of [...s.model.children]) {
       o.geometry.dispose();
       o.material.dispose();
@@ -803,6 +975,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
         polygonOffset: true,
         polygonOffsetFactor: 1,
         polygonOffsetUnits: 1,
+        clippingPlanes: s.clipping,
       }),
     );
     s.model.add(mesh);
@@ -815,14 +988,19 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       s.edgePicker = picker;
       const edgeGeometry = new LineSegmentsGeometry();
       edgeGeometry.setPositions(preview.edges);
-      s.model.add(new LineSegments2(edgeGeometry, new LineMaterial({
+      const lines = new LineSegments2(edgeGeometry, new LineMaterial({
         color: 0x9ca8b8, linewidth: 1, worldUnits: false, alphaToCoverage: true,
-        transparent: true, opacity: 0.65, depthWrite: false,
-      })));
+        transparent: true, opacity: 0.65, depthWrite: false, clippingPlanes: s.clipping,
+      }));
+      s.model.add(lines);
+      s.edges = lines;
     }
     const bounds = new THREE.Box3().setFromObject(mesh);
     s.bounds.copy(bounds);
     bounds.getCenter(s.center);
+    s.buildExploded(preview, design.parts);
+    s.applySection();
+    s.applyExplode();
     s.theme();
   }, [design?.previewData]);
   useEffect(() => {
@@ -831,13 +1009,23 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
   useEffect(() => {
     const s = runtime.current;
     if (!s || !s.surface) return;
+    s.transparent = transparent;
     s.surface.material.transparent = transparent;
     s.surface.material.opacity = transparent ? 0.3 : 1;
     s.surface.material.depthWrite = !transparent;
-    s.surface.material.side = transparent ? THREE.DoubleSide : THREE.FrontSide;
+    s.surface.material.side = transparent || s.sectionActive ? THREE.DoubleSide : THREE.FrontSide;
     s.surface.material.needsUpdate = true;
     s.invalidate();
   }, [transparent, design?.previewData]);
+  useEffect(() => {
+    runtime.current?.setSection(section);
+  }, [section, design?.previewData]);
+  useEffect(() => {
+    runtime.current?.setExplode(explode);
+  }, [explode, design?.previewData]);
+  useEffect(() => {
+    runtime.current?.setExplodeAxis(explodeAxis);
+  }, [explodeAxis, design?.previewData]);
   useEffect(() => { runtime.current?.setActive(active); }, [active]);
   useLayoutEffect(() => {
     const state = runtime.current;
@@ -915,6 +1103,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       else if (o.isMesh) o.visible = !wire;
     });
     s.diffModel.traverse(o => { if (o.userData.diffKind && !o.isLineSegments2) o.visible = !wire; });
+    s.applyExplode();
     s.theme();
   }, [wire, design?.previewData]);
   return (

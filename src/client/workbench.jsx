@@ -32,7 +32,8 @@ import { ConversationDock } from "./conversation-dock.jsx";
 import { SelectionTools } from "./selection-tools.jsx";
 import { VersionDiff } from "./version-diff.jsx";
 import { VersionLibrary } from "./version-library.jsx";
-import { SolidViewIcon, WireframeViewIcon, TransparentViewIcon, SelectGeometryIcon } from "./viewport-tool-icons.jsx";
+import { SolidViewIcon, WireframeViewIcon, TransparentViewIcon, SelectGeometryIcon, SectionViewIcon } from "./viewport-tool-icons.jsx";
+import { ViewPanel } from "./view-panel.jsx";
 
 const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
   const button = (
@@ -106,9 +107,14 @@ export function Workbench({
   const measurementKey = JSON.stringify([project?.id, project?.modelFile, project?.head]);
   const [hiddenParts, setHiddenParts] = useState([]);
   const [displayMode, setDisplayMode] = useState("solid");
+  const [viewOpen, setViewOpen] = useState(false);
+  const [section, setSection] = useState({ axis: null, position: 0.5, flip: false });
+  const [explode, setExplode] = useState(0);
+  const [explodeAxis, setExplodeAxis] = useState("radial");
   const [modelMenu, setModelMenu] = useState(false), [appMenu, setAppMenu] = useState(false);
   const wire = displayMode === "wire", transparent = displayMode === "transparent";
   useEffect(() => { setHiddenParts([]); setDisplayMode(mode => mode === "transparent" ? "solid" : mode); }, [measurementKey]);
+  useEffect(() => { setViewOpen(false); setSection({ axis: null, position: 0.5, flip: false }); setExplode(0); setExplodeAxis("radial"); }, [project?.id, project?.modelFile]);
   useEffect(() => { setSelectionTargets([]); setMeasurementResult(null); }, [hiddenParts]);
   const [resetView, setResetView] = useState(0);
   const [modal, setModal] = useState(null),
@@ -125,7 +131,7 @@ export function Workbench({
     workbench.current?.querySelector(".mc-session-record-toggle")?.focus({ preventScroll: true });
   }, []);
   const openSessionRecord = () => {
-    setVersionLibraryOpen(false); setDiffOpen(false);
+    setViewOpen(false); setVersionLibraryOpen(false); setDiffOpen(false);
     setRecordOpen(true);
   };
   const closeVersionLibrary = useCallback(() => { setVersionLibraryOpen(false); setLibraryDesign(null); }, []);
@@ -431,6 +437,15 @@ export function Workbench({
     if (busy) return;
     setSelectionTargets([]); setActiveTool(null); setMeasurementResult(null);
   }
+  function toggleViewPanel() {
+    if (busy) return;
+    const next = !viewOpen;
+    setViewOpen(next);
+    if (next) { setSelecting(false); clearGeometrySelection(); }
+  }
+  function changeSection(patch) {
+    setSection(current => ({ ...current, ...patch }));
+  }
   function pickGeometry(target, extend) {
     if (busy) return;
     setSelectionInstant(extend);
@@ -484,6 +499,18 @@ export function Workbench({
   const originalDesign = versionLibraryOpen ? libraryDesign : diffOpen ? design : processDesign || design;
   const displayedDesign = useMemo(() => originalDesign && ({ ...originalDesign,
     previewData: visiblePreview(originalDesign.previewData, originalDesign.parts, diffOpen || versionLibraryOpen ? [] : hiddenParts) }), [originalDesign, hiddenParts, diffOpen, versionLibraryOpen]);
+  const viewExtent = useMemo(() => {
+    const positions = displayedDesign?.previewData?.positions;
+    if (!positions?.length) return null;
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (let index = 0; index < positions.length; index += 3)
+      for (let axis = 0; axis < 3; axis++) {
+        const value = positions[index + axis];
+        if (value < min[axis]) min[axis] = value;
+        if (value > max[axis]) max[axis] = value;
+      }
+    return { min, max };
+  }, [displayedDesign?.previewData]);
   const displayedDiff = diffOpen && diff?.projectId === project?.id && diff?.modelFile === project?.modelFile ? diff : null;
   return (
     <div
@@ -548,6 +575,9 @@ export function Workbench({
         diff={displayedDiff}
         wire={wire}
         transparent={!diffOpen && transparent}
+        section={section.axis ? section : null}
+        explode={explode}
+        explodeAxis={explodeAxis}
         selecting={pickingActive}
         targets={selectionTargets}
         selectionInstant={selectionInstant}
@@ -585,7 +615,7 @@ export function Workbench({
             {project && <Btn className="mc-header-version" icon={IconBranchOutlineRegular}
               label={project.head > 0 ? `${t("versionLibrary")} · ${t("current")} v${project.head}` : t("versionLibrary")}
               aria-expanded={versionLibraryOpen} aria-controls={versionLibraryOpen ? "mc-version-library" : undefined}
-              onClick={() => { setRecordOpen(false); setDiffOpen(false); setLibraryDesign(null); setVersionLibraryOpen(value => !value); }} />}
+              onClick={() => { setViewOpen(false); setRecordOpen(false); setDiffOpen(false); setLibraryDesign(null); setVersionLibraryOpen(value => !value); }} />}
           </div>
           {project && sidebarCollapsed && <Btn className="mc-header-new-session" icon={IconNewChatOutlineRegular}
             label={t("newSession")} disabled={busy} onClick={() => createConversation(project)} />}
@@ -598,14 +628,18 @@ export function Workbench({
               label={`${t("displayMode")} · ${modeLabel(currentDisplayMode)}`}
               aria-label={t("switchDisplayMode", { mode: modeLabel(nextDisplayMode) })}
               onClick={() => setDisplayMode(nextDisplayMode)} />
+            <Btn icon={SectionViewIcon} label={t("sectionView")} aria-pressed={viewOpen}
+              aria-expanded={viewOpen} aria-controls={viewOpen ? "mc-view-panel" : undefined}
+              disabled={!project?.head || busy || diffOpen || versionLibraryOpen || !!processDesign}
+              onClick={toggleViewPanel} />
             <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selectionActive}
               aria-expanded={hasAssemblyParts || hasModelChoices ? inspectionVisible : undefined} aria-controls={inspectionVisible ? "mc-model-inspection" : undefined}
-              disabled={!project || !!processDesign || busy || diffOpen || versionLibraryOpen}
-              onClick={() => { clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
+              disabled={!project || !!processDesign || busy || diffOpen || versionLibraryOpen || explode > 0}
+              onClick={() => { setViewOpen(false); clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
           </div>
           <div className="mc-header-action-group">
             <Btn icon={IconCompareSplitOutlineRegular} label={t("compareVersion")} disabled={!project || project.revisions.length < 2} aria-pressed={diffOpen}
-              onClick={() => { setRecordOpen(false); closeVersionLibrary(); setDiffOpen(value => !value); }} />
+              onClick={() => { setViewOpen(false); setRecordOpen(false); closeVersionLibrary(); setDiffOpen(value => !value); }} />
             <Btn className="mc-session-record-toggle" icon={IconFlatListOutlineRegular} label={t("sessionRecord")}
               disabled={busy || !project?.activeSessionId || sessionReference?.sessionId !== project.activeSessionId}
               aria-expanded={recordOpen} aria-controls={recordOpen ? "mc-session-record-host" : undefined}
@@ -657,6 +691,10 @@ export function Workbench({
         hidden={hiddenParts} setHidden={setHiddenParts}
         busy={modelSwitchDisabled} onModel={selectModelFile} onMenuOpenChange={setModelMenu}
         onClose={() => { clearGeometrySelection(); setSelecting(false); }} t={t} />}
+      {viewOpen && project?.head > 0 && <ViewPanel section={section} explode={explode} explodeAxis={explodeAxis}
+        explodeAvailable={(design?.parts?.length || 0) > 1} extent={viewExtent}
+        onSection={changeSection} onExplode={setExplode} onExplodeAxis={setExplodeAxis}
+        onClose={() => setViewOpen(false)} t={t} />}
       {diffOpen && project && <VersionDiff key={`${project.id}:${project.modelFile}`} project={project} request={request}
         onResult={setDiff} onClose={() => setDiffOpen(false)} t={t} language={language} />}
       {versionLibraryOpen && project && <VersionLibrary key={`${project.id}:${project.modelFile}`} project={project} progress={progress}

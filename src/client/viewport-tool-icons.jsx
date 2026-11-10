@@ -35,3 +35,15 @@ export function SelectGeometryIcon(props) {
     <path d="m10 9 3.2 12 2.7-4.3 5.1-.6Z" fill="currentColor" fillOpacity=".1" />
   </ViewportIcon>;
 }
+
+// Two plates pulled apart: the exploded-view metaphor for section and explode.
+export function SectionViewIcon(props) {
+  return <ViewportIcon {...props}>
+    <path d="M12 1.8 18.5 5 12 8.2 5.5 5Z" />
+    <path d="M5.5 5 12 8.2v2L5.5 7Z" />
+    <path d="M18.5 5 12 8.2v2l6.5-3.2Z" />
+    <path d="M12 12.2 18.5 15.4 12 18.6 5.5 15.4Z" />
+    <path d="M5.5 15.4 12 18.6v2l-6.5-3.2Z" />
+    <path d="M18.5 15.4 12 18.6v2l6.5-3.2Z" />
+  </ViewportIcon>;
+}

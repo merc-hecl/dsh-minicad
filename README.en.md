@@ -13,7 +13,7 @@ Give the DSH agent dimensions or a reference drawing. It builds, revises and exp
 ## What you can do
 
 - **Build and revise** — Direct editing of exact solids, independent multipart models, model variants and PDF drawing references.
-- **Measure and reference** — Show or hide parts; select faces or edges to measure or request a precise change.
+- **Measure and reference** — Show or hide parts; select faces or edges to measure or request a precise change; section the model or explode an assembly to look inside.
 - **Compare and restore** — Switch revisions in the version tree, review modeling steps and compare geometry.
 - **Keep designing** — Share one design across conversations, or save an independent copy.
 - **Deliver** — Export whole models or individual parts as STEP/STL, save a project ZIP, or open the model in FreeCAD.
