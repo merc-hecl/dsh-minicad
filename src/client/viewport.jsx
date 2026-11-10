@@ -56,7 +56,7 @@ const diffColors = {
   added: [0x16834a, 0x61d994], removed: [0xc33a48, 0xff7b86], unchanged: [0x94a0b0, 0x8f9caf],
 };
 
-export function Viewport({ id, active = true, presentation = "workbench", historyOpen = false, sidebarCollapsed = false, design, diff, wire, transparent = false, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, section = null, explode = 0, explodeAxis = "radial", onError, t }) {
+export function Viewport({ id, active = true, presentation = "workbench", historyOpen = false, sidebarCollapsed = false, design, diff, wire, transparent = false, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, section = null, explode = 0, explodeAxis = "radial", followPreview = true, fitBounds = null, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
@@ -71,7 +71,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     const contained = presentation === "record";
     let renderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     } catch {
       onError();
       return;
@@ -658,16 +658,18 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       rebaseControls(target);
       invalidate();
     };
-    state.fit = (rotation = camera.quaternion.clone()) => {
+    state.fit = (rotation = camera.quaternion.clone(), override = null) => {
       stopMotion();
       cubeDrag = null;
       camera.zoom = 1;
-      const bounds = state.bounds.clone();
-      if (state.diffBounds) bounds.copy(state.diffBounds);
-      else if (state.explodedGroup && state.explode > 0)
-        for (const partGroup of state.explodedGroup.children)
-          if (partGroup.children.length)
-            bounds.union(partGroup.userData.box.clone().translate(partGroup.position));
+      const bounds = override ? override.clone() : state.bounds.clone();
+      if (!override) {
+        if (state.diffBounds) bounds.copy(state.diffBounds);
+        else if (state.explodedGroup && state.explode > 0)
+          for (const partGroup of state.explodedGroup.children)
+            if (partGroup.children.length)
+              bounds.union(partGroup.userData.box.clone().translate(partGroup.position));
+      }
       const center = bounds.isEmpty() ? state.center : bounds.getCenter(new THREE.Vector3());
       const target = center.clone();
       if (!bounds.isEmpty()) {
@@ -720,6 +722,11 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       applyOrbit(target, rotation);
       resize();
       rebaseControls(target);
+    };
+    state.fitToBounds = value => {
+      if (!value) return;
+      state.fit(camera.quaternion.clone(), new THREE.Box3(
+        new THREE.Vector3(...value.min), new THREE.Vector3(...value.max)));
     };
     state.resetView = () => {
       state.defaultView = true;
@@ -1004,8 +1011,11 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     s.theme();
   }, [design?.previewData]);
   useEffect(() => {
-    runtime.current?.scheduleFit();
-  }, [design?.previewData]);
+    if (followPreview) runtime.current?.scheduleFit();
+  }, [design?.previewData, followPreview]);
+  useEffect(() => {
+    if (fitBounds) runtime.current?.fitToBounds(fitBounds);
+  }, [fitBounds]);
   useEffect(() => {
     const s = runtime.current;
     if (!s || !s.surface) return;

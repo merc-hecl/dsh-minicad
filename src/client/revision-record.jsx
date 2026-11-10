@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, StateDot, Tag, IconCloseOutlineRegular,
-  IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
+  IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconPlayOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 import { ErrorDetails } from "./workbench-dialog.jsx";
+import { revisionPath } from "./revision-path.js";
 import { errorDetail } from "../shared/errors.js";
 
 export function ModelThumbnail({ entry, load }) {
@@ -54,7 +55,7 @@ function FrameThumbnail({ entry, load, selected, onSelect }) {
   </li>;
 }
 
-export function RevisionRecord({ project, entry, runs, historyError, historyLoading, request, t, language, disabled, onSelect, onClose, onPreview, onCurrent, renderVersions }) {
+export function RevisionRecord({ project, entry, runs, historyError, historyLoading, request, t, language, disabled, onSelect, onClose, onPreview, onCurrent, onTimelapse, renderVersions }) {
   const [scope, setScope] = useState(entry ? "version" : "process");
   const [selectedRun, setSelectedRun] = useState(null), [selectedStep, setSelectedStep] = useState(null);
   const [design, setDesign] = useState(null);
@@ -80,6 +81,7 @@ export function RevisionRecord({ project, entry, runs, historyError, historyLoad
     label: `v${entry.revision}${entry.revision === project.head ? ` · ${t("current")}` : ""}`,
     revision: entry.revision, parent: entry.parent, created: entry.created, title: entry.summary || t("savedVersion"),
   }), [entry, project.head, t]);
+  const canTimelapse = revisionPath(project.revisions, versionFocus?.revision ?? project.head).length > 1;
   const processRuns = useMemo(() => runs.filter(run => {
     if (!run.steps.length) return false;
     if (run.committedRevision) return run.committedRevision === versionFocus?.revision;
@@ -143,6 +145,8 @@ export function RevisionRecord({ project, entry, runs, historyError, historyLoad
       {entry && <Button variant="ghost" size="sm" onClick={() => changeScope(scope === "version" ? "process" : "version")}>
         {t(scope === "version" ? "viewProcess" : "viewVersion")}
       </Button>}
+      {canTimelapse && <Button variant="ghost" size="sm" icon={<IconPlayOutlineRegular size={14} />}
+        disabled={disabled} onClick={() => onTimelapse(versionFocus?.revision ?? project.head)}>{t("timelapse")}</Button>}
       {entry && entry.revision !== project.head && <Button variant="ghost" size="sm"
         onClick={() => { setScope("version"); onCurrent(); }}>{t("returnCurrent")}</Button>}
       {entry && entry.revision !== project.head && <Button variant="primary" size="sm"

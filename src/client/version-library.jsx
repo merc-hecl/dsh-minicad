@@ -25,8 +25,8 @@ function layoutRevisions(revisions) {
   return { nodes, width: depth * columnWidth + 8, height: nextLane * rowHeight + 18 };
 }
 
-export function VersionLibrary({ project, progress, request, language, disabled, onSelect, onClose, onPreview, t }) {
-  const [selected, setSelected] = useState(project.head);
+export function VersionLibrary({ project, progress, request, language, disabled, initialRevision, onSelect, onClose, onPreview, onTimelapse, t }) {
+  const [selected, setSelected] = useState(initialRevision ?? project.head);
   const [runs, setRuns] = useState([]), [historyError, setHistoryError] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const { nodes, width, height } = useMemo(() => layoutRevisions(project.revisions), [project.revisions]);
@@ -82,6 +82,6 @@ export function VersionLibrary({ project, progress, request, language, disabled,
     <RevisionRecord key={entry?.revision || "unsaved"} project={project} entry={entry} runs={allRuns}
       historyError={historyError} historyLoading={historyLoading}
       request={request} language={language} disabled={disabled} onSelect={onSelect} onClose={onClose}
-      onPreview={onPreview} onCurrent={() => setSelected(project.head)} renderVersions={renderVersions} t={t} />
+      onPreview={onPreview} onTimelapse={onTimelapse} onCurrent={() => setSelected(project.head)} renderVersions={renderVersions} t={t} />
   </section>;
 }

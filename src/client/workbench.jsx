@@ -32,6 +32,8 @@ import { ConversationDock } from "./conversation-dock.jsx";
 import { SelectionTools } from "./selection-tools.jsx";
 import { VersionDiff } from "./version-diff.jsx";
 import { VersionLibrary } from "./version-library.jsx";
+import { Timelapse } from "./timelapse.jsx";
+import { revisionPath } from "./revision-path.js";
 import { SolidViewIcon, WireframeViewIcon, TransparentViewIcon, SelectGeometryIcon, SectionViewIcon } from "./viewport-tool-icons.jsx";
 import { ViewPanel } from "./view-panel.jsx";
 
@@ -111,10 +113,19 @@ export function Workbench({
   const [section, setSection] = useState({ axis: null, position: 0.5, flip: false });
   const [explode, setExplode] = useState(0);
   const [explodeAxis, setExplodeAxis] = useState("radial");
+  const [timelapseOpen, setTimelapseOpen] = useState(false);
+  const [timelapseFrames, setTimelapseFrames] = useState([]);
+  const [timelapseIndex, setTimelapseIndex] = useState(0);
+  const [timelapseLoading, setTimelapseLoading] = useState(false);
+  const [timelapseError, setTimelapseError] = useState(null);
+  const [timelapseTarget, setTimelapseTarget] = useState(null);
+  const [libraryInitial, setLibraryInitial] = useState(null);
+  const timelapseRequest = useRef(null);
   const [modelMenu, setModelMenu] = useState(false), [appMenu, setAppMenu] = useState(false);
   const wire = displayMode === "wire", transparent = displayMode === "transparent";
   useEffect(() => { setHiddenParts([]); setDisplayMode(mode => mode === "transparent" ? "solid" : mode); }, [measurementKey]);
   useEffect(() => { setViewOpen(false); setSection({ axis: null, position: 0.5, flip: false }); setExplode(0); setExplodeAxis("radial"); }, [project?.id, project?.modelFile]);
+  useEffect(() => { closeTimelapse(); }, [project?.id, project?.modelFile, project?.head]);
   useEffect(() => { setSelectionTargets([]); setMeasurementResult(null); }, [hiddenParts]);
   const [resetView, setResetView] = useState(0);
   const [modal, setModal] = useState(null),
@@ -131,10 +142,10 @@ export function Workbench({
     workbench.current?.querySelector(".mc-session-record-toggle")?.focus({ preventScroll: true });
   }, []);
   const openSessionRecord = () => {
-    setViewOpen(false); setVersionLibraryOpen(false); setDiffOpen(false);
+    closeTimelapse(); setViewOpen(false); setVersionLibraryOpen(false); setDiffOpen(false);
     setRecordOpen(true);
   };
-  const closeVersionLibrary = useCallback(() => { setVersionLibraryOpen(false); setLibraryDesign(null); }, []);
+  const closeVersionLibrary = useCallback(() => { setVersionLibraryOpen(false); setLibraryDesign(null); setLibraryInitial(null); }, []);
   const [diffOpen, setDiffOpen] = useState(false), [diff, setDiff] = useState(null);
   const [progress, setProgress] = useState(null), [processDesign, setProcessDesign] = useState(null);
   const [nativeRunning, setNativeRunning] = useState(false);
@@ -441,7 +452,61 @@ export function Workbench({
     if (busy) return;
     const next = !viewOpen;
     setViewOpen(next);
-    if (next) { setSelecting(false); clearGeometrySelection(); }
+    if (next) { closeTimelapse(); setSelecting(false); clearGeometrySelection(); }
+  }
+  // Fixed-camera playback along the parent chain from the root to the selected version.
+  async function openTimelapse(targetRevision) {
+    if (!project) return;
+    const path = revisionPath(project.revisions, targetRevision ?? project.head);
+    if (!path.length) return;
+    closeTimelapse();
+    const controller = new AbortController();
+    timelapseRequest.current = controller;
+    setViewOpen(false);
+    setVersionLibraryOpen(false);
+    setLibraryDesign(null);
+    setDiffOpen(false);
+    setRecordOpen(false);
+    setSelecting(false);
+    clearGeometrySelection();
+    setSection(current => ({ ...current, axis: null }));
+    setExplode(0);
+    setTimelapseOpen(true);
+    setTimelapseLoading(true);
+    setTimelapseTarget(path.at(-1).revision);
+    const captured = { id: project.id, modelFile: project.modelFile };
+    try {
+      const frames = [];
+      for (const entry of path) {
+        const previewData = await request("preview", {
+          projectId: captured.id, modelFile: captured.modelFile, revision: entry.revision,
+        }, controller.signal);
+        frames.push({ revision: entry.revision, summary: entry.summary, previewData });
+      }
+      if (controller.signal.aborted || selection.current !== captured.id) return;
+      setTimelapseFrames(frames);
+      setTimelapseIndex(0);
+    } catch (loadError) {
+      if (!controller.signal.aborted && loadError.name !== "AbortError")
+        setTimelapseError(errorDetail(loadError));
+    } finally {
+      if (!controller.signal.aborted) setTimelapseLoading(false);
+    }
+  }
+  function closeTimelapse() {
+    timelapseRequest.current?.abort();
+    timelapseRequest.current = null;
+    setTimelapseOpen(false);
+    setTimelapseFrames([]);
+    setTimelapseIndex(0);
+    setTimelapseLoading(false);
+    setTimelapseError(null);
+  }
+  function backToVersionLibrary() {
+    const target = timelapseTarget;
+    closeTimelapse();
+    setLibraryInitial(target ?? project?.head ?? null);
+    setVersionLibraryOpen(true);
   }
   function changeSection(patch) {
     setSection(current => ({ ...current, ...patch }));
@@ -496,7 +561,13 @@ export function Workbench({
   const currentDisplayMode = diffOpen && transparent ? "solid" : displayMode;
   const nextDisplayMode = displayModes[(displayModes.indexOf(currentDisplayMode) + 1) % displayModes.length];
   const modeLabel = mode => t(mode === "transparent" ? "transparentView" : mode);
-  const originalDesign = versionLibraryOpen ? libraryDesign : diffOpen ? design : processDesign || design;
+  const timelapseFrame = timelapseOpen ? timelapseFrames[timelapseIndex] || null : null;
+  const timelapseDesign = useMemo(() => timelapseFrame ? {
+    modelFile: project?.modelFile,
+    revision: timelapseFrame.revision,
+    previewData: timelapseFrame.previewData,
+  } : null, [timelapseFrame, project?.modelFile]);
+  const originalDesign = timelapseOpen ? timelapseDesign || design : versionLibraryOpen ? libraryDesign : diffOpen ? design : processDesign || design;
   const displayedDesign = useMemo(() => originalDesign && ({ ...originalDesign,
     previewData: visiblePreview(originalDesign.previewData, originalDesign.parts, diffOpen || versionLibraryOpen ? [] : hiddenParts) }), [originalDesign, hiddenParts, diffOpen, versionLibraryOpen]);
   const viewExtent = useMemo(() => {
@@ -511,6 +582,21 @@ export function Workbench({
       }
     return { min, max };
   }, [displayedDesign?.previewData]);
+  const timelapseBounds = useMemo(() => {
+    if (!timelapseOpen || !timelapseFrames.length) return null;
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (const frame of timelapseFrames) {
+      const positions = frame.previewData?.positions;
+      if (!positions) continue;
+      for (let index = 0; index < positions.length; index += 3)
+        for (let axis = 0; axis < 3; axis++) {
+          const value = positions[index + axis];
+          if (value < min[axis]) min[axis] = value;
+          if (value > max[axis]) max[axis] = value;
+        }
+    }
+    return Number.isFinite(min[0]) ? { min, max } : null;
+  }, [timelapseOpen, timelapseFrames]);
   const displayedDiff = diffOpen && diff?.projectId === project?.id && diff?.modelFile === project?.modelFile ? diff : null;
   return (
     <div
@@ -565,6 +651,10 @@ export function Workbench({
         else if (event.key === "Escape" && selecting && !busy && !event.defaultPrevented && !event.isComposing && !event.target.closest('[role="dialog"],[role="menu"]')) {
           event.preventDefault(); setSelectionInstant(true); clearGeometrySelection(); setSelecting(false);
         }
+        else if (timelapseOpen && event.key === "Escape" && !event.isComposing
+          && !event.target.closest('input,textarea,[contenteditable="true"],[role="dialog"],[role="menu"]')) {
+          event.preventDefault(); closeTimelapse();
+        }
       }}
     >
       <Viewport
@@ -578,6 +668,8 @@ export function Workbench({
         section={section.axis ? section : null}
         explode={explode}
         explodeAxis={explodeAxis}
+        followPreview={!timelapseOpen}
+        fitBounds={timelapseOpen ? timelapseBounds : null}
         selecting={pickingActive}
         targets={selectionTargets}
         selectionInstant={selectionInstant}
@@ -615,7 +707,7 @@ export function Workbench({
             {project && <Btn className="mc-header-version" icon={IconBranchOutlineRegular}
               label={project.head > 0 ? `${t("versionLibrary")} · ${t("current")} v${project.head}` : t("versionLibrary")}
               aria-expanded={versionLibraryOpen} aria-controls={versionLibraryOpen ? "mc-version-library" : undefined}
-              onClick={() => { setViewOpen(false); setRecordOpen(false); setDiffOpen(false); setLibraryDesign(null); setVersionLibraryOpen(value => !value); }} />}
+              onClick={() => { closeTimelapse(); setLibraryInitial(null); setViewOpen(false); setRecordOpen(false); setDiffOpen(false); setLibraryDesign(null); setVersionLibraryOpen(value => !value); }} />}
           </div>
           {project && sidebarCollapsed && <Btn className="mc-header-new-session" icon={IconNewChatOutlineRegular}
             label={t("newSession")} disabled={busy} onClick={() => createConversation(project)} />}
@@ -635,11 +727,11 @@ export function Workbench({
             <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selectionActive}
               aria-expanded={hasAssemblyParts || hasModelChoices ? inspectionVisible : undefined} aria-controls={inspectionVisible ? "mc-model-inspection" : undefined}
               disabled={!project || !!processDesign || busy || diffOpen || versionLibraryOpen || explode > 0}
-              onClick={() => { setViewOpen(false); clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
+              onClick={() => { closeTimelapse(); setViewOpen(false); clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
           </div>
           <div className="mc-header-action-group">
             <Btn icon={IconCompareSplitOutlineRegular} label={t("compareVersion")} disabled={!project || project.revisions.length < 2} aria-pressed={diffOpen}
-              onClick={() => { setViewOpen(false); setRecordOpen(false); closeVersionLibrary(); setDiffOpen(value => !value); }} />
+              onClick={() => { closeTimelapse(); setViewOpen(false); setRecordOpen(false); closeVersionLibrary(); setDiffOpen(value => !value); }} />
             <Btn className="mc-session-record-toggle" icon={IconFlatListOutlineRegular} label={t("sessionRecord")}
               disabled={busy || !project?.activeSessionId || sessionReference?.sessionId !== project.activeSessionId}
               aria-expanded={recordOpen} aria-controls={recordOpen ? "mc-session-record-host" : undefined}
@@ -695,11 +787,14 @@ export function Workbench({
         explodeAvailable={(design?.parts?.length || 0) > 1} extent={viewExtent}
         onSection={changeSection} onExplode={setExplode} onExplodeAxis={setExplodeAxis}
         onClose={() => setViewOpen(false)} t={t} />}
+      {timelapseOpen && <Timelapse project={project} frames={timelapseFrames} index={timelapseIndex}
+        onIndex={setTimelapseIndex} loading={timelapseLoading} error={timelapseError}
+        onBack={backToVersionLibrary} onClose={closeTimelapse} t={t} />}
       {diffOpen && project && <VersionDiff key={`${project.id}:${project.modelFile}`} project={project} request={request}
         onResult={setDiff} onClose={() => setDiffOpen(false)} t={t} language={language} />}
       {versionLibraryOpen && project && <VersionLibrary key={`${project.id}:${project.modelFile}`} project={project} progress={progress}
-        request={request} language={language} disabled={busy || running || nativeRunning}
-        onClose={dismissVersionLibrary} onSelect={selectRevision} onPreview={setLibraryDesign} t={t} />}
+        request={request} language={language} disabled={busy || running || nativeRunning} initialRevision={libraryInitial}
+        onClose={dismissVersionLibrary} onSelect={selectRevision} onPreview={setLibraryDesign} onTimelapse={openTimelapse} t={t} />}
       <div id="mc-session-record-host" className="mc-session-record-host" ref={setRecordHost} />
       <ConversationDock key={project?.activeSessionId || "none"} ref={dock} t={t} hidden={versionLibraryOpen}
         embedded={recordOpen}
