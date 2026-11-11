@@ -1,7 +1,7 @@
 import React from "react";
 import { Button, IconCloseOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 
-export function InstrumentPanel({ note, part, recording, count, onToggleRecording, onExport, onClose, t }) {
+export function InstrumentPanel({ note, part, recording, count, onToggleRecording, onClear, onExport, onClose, t }) {
   return <section className="mc-instrument mc-panel" aria-label={t("instrument")}>
     <div className="mc-instrument-head">
       <strong>{t("instrument")}</strong>
@@ -15,10 +15,13 @@ export function InstrumentPanel({ note, part, recording, count, onToggleRecordin
       <Button variant="ghost" size="sm" aria-pressed={recording} onClick={onToggleRecording}>
         {t(recording ? "instrumentStop" : "instrumentRecord")}
       </Button>
+      <Button variant="ghost" size="sm" disabled={!count} onClick={onClear}>
+        {t("instrumentClear")}
+      </Button>
       <Button variant="outline" size="sm" disabled={!count} onClick={onExport} aria-label={t("instrumentExport")}>
         {t("instrumentExport")}
       </Button>
-      <span className="mc-instrument-count">{t("instrumentNotes", { count })}</span>
+      {recording && <span className="mc-instrument-count">{t("instrumentNotes", { count })}</span>}
     </div>
   </section>;
 }

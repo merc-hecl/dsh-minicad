@@ -74,6 +74,62 @@ html[data-platform="darwin"] .mc-workbench {
   overflow-wrap: anywhere;
   pointer-events: none;
 }
+.mc-instrument-marks { position: absolute; z-index: 1; inset: 0; overflow: hidden; pointer-events: none; }
+.mc-instrument-mark { position: absolute; top: 0; left: 0; will-change: transform; }
+.mc-instrument-callout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  transition: opacity 140ms var(--mc-ease-out), transform 140ms var(--mc-ease-out);
+}
+@starting-style {
+  .mc-instrument-callout { opacity: 0; transform: translateY(3px) scale(.96); }
+}
+.mc-instrument-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
+  cursor: default;
+  box-shadow: 0 2px 6px rgba(24, 34, 54, .12);
+}
+.mc-instrument-index { color: var(--mc-muted); font-size: 10px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.mc-instrument-note { font-weight: 600; }
+.mc-instrument-mark-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: 2px;
+  padding-left: 3px;
+  border-left: 1px solid var(--mc-border);
+}
+.mc-instrument-tag .mc-instrument-action {
+  pointer-events: auto;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  border-radius: 5px;
+  color: var(--mc-muted);
+}
+.mc-instrument-tag .mc-instrument-action:hover,
+.mc-instrument-tag .mc-instrument-action[aria-pressed="true"] { color: var(--mc-accent); background: var(--mc-selected); }
+.mc-instrument-mark[data-restrike] .mc-instrument-tag { box-shadow: 0 0 0 2px color-mix(in srgb, var(--mc-accent) 32%, transparent), 0 2px 6px rgba(24, 34, 54, .12); }
+.mc-instrument-anchor {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--mc-accent);
+  box-shadow: 0 0 0 1.5px #fff;
+}
+body[data-ds-dark-theme] .mc-instrument-tag { box-shadow: 0 2px 8px rgba(0, 0, 0, .45); }
+body[data-ds-dark-theme] .mc-instrument-anchor { box-shadow: 0 0 0 1.5px #15181d; }
+@media (prefers-reduced-motion: reduce) {
+  .mc-instrument-callout { transition: opacity 120ms linear; }
+  @starting-style { .mc-instrument-callout { transform: none; } }
+}
 .mc-selection-context {
   position: absolute;
   z-index: 1;

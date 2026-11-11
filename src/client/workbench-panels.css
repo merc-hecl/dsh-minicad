@@ -148,7 +148,7 @@ html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-version-library, 
   z-index: 13;
   top: var(--mc-content-top);
   left: var(--mc-panel-left);
-  width: min(320px, calc(100% - var(--mc-panel-left) - var(--mc-gutter) - 48px));
+  width: min(360px, calc(100% - var(--mc-panel-left) - var(--mc-gutter) - 48px));
   padding: 12px 14px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);

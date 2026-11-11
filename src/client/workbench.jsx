@@ -127,12 +127,13 @@ export function Workbench({
   const [instrumentRecording, setInstrumentRecording] = useState(false);
   const [instrumentEvents, setInstrumentEvents] = useState([]);
   const [instrumentNote, setInstrumentNote] = useState(null);
+  const [restrikeIndex, setRestrikeIndex] = useState(null);
   const timelapseRequest = useRef(null);
   const instrumentStart = useRef(0);
   const [modelMenu, setModelMenu] = useState(false), [appMenu, setAppMenu] = useState(false);
   const wire = displayMode === "wire", transparent = displayMode === "transparent";
   useEffect(() => { setHiddenParts([]); setDisplayMode(mode => mode === "transparent" ? "solid" : mode); }, [measurementKey]);
-  useEffect(() => { setViewOpen(false); setSection({ axis: null, position: 0.5, flip: false }); setExplode(0); setExplodeAxis("radial"); setInstrumentOpen(false); setInstrumentRecording(false); setInstrumentEvents([]); setInstrumentNote(null); }, [project?.id, project?.modelFile]);
+  useEffect(() => { setViewOpen(false); setSection({ axis: null, position: 0.5, flip: false }); setExplode(0); setExplodeAxis("radial"); setInstrumentOpen(false); setInstrumentRecording(false); setInstrumentEvents([]); setInstrumentNote(null); setRestrikeIndex(null); }, [project?.id, project?.modelFile]);
   useEffect(() => { closeTimelapse(); }, [project?.id, project?.modelFile, project?.head]);
   useEffect(() => { setSelectionTargets([]); setMeasurementResult(null); }, [hiddenParts]);
   const [resetView, setResetView] = useState(0);
@@ -472,7 +473,7 @@ export function Workbench({
       clearGeometrySelection();
       setViewOpen(false);
       setRecordOpen(false);
-    } else setInstrumentRecording(false);
+    } else { setInstrumentRecording(false); setRestrikeIndex(null); }
   }
   function handleStrike(hit) {
     if (busy) return;
@@ -483,17 +484,41 @@ export function Workbench({
     const voice = strike(analysis, hit);
     playVoice(voice);
     setInstrumentNote({ name: noteName(voice.midi), part: voice.partName });
+    if (restrikeIndex !== null) {
+      setInstrumentEvents(events => events.map((event, index) => index === restrikeIndex ? {
+        ...event, midi: voice.midi, velocity: voice.velocity, duration: voice.decay * 1000, point: hit.point,
+      } : event));
+      setRestrikeIndex(null);
+      return;
+    }
     if (instrumentRecording) {
       const at = Math.max(0, performance.now() - instrumentStart.current);
       setInstrumentEvents(events => [...events, {
-        at, midi: voice.midi, velocity: voice.velocity, duration: voice.decay * 1000,
+        at, midi: voice.midi, velocity: voice.velocity, duration: voice.decay * 1000, point: hit.point,
       }]);
     }
   }
+  function deleteInstrumentEvent(position) {
+    setInstrumentEvents(events => events.filter((_, index) => index !== position));
+    setRestrikeIndex(current => {
+      if (current === null) return null;
+      if (current === position) return null;
+      return current > position ? current - 1 : current;
+    });
+  }
+  function restrikeInstrumentEvent(position) {
+    setRestrikeIndex(current => current === position ? null : position);
+  }
+  function clearInstrumentEvents() {
+    setInstrumentEvents([]);
+    setRestrikeIndex(null);
+    if (instrumentRecording) instrumentStart.current = performance.now();
+  }
   function toggleInstrumentRecording() {
-    if (instrumentRecording) { setInstrumentRecording(false); return; }
+    if (instrumentRecording) { setInstrumentRecording(false); setRestrikeIndex(null); return; }
     instrumentStart.current = performance.now();
     setInstrumentEvents([]);
+    setRestrikeIndex(null);
     setInstrumentRecording(true);
   }
   function exportInstrumentMidi() {
@@ -645,6 +670,11 @@ export function Workbench({
     }
     return Number.isFinite(min[0]) ? { min, max } : null;
   }, [timelapseOpen, timelapseFrames]);
+  const instrumentMarks = useMemo(() => instrumentRecording
+    ? instrumentEvents.map((event, index) => ({
+        index: index + 1, position: index, note: noteName(event.midi), point: event.point, armed: index === restrikeIndex,
+      }))
+    : [], [instrumentRecording, instrumentEvents, restrikeIndex]);
   const displayedDiff = diffOpen && diff?.projectId === project?.id && diff?.modelFile === project?.modelFile ? diff : null;
   return (
     <div
@@ -705,7 +735,7 @@ export function Workbench({
         }
         else if (instrumentOpen && event.key === "Escape" && !event.isComposing
           && !event.target.closest('input,textarea,[contenteditable="true"],[role="dialog"],[role="menu"]')) {
-          event.preventDefault(); setInstrumentOpen(false); setInstrumentRecording(false);
+          event.preventDefault(); setInstrumentOpen(false); setInstrumentRecording(false); setRestrikeIndex(null);
         }
       }}
     >
@@ -724,6 +754,9 @@ export function Workbench({
         fitBounds={timelapseOpen ? timelapseBounds : null}
         striking={instrumentOpen}
         onStrike={handleStrike}
+        marks={instrumentMarks}
+        onMarkDelete={deleteInstrumentEvent}
+        onMarkRestrike={restrikeInstrumentEvent}
         selecting={pickingActive}
         targets={selectionTargets}
         selectionInstant={selectionInstant}
@@ -849,8 +882,8 @@ export function Workbench({
         onBack={backToVersionLibrary} onClose={closeTimelapse} t={t} />}
       {instrumentOpen && <InstrumentPanel note={instrumentNote?.name} part={instrumentNote?.part}
         recording={instrumentRecording} count={instrumentEvents.length}
-        onToggleRecording={toggleInstrumentRecording} onExport={exportInstrumentMidi}
-        onClose={() => { setInstrumentOpen(false); setInstrumentRecording(false); }} t={t} />}
+        onToggleRecording={toggleInstrumentRecording} onClear={clearInstrumentEvents} onExport={exportInstrumentMidi}
+        onClose={() => { setInstrumentOpen(false); setInstrumentRecording(false); setRestrikeIndex(null); }} t={t} />}
       {diffOpen && project && <VersionDiff key={`${project.id}:${project.modelFile}`} project={project} request={request}
         onResult={setDiff} onClose={() => setDiffOpen(false)} t={t} language={language} />}
       {versionLibraryOpen && project && <VersionLibrary key={`${project.id}:${project.modelFile}`} project={project} progress={progress}

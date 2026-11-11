@@ -4,7 +4,7 @@ import { ArcballControls } from "three/addons/controls/ArcballControls.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
-import { pointerModality } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, pointerModality, Tag, IconTrashOutlineRegular, IconRefreshOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 import { defaultIdFormats, geometryLabel, geometryReference } from "../shared/geometry-ids.js";
 import { ViewCube } from "./view-cube.jsx";
 
@@ -56,10 +56,13 @@ const diffColors = {
   added: [0x16834a, 0x61d994], removed: [0xc33a48, 0xff7b86], unchanged: [0x94a0b0, 0x8f9caf],
 };
 
-export function Viewport({ id, active = true, presentation = "workbench", historyOpen = false, sidebarCollapsed = false, design, diff, wire, transparent = false, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, section = null, explode = 0, explodeAxis = "radial", followPreview = true, fitBounds = null, striking = false, onStrike, onError, t }) {
+export function Viewport({ id, active = true, presentation = "workbench", historyOpen = false, sidebarCollapsed = false, design, diff, wire, transparent = false, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, section = null, explode = 0, explodeAxis = "radial", followPreview = true, fitBounds = null, striking = false, onStrike, marks = [], onMarkDelete, onMarkRestrike, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
+  const marksLayer = useRef(null);
+  const marksRef = useRef(marks);
+  marksRef.current = marks;
   const coordinates = useRef(null);
   const partHover = useRef(null);
   const [scale, setScale] = useState(null);
@@ -540,6 +543,26 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       panel.style.setProperty("--mc-bar-origin", `${Math.max(0, Math.min(width, x - px))}px ${above ? barHeight : 0}px`);
       panel.dataset.placed = "true";
     };
+    const markProjection = new THREE.Vector3();
+    // Instrument strikes are HTML pills over the canvas, projected each frame so
+    // orbiting keeps them on their model positions.
+    state.positionMarks = () => {
+      const layer = marksLayer.current;
+      if (!layer) return;
+      const items = marksRef.current;
+      const width = el.clientWidth, height = el.clientHeight;
+      for (let index = 0; index < layer.children.length; index++) {
+        const chip = layer.children[index];
+        const mark = items[index];
+        if (!mark) { chip.style.visibility = "hidden"; continue; }
+        markProjection.fromArray(mark.point).project(camera);
+        const x = (markProjection.x + 1) * width / 2;
+        const y = (1 - markProjection.y) * height / 2;
+        const visible = markProjection.z >= -1 && markProjection.z <= 1;
+        chip.style.visibility = visible ? "visible" : "hidden";
+        chip.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -100%) translateY(3px)`;
+      }
+    };
     const cancelPointer = () => { clickStart = null; clearCoordinates(); };
     const movePointer = event => {
       if (clickStart && Math.hypot(event.clientX-clickStart.x,event.clientY-clickStart.y) > 4) clickStart = null;
@@ -910,6 +933,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       }
       cube.current?.sync(camera, controls);
       state.positionSelection();
+      state.positionMarks();
       renderer.clear();
       if (!contained) {
         updateGrid();
@@ -1103,6 +1127,9 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     };
   }, [diff]);
   useLayoutEffect(() => {
+    runtime.current?.positionMarks();
+  }, [marks]);
+  useLayoutEffect(() => {
     const state = runtime.current;
     if (!state) return;
     state.highlightPicks(selecting ? targets : []);
@@ -1128,6 +1155,26 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
   return (
     <div id={id} ref={mount} aria-hidden={!active} className={`mc-viewport ${selecting || striking ? "mc-selecting" : ""}`} aria-label="3D">
       {presentation === "workbench" && <div ref={partHover} className="mc-part-hover mc-panel" hidden />}
+      {marks.length > 0 && <div ref={marksLayer} className="mc-instrument-marks">
+        {marks.map(mark => <span key={mark.index} className="mc-instrument-mark" data-restrike={mark.armed || undefined}>
+          <span className="mc-instrument-callout">
+            <Tag tone="neutral" className="mc-instrument-tag">
+              <span className="mc-instrument-index">{mark.index} ·</span>
+              <span className="mc-instrument-note">{mark.note}</span>
+              <span className="mc-instrument-mark-actions">
+                <Button type="button" variant="ghost" size="sm" className="mc-instrument-action"
+                  aria-label={t("instrumentRestrike")} aria-pressed={mark.armed || undefined}
+                  icon={<IconRefreshOutlineRegular size={12} />}
+                  onClick={event => { event.stopPropagation(); onMarkRestrike?.(mark.position); }} />
+                <Button type="button" variant="ghost" size="sm" className="mc-instrument-action"
+                  aria-label={t("instrumentDelete")} icon={<IconTrashOutlineRegular size={12} />}
+                  onClick={event => { event.stopPropagation(); onMarkDelete?.(mark.position); }} />
+              </span>
+            </Tag>
+            <span className="mc-instrument-anchor" />
+          </span>
+        </span>)}
+      </div>}
       <div ref={floating} className="mc-selection-context" data-open={selecting && targets.length > 0 || undefined}
         data-instant={selectionInstant || !pointerModality() || undefined} aria-hidden={!selecting || !targets.length} inert={!selecting || !targets.length ? "" : undefined}>
         {selectionTools}
