@@ -56,7 +56,7 @@ const diffColors = {
   added: [0x16834a, 0x61d994], removed: [0xc33a48, 0xff7b86], unchanged: [0x94a0b0, 0x8f9caf],
 };
 
-export function Viewport({ id, active = true, presentation = "workbench", historyOpen = false, sidebarCollapsed = false, design, diff, wire, transparent = false, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, section = null, explode = 0, explodeAxis = "radial", followPreview = true, fitBounds = null, onError, t }) {
+export function Viewport({ id, active = true, presentation = "workbench", historyOpen = false, sidebarCollapsed = false, design, diff, wire, transparent = false, resetToken, targets = [], measurementResult, selectionTools, selectionInstant, pickingDisabled, onPick, selecting = false, section = null, explode = 0, explodeAxis = "radial", followPreview = true, fitBounds = null, striking = false, onStrike, onError, t }) {
   const mount = useRef(null);
   const runtime = useRef(null);
   const cube = useRef(null);
@@ -65,7 +65,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
   const [scale, setScale] = useState(null);
   const floating = useRef(null);
   const selectionProps = useRef(null);
-  selectionProps.current = { design, selecting, targets, onPick, pickingDisabled };
+  selectionProps.current = { design, selecting, targets, onPick, pickingDisabled, striking, onStrike };
   useEffect(() => {
     const el = mount.current;
     const contained = presentation === "record";
@@ -431,19 +431,28 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     const startPick = (event) => {
       hoverAllowed = false;
       if (partHover.current) partHover.current.hidden = true;
-      if (event.button === 0 && selectionProps.current.selecting && !selectionProps.current.pickingDisabled)
+      const { selecting, striking, pickingDisabled } = selectionProps.current;
+      if (event.button === 0 && (selecting || striking) && !pickingDisabled)
         clickStart = { x: event.clientX, y: event.clientY, id: event.pointerId, extend: event.ctrlKey };
     };
     const endPick = (event) => {
       const start = clickStart;
       clickStart = null;
-      const { design, selecting, pickingDisabled, onPick } = selectionProps.current;
-      if (!selecting || pickingDisabled || !start || start.id !== event.pointerId || Math.hypot(event.clientX-start.x,event.clientY-start.y) > 4) return;
+      const { design, selecting, striking, pickingDisabled, onPick, onStrike } = selectionProps.current;
+      if ((!selecting && !striking) || pickingDisabled || !start || start.id !== event.pointerId || Math.hypot(event.clientX-start.x,event.clientY-start.y) > 4) return;
       const preview = design?.previewData;
       if (!preview || !state.surface) return;
       const rect = renderer.domElement.getBoundingClientRect();
       setPointerRay(event.clientX, event.clientY, rect);
       const surfaceHit = raycaster.intersectObject(state.surface, false).find(hit => state.clipTest(hit.point));
+      if (striking) {
+        if (surfaceHit) onStrike?.({
+          point: surfaceHit.point.toArray(),
+          normal: surfaceHit.face.normal.toArray(),
+          face: preview.faceIndices[surfaceHit.faceIndex],
+        });
+        return;
+      }
       onPick(pickTarget(surfaceHit, rect), start.extend);
     };
     state.highlightPicks = targets => {
@@ -1117,7 +1126,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     s.theme();
   }, [wire, design?.previewData]);
   return (
-    <div id={id} ref={mount} aria-hidden={!active} className={`mc-viewport ${selecting ? "mc-selecting" : ""}`} aria-label="3D">
+    <div id={id} ref={mount} aria-hidden={!active} className={`mc-viewport ${selecting || striking ? "mc-selecting" : ""}`} aria-label="3D">
       {presentation === "workbench" && <div ref={partHover} className="mc-part-hover mc-panel" hidden />}
       <div ref={floating} className="mc-selection-context" data-open={selecting && targets.length > 0 || undefined}
         data-instant={selectionInstant || !pointerModality() || undefined} aria-hidden={!selecting || !targets.length} inert={!selecting || !targets.length ? "" : undefined}>

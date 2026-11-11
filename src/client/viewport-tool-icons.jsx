@@ -47,3 +47,11 @@ export function SectionViewIcon(props) {
     <path d="M18.5 15.4 12 18.6v2l6.5-3.2Z" />
   </ViewportIcon>;
 }
+
+export function InstrumentIcon(props) {
+  return <ViewportIcon {...props}>
+    <path d="M3.8 9.4h3L11 6.4v11.2l-4-3H3.8Z" />
+    <path d="M14 9.3a4.2 4.2 0 0 1 0 5.4" />
+    <path d="M16.8 7.2a7.4 7.4 0 0 1 0 9.6" />
+  </ViewportIcon>;
+}

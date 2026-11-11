@@ -9,6 +9,7 @@ import {
   IconPlayOutlineRegular,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { encodeGif } from "./gif.js";
+import { downloadBlob } from "./download.js";
 
 const HOLD = 720;
 const CAPTURE_WIDTH = 1280;
@@ -23,17 +24,6 @@ function canvasElement() {
 function fileName(project, extension) {
   const base = String(project?.title || "minicad").replace(/[\\/:*?"<>|]+/g, "_").trim() || "minicad";
   return `${base}-timelapse.${extension}`;
-}
-
-function download(blob, name) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = name;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 function fitText(ctx, text, maxWidth) {
@@ -129,7 +119,7 @@ export function Timelapse({ project, frames, index, onIndex, loading, error, onB
       await wait(150);
       recorder.stop();
       await stopped;
-      download(new Blob(chunks, { type: "video/webm" }), fileName(project, "webm"));
+      downloadBlob(new Blob(chunks, { type: "video/webm" }), fileName(project, "webm"));
     } finally {
       setExporting(null);
     }
@@ -155,7 +145,7 @@ export function Timelapse({ project, frames, index, onIndex, loading, error, onB
         pixels.push(ctx.getImageData(0, 0, width, height).data);
       }
       const encoded = encodeGif(pixels, { width, height, delay: 70 });
-      download(new Blob([encoded], { type: "image/gif" }), fileName(project, "gif"));
+      downloadBlob(new Blob([encoded], { type: "image/gif" }), fileName(project, "gif"));
     } finally {
       setExporting(null);
     }

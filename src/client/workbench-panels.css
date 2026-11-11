@@ -142,3 +142,23 @@ html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-version-library, 
 .mc-timelapse-count { flex: none; min-width: 52px; text-align: center; color: var(--mc-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .mc-timelapse-export { flex: none; display: flex; gap: 6px; }
 .mc-timelapse-status { display: flex; align-items: center; gap: 8px; color: var(--mc-muted); font-size: 12px; }
+
+.mc-instrument {
+  position: absolute;
+  z-index: 13;
+  top: var(--mc-content-top);
+  left: var(--mc-panel-left);
+  width: min(320px, calc(100% - var(--mc-panel-left) - var(--mc-gutter) - 48px));
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.mc-instrument-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.mc-instrument-head strong { font-size: 14px; font-weight: 500; }
+.mc-instrument-note { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: var(--dsh-content-font-size-secondary, 13px); }
+.mc-instrument-note strong { flex: none; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mc-instrument-note span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mc-muted); }
+.mc-instrument-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mc-instrument-actions button[aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
+.mc-instrument-count { margin-left: auto; color: var(--mc-muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }

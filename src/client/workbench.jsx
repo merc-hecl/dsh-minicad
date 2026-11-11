@@ -34,8 +34,11 @@ import { VersionDiff } from "./version-diff.jsx";
 import { VersionLibrary } from "./version-library.jsx";
 import { Timelapse } from "./timelapse.jsx";
 import { revisionPath } from "./revision-path.js";
-import { SolidViewIcon, WireframeViewIcon, TransparentViewIcon, SelectGeometryIcon, SectionViewIcon } from "./viewport-tool-icons.jsx";
+import { SolidViewIcon, WireframeViewIcon, TransparentViewIcon, SelectGeometryIcon, SectionViewIcon, InstrumentIcon } from "./viewport-tool-icons.jsx";
 import { ViewPanel } from "./view-panel.jsx";
+import { InstrumentPanel } from "./instrument-panel.jsx";
+import { analyze, strike, playVoice, noteName, encodeMidi } from "./instrument.js";
+import { downloadBlob } from "./download.js";
 
 const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
   const button = (
@@ -120,11 +123,16 @@ export function Workbench({
   const [timelapseError, setTimelapseError] = useState(null);
   const [timelapseTarget, setTimelapseTarget] = useState(null);
   const [libraryInitial, setLibraryInitial] = useState(null);
+  const [instrumentOpen, setInstrumentOpen] = useState(false);
+  const [instrumentRecording, setInstrumentRecording] = useState(false);
+  const [instrumentEvents, setInstrumentEvents] = useState([]);
+  const [instrumentNote, setInstrumentNote] = useState(null);
   const timelapseRequest = useRef(null);
+  const instrumentStart = useRef(0);
   const [modelMenu, setModelMenu] = useState(false), [appMenu, setAppMenu] = useState(false);
   const wire = displayMode === "wire", transparent = displayMode === "transparent";
   useEffect(() => { setHiddenParts([]); setDisplayMode(mode => mode === "transparent" ? "solid" : mode); }, [measurementKey]);
-  useEffect(() => { setViewOpen(false); setSection({ axis: null, position: 0.5, flip: false }); setExplode(0); setExplodeAxis("radial"); }, [project?.id, project?.modelFile]);
+  useEffect(() => { setViewOpen(false); setSection({ axis: null, position: 0.5, flip: false }); setExplode(0); setExplodeAxis("radial"); setInstrumentOpen(false); setInstrumentRecording(false); setInstrumentEvents([]); setInstrumentNote(null); }, [project?.id, project?.modelFile]);
   useEffect(() => { closeTimelapse(); }, [project?.id, project?.modelFile, project?.head]);
   useEffect(() => { setSelectionTargets([]); setMeasurementResult(null); }, [hiddenParts]);
   const [resetView, setResetView] = useState(0);
@@ -142,7 +150,7 @@ export function Workbench({
     workbench.current?.querySelector(".mc-session-record-toggle")?.focus({ preventScroll: true });
   }, []);
   const openSessionRecord = () => {
-    closeTimelapse(); setViewOpen(false); setVersionLibraryOpen(false); setDiffOpen(false);
+    setInstrumentOpen(false); closeTimelapse(); setViewOpen(false); setVersionLibraryOpen(false); setDiffOpen(false);
     setRecordOpen(true);
   };
   const closeVersionLibrary = useCallback(() => { setVersionLibraryOpen(false); setLibraryDesign(null); setLibraryInitial(null); }, []);
@@ -452,7 +460,46 @@ export function Workbench({
     if (busy) return;
     const next = !viewOpen;
     setViewOpen(next);
-    if (next) { closeTimelapse(); setSelecting(false); clearGeometrySelection(); }
+    if (next) { setInstrumentOpen(false); closeTimelapse(); setSelecting(false); clearGeometrySelection(); }
+  }
+  // Sound the part at the clicked surface point from its mass distribution.
+  function toggleInstrument() {
+    if (busy) return;
+    const next = !instrumentOpen;
+    setInstrumentOpen(next);
+    if (next) {
+      setSelecting(false);
+      clearGeometrySelection();
+      setViewOpen(false);
+      setRecordOpen(false);
+    } else setInstrumentRecording(false);
+  }
+  function handleStrike(hit) {
+    if (busy) return;
+    const preview = displayedDesign?.previewData;
+    if (!preview) return;
+    const analysis = analyze(preview, displayedDesign?.parts);
+    if (!analysis) return;
+    const voice = strike(analysis, hit);
+    playVoice(voice);
+    setInstrumentNote({ name: noteName(voice.midi), part: voice.partName });
+    if (instrumentRecording) {
+      const at = Math.max(0, performance.now() - instrumentStart.current);
+      setInstrumentEvents(events => [...events, {
+        at, midi: voice.midi, velocity: voice.velocity, duration: voice.decay * 1000,
+      }]);
+    }
+  }
+  function toggleInstrumentRecording() {
+    if (instrumentRecording) { setInstrumentRecording(false); return; }
+    instrumentStart.current = performance.now();
+    setInstrumentEvents([]);
+    setInstrumentRecording(true);
+  }
+  function exportInstrumentMidi() {
+    if (!instrumentEvents.length) return;
+    const base = String(project?.title || "minicad").replace(/[\\/:*?"<>|]+/g, "_").trim() || "minicad";
+    downloadBlob(new Blob([encodeMidi(instrumentEvents, { tempo: 120 })], { type: "audio/midi" }), `${base}-instrument.mid`);
   }
   // Fixed-camera playback along the parent chain from the root to the selected version.
   async function openTimelapse(targetRevision) {
@@ -468,6 +515,7 @@ export function Workbench({
     setDiffOpen(false);
     setRecordOpen(false);
     setSelecting(false);
+    setInstrumentOpen(false);
     clearGeometrySelection();
     setSection(current => ({ ...current, axis: null }));
     setExplode(0);
@@ -655,6 +703,10 @@ export function Workbench({
           && !event.target.closest('input,textarea,[contenteditable="true"],[role="dialog"],[role="menu"]')) {
           event.preventDefault(); closeTimelapse();
         }
+        else if (instrumentOpen && event.key === "Escape" && !event.isComposing
+          && !event.target.closest('input,textarea,[contenteditable="true"],[role="dialog"],[role="menu"]')) {
+          event.preventDefault(); setInstrumentOpen(false); setInstrumentRecording(false);
+        }
       }}
     >
       <Viewport
@@ -670,6 +722,8 @@ export function Workbench({
         explodeAxis={explodeAxis}
         followPreview={!timelapseOpen}
         fitBounds={timelapseOpen ? timelapseBounds : null}
+        striking={instrumentOpen}
+        onStrike={handleStrike}
         selecting={pickingActive}
         targets={selectionTargets}
         selectionInstant={selectionInstant}
@@ -707,7 +761,7 @@ export function Workbench({
             {project && <Btn className="mc-header-version" icon={IconBranchOutlineRegular}
               label={project.head > 0 ? `${t("versionLibrary")} · ${t("current")} v${project.head}` : t("versionLibrary")}
               aria-expanded={versionLibraryOpen} aria-controls={versionLibraryOpen ? "mc-version-library" : undefined}
-              onClick={() => { closeTimelapse(); setLibraryInitial(null); setViewOpen(false); setRecordOpen(false); setDiffOpen(false); setLibraryDesign(null); setVersionLibraryOpen(value => !value); }} />}
+              onClick={() => { setInstrumentOpen(false); closeTimelapse(); setLibraryInitial(null); setViewOpen(false); setRecordOpen(false); setDiffOpen(false); setLibraryDesign(null); setVersionLibraryOpen(value => !value); }} />}
           </div>
           {project && sidebarCollapsed && <Btn className="mc-header-new-session" icon={IconNewChatOutlineRegular}
             label={t("newSession")} disabled={busy} onClick={() => createConversation(project)} />}
@@ -724,14 +778,17 @@ export function Workbench({
               aria-expanded={viewOpen} aria-controls={viewOpen ? "mc-view-panel" : undefined}
               disabled={!project?.head || busy || diffOpen || versionLibraryOpen || !!processDesign}
               onClick={toggleViewPanel} />
+            <Btn icon={InstrumentIcon} label={t("instrument")} aria-pressed={instrumentOpen}
+              disabled={!project?.head || busy || diffOpen || versionLibraryOpen || timelapseOpen || !!processDesign}
+              onClick={toggleInstrument} />
             <Btn icon={SelectGeometryIcon} label={t("selectGeometry")} aria-pressed={selectionActive}
               aria-expanded={hasAssemblyParts || hasModelChoices ? inspectionVisible : undefined} aria-controls={inspectionVisible ? "mc-model-inspection" : undefined}
               disabled={!project || !!processDesign || busy || diffOpen || versionLibraryOpen || explode > 0}
-              onClick={() => { closeTimelapse(); setViewOpen(false); clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
+              onClick={() => { setInstrumentOpen(false); closeTimelapse(); setViewOpen(false); clearGeometrySelection(); setSelectionInstant(false); setSelecting(value => !value); }} />
           </div>
           <div className="mc-header-action-group">
             <Btn icon={IconCompareSplitOutlineRegular} label={t("compareVersion")} disabled={!project || project.revisions.length < 2} aria-pressed={diffOpen}
-              onClick={() => { closeTimelapse(); setViewOpen(false); setRecordOpen(false); closeVersionLibrary(); setDiffOpen(value => !value); }} />
+              onClick={() => { setInstrumentOpen(false); closeTimelapse(); setViewOpen(false); setRecordOpen(false); closeVersionLibrary(); setDiffOpen(value => !value); }} />
             <Btn className="mc-session-record-toggle" icon={IconFlatListOutlineRegular} label={t("sessionRecord")}
               disabled={busy || !project?.activeSessionId || sessionReference?.sessionId !== project.activeSessionId}
               aria-expanded={recordOpen} aria-controls={recordOpen ? "mc-session-record-host" : undefined}
@@ -790,6 +847,10 @@ export function Workbench({
       {timelapseOpen && <Timelapse project={project} frames={timelapseFrames} index={timelapseIndex}
         onIndex={setTimelapseIndex} loading={timelapseLoading} error={timelapseError}
         onBack={backToVersionLibrary} onClose={closeTimelapse} t={t} />}
+      {instrumentOpen && <InstrumentPanel note={instrumentNote?.name} part={instrumentNote?.part}
+        recording={instrumentRecording} count={instrumentEvents.length}
+        onToggleRecording={toggleInstrumentRecording} onExport={exportInstrumentMidi}
+        onClose={() => { setInstrumentOpen(false); setInstrumentRecording(false); }} t={t} />}
       {diffOpen && project && <VersionDiff key={`${project.id}:${project.modelFile}`} project={project} request={request}
         onResult={setDiff} onClose={() => setDiffOpen(false)} t={t} language={language} />}
       {versionLibraryOpen && project && <VersionLibrary key={`${project.id}:${project.modelFile}`} project={project} progress={progress}
