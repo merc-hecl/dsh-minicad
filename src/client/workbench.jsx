@@ -56,7 +56,7 @@ const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
 };
 
 export function Workbench({
-  locale, t, enter, back, request, addGeometryReference, SessionProvider, renderSlot, retainSession, sessionCatalog, workspaceCatalog, renameConversation,
+  locale, t, enter, back, request, addGeometryReference, focusComposer, SessionProvider, renderSlot, retainSession, sessionCatalog, workspaceCatalog, renameConversation,
   contextMenus, shortcutCatalog,
 }) {
   const workbench = useRef(null);
@@ -800,6 +800,7 @@ export function Workbench({
         embedded={recordOpen}
         running={running} statusTarget={statusTarget} revision={project?.head || 0} latestRevision={project?.revisions[0]?.revision || 0}
         onSessionRecord={openSessionRecord} onReveal={closeSessionRecord}
+        onFocusComposer={() => { const sessionId = project?.activeSessionId; if (sessionId) focusComposer(sessionId); }}
         onStart={() => setError(null)}
         onCancel={() => action(() => api("cancel", { projectId: selected }))} onRunning={setNativeRunning}>
         {callbacks => <>

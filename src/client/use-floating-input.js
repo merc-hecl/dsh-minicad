@@ -7,7 +7,7 @@ const clamp = (point, bounds) => ({
 
 // Pointer tracking writes only this surface's transform. The editor and native
 // controls do not rerender per frame, and release keeps the exact drop position.
-export function useFloatingInput(input, visible, waiting, statusTarget, onGripClick) {
+export function useFloatingInput(input, visible, waiting, statusTarget, onGripClick, focusComposer) {
   const anchor = useRef(null), position = useRef({ left: 16, top: 120 });
   const drag = useRef(null), frame = useRef(0), suppressClick = useRef(false);
   const focusRequested = useRef(false), [request, setRequest] = useState(0);
@@ -58,9 +58,9 @@ export function useFloatingInput(input, visible, waiting, statusTarget, onGripCl
     };
     place();
     const observer = new ResizeObserver(place); observer.observe(element); observer.observe(workspace);
-    if (focusRequested.current && !waiting) {
-      element.querySelector('[contenteditable="true"]')?.focus({ preventScroll: true }); focusRequested.current = false;
-    }
+    // DSH's shell focus restores the editor's own caret. A bare DOM focus on the
+    // contenteditable would land it at the start of the draft instead.
+    if (focusRequested.current && !waiting) { focusComposer?.(); focusRequested.current = false; }
     return () => { observer.disconnect(); finish(false); };
   }, [visible, waiting, statusTarget, request]);
   return {

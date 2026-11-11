@@ -76,6 +76,7 @@ export function apply(ctx) {
   const designCatalog = createDesignCatalog(() => request("list"));
   registerMainWorkspaces(ctx, designCatalog, request);
   const addGeometryReference = registerGeometryReferences(ctx, request);
+  const focusComposer = sessionId => ctx.conversation.input.shell(sessionId)?.focus();
   const setSidebarCollapsed = (workbench, collapsed) => {
     // DSH rc.5 exposes toggleSidebar but no state getter or explicit setter.
     // Read AppFrame's published state marker; leave all layout writes to DSH.
@@ -144,6 +145,7 @@ export function apply(ctx) {
           back={leaveWorkbench}
           request={request}
           addGeometryReference={addGeometryReference}
+          focusComposer={focusComposer}
           SessionProvider={SessionProvider}
           renderSlot={renderSlot}
           contextMenus={ctx.contextMenus}

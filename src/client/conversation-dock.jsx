@@ -8,7 +8,7 @@ import { useFloatingInput } from "./use-floating-input.js";
 
 const EMPTY = { running: false, waiting: false, pending: false, todos: [], activities: [] };
 export const ConversationDock = forwardRef(function ConversationDock({ children, running,
-  hidden, embedded, t, statusTarget, revision, latestRevision, onCancel, onRunning, onStart, onSessionRecord, onReveal }, ref) {
+  hidden, embedded, t, statusTarget, revision, latestRevision, onCancel, onRunning, onStart, onSessionRecord, onReveal, onFocusComposer }, ref) {
   const [open, setOpen] = useState(false), [expanded, setExpanded] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [native, setNative] = useState(EMPTY), [pending, setPending] = useState(false);
@@ -24,7 +24,7 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
     : feedback ? terminalPhase || feedback : null;
   const visible = !hidden && !embedded && (open || native.waiting);
   const togglePinned = () => setPinned(value => !value);
-  const floating = useFloatingInput(input, visible, native.waiting, statusTarget, togglePinned);
+  const floating = useFloatingInput(input, visible, native.waiting, statusTarget, togglePinned, onFocusComposer);
   const reveal = point => {
     if (embedded) onReveal();
     floating.revealAt(pinned ? undefined : point); setOpen(true); setExpanded(false);
