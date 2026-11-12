@@ -48,10 +48,12 @@ export function SectionViewIcon(props) {
   </ViewportIcon>;
 }
 
+// Eighth note: the music symbol for the part instrument.
 export function InstrumentIcon(props) {
   return <ViewportIcon {...props}>
-    <path d="M3.8 9.4h3L11 6.4v11.2l-4-3H3.8Z" />
-    <path d="M14 9.3a4.2 4.2 0 0 1 0 5.4" />
-    <path d="M16.8 7.2a7.4 7.4 0 0 1 0 9.6" />
+    <ellipse cx="8.5" cy="16.9" rx="3.4" ry="2.5" transform="rotate(-22 8.5 16.9)"
+      fill="currentColor" stroke="none" />
+    <path d="M11.5 4v11.8" />
+    <path d="M11.5 4c3.3.9 5.9 3.6 4.9 7.6" />
   </ViewportIcon>;
 }
