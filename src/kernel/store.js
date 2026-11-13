@@ -21,11 +21,11 @@ import {
   jsonBytes,
   readJson,
 } from "./files.js";
-import { encodePreview, previewInfo, PREVIEW_VERSION } from "../shared/preview.js";
+import { encodePreview, decodePreview, previewInfo, PREVIEW_VERSION } from "../shared/preview.js";
 import { ProcessJournal } from "./process.js";
 import { readApi } from "./api.js";
 import { format, isDeepStrictEqual } from "node:util";
-import { definePanel, panelValues, panelView } from "../shared/parameter-panel.js";
+import { definePanel, panelValues, panelView, panelChanges, panelChangeSummary } from "../shared/parameter-panel.js";
 const kernel = () => import("./model.js");
 const now = () => Date.now() / 1000;
 const id = () => randomUUID().replaceAll("-", "");
@@ -290,6 +290,7 @@ export class Store {
       writeWorkingFiles = true,
       previewBytes,
       actor = "agent",
+      processRunId,
     } = {},
   ) {
     const [root, data, task] = this.locate(key),
@@ -314,6 +315,7 @@ export class Store {
     model.revisions.push({
       revision,
       actor,
+      ...(processRunId ? { processRunId } : {}),
       parent: expected || null,
       folder: portable(relative(directory, folder)),
       summary: String(summary || "更新设计").slice(0, 200),
@@ -372,20 +374,30 @@ export class Store {
       ...this.panelRecipe(panel), parameters: panel.values, commit: false, summary: panel.title.zh },
       Boolean(panel.operations), { base: saved, scope: panel.baseScope, materials });
     const api = await this.kernel();
-    const candidate = new ProcessJournal(project.directory, project.modelFile).candidate(trial.runId);
-    const original = await this.shape(saved), result = await this.shape(candidate);
+    const journal = new ProcessJournal(project.directory, project.modelFile);
+    const candidate = journal.candidate(trial.runId);
     try {
-      api.requireNames(result);
-      const difference = api.compareShapes(original, result);
-      const tolerance = Math.max(1, saved.state.metrics.volume) * 1e-8;
-      if (trial.validation.passed === false || [difference.added, difference.removed].some(region => region && region.metrics.volume > tolerance))
-        throw Object.assign(localizedError("面板初始值未保持当前模型或尺寸检查失败", "Panel defaults must preserve the current model and pass dimensional checks"), { validation: trial.validation });
-    } finally { original.dispose(); result.dispose(); }
-    const current = this.project(key, project.modelFile);
-    this.expect(current.head, args);
-    if (current.workingTreeChanged) throw new Conflict();
-    this.commit(new Map([...materials].map(([name, bytes]) => [join(saved.folder, name), bytes])));
-    return { modelFile: project.modelFile, head: project.head, parameterPanel: panelView(panel, project.head) };
+      journal.finish(candidate.run, "validating");
+      const original = await this.shape(saved), result = await this.shape(candidate);
+      try {
+        api.requireNames(result);
+        const difference = api.compareShapes(original, result);
+        const tolerance = Math.max(1, saved.state.metrics.volume) * 1e-8;
+        if (trial.validation.passed === false || [difference.added, difference.removed].some(region => region && region.metrics.volume > tolerance))
+          throw Object.assign(localizedError("面板初始值未保持当前模型或尺寸检查失败", "Panel defaults must preserve the current model and pass dimensional checks"), { validation: trial.validation });
+      } finally { original.dispose(); result.dispose(); }
+      const current = this.project(key, project.modelFile);
+      this.expect(current.head, args);
+      if (current.workingTreeChanged) throw new Conflict();
+      this.commit(new Map([...materials].map(([name, bytes]) => [join(saved.folder, name), bytes]).concat([
+        [journal.manifest(candidate.run.id), jsonBytes({ ...candidate.run, phase: "done", updated: now() })],
+      ])));
+      return { modelFile: project.modelFile, head: project.head, parameterPanel: panelView(panel, project.head) };
+    } catch (error) {
+      try { journal.finish(candidate.run, "error", { error: error.localized || String(error.message || error), ...(error.validation ? { validation: error.validation } : {}) }); }
+      catch (storageError) { appendErrorDetail(error, "过程记录保存失败", "Process log save failed", `: ${storageError.message}`); }
+      throw error;
+    }
   }
   panelRecipe(panel) {
     return { operations: panel.operations, source: panel.source, part: panel.part, checks: panel.checks };
@@ -406,9 +418,10 @@ export class Store {
     ]);
     const base = { folder: join(saved.folder, "panel"), state: readJson(join(saved.folder, "panel/state.json")) };
     const language = args.language === "en" ? "en" : "zh";
+    const changes = panelChanges(panel, panel.values, values);
     return this.build(key, { modelFile: project.modelFile, expectedRevision: project.head,
-      ...this.panelRecipe(panel), parameters: values, summary: panel.title[language],
-      preserveSelection: true }, Boolean(panel.operations), { base, scope: panel.baseScope, materials, panelId: panel.id });
+      ...this.panelRecipe(panel), parameters: values, summary: panelChangeSummary(changes, language) || panel.title[language],
+      preserveSelection: true }, Boolean(panel.operations), { base, scope: panel.baseScope, materials, panelId: panel.id, changes });
   }
   async build(key, args, edit = false, panelExecution) {
     const [root, , task] = this.locate(key);
@@ -419,7 +432,8 @@ export class Store {
     const saved = this.snapshot(key, undefined, modelFile);
     const journal = new ProcessJournal(directory, modelFile);
     const run = journal.begin(modelFile, head, nextRevision(task.models[modelFile]), args.summary, saved ? saved.state.geometryIds : defaultIdFormats,
-      panelExecution?.panelId ? "user" : "agent");
+      { actor: panelExecution?.panelId ? "user" : "agent", purpose: panelExecution?.panelId ? "panel_apply" : panelExecution ? "panel_validation" : "modeling",
+        inputRevision: panelExecution?.base?.state.revision ?? args.baseRevision ?? head, changes: panelExecution?.changes });
     try {
       const result = await this.executeBuild(key, args, edit, journal, run, saved, panelExecution);
       return result;
@@ -427,7 +441,7 @@ export class Store {
       error.phase ||= run.phase;
       error.runId = run.id;
       error.diagnostics = { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean) };
-      try { journal.finish(run, "error", { error: String(error.message || error) }); }
+      try { journal.finish(run, "error", { error: error.localized || String(error.message || error), ...(error.validation ? { validation: error.validation } : {}) }); }
       catch (storageError) {
         appendErrorDetail(error, "过程记录保存失败", "Process log save failed", `: ${storageError.message}`);
       }
@@ -450,11 +464,14 @@ export class Store {
     const resources = {}, materials = new Map(panelExecution?.materials);
     const operation = { tool: panelExecution?.panelId ? "cad_apply_panel" : args.file ? "cad_import" : edit ? "cad_edit" : "cad_build", kernel: api.kernelName,
       inputModel: args.baseModelFile || modelFile, inputRevision: base?.state.revision || 0,
-      ...(panelExecution?.panelId ? { panelId: panelExecution.panelId, parameters } : {}),
+      ...(panelExecution?.panelId ? { panelId: panelExecution.panelId, parameters, changes: panelExecution.changes } : {}),
       ...(args.part ? { part: args.part } : {}),
       ...(edit ? { operations: args.operations, ...(args.parameters !== undefined ? { parameters } : {}) } : {}),
       ...(args.file ? { file: args.file, ...(args.metadataFile ? { metadataFile: args.metadataFile } : {}) } : {}),
       ...(args.checks ? { checks: api.values(args.checks, parameters) } : {}) };
+    run.inputModel = operation.inputModel;
+    run.inputRevision = operation.inputRevision;
+    journal.save(run);
     materials.set("operations.json", jsonBytes(operation));
     if (!edit && !args.file) {
       if (typeof args.source !== "string" || !args.source.trim() || args.source.length > 2 * 1024 * 1024)
@@ -477,7 +494,10 @@ export class Store {
     };
     for (const name of args.inputs || []) resourceRead(name, fs.readFileSync(inside(directory, name)));
     const checkpoint = (part, label, operation) => {
-      journal.capture(run, api.describeShape(part), label, operation);
+      if (run.purpose === "modeling") {
+        const visible = args.part && !edit ? api.replacePart(shape, args.part, part) : part;
+        journal.capture(run, api.describeShape(visible), label, operation);
+      }
       return part;
     };
     let shape = base ? await this.shape(base) : null;
@@ -506,12 +526,13 @@ export class Store {
     }
     const state = { ...api.describeShape(shape), formatVersion: 2, unit: "mm", geometryIds: run.geometryIds };
     if (args.commit !== false) api.requireNames(shape);
-    journal.capture(run, state, "", "result");
+    journal.capture(run, state, "", run.purpose === "panel_apply" ? "panel_apply" : "result");
     journal.finish(run, "validating");
     const scope = api.modelScope(key, args.commit === false ? `${modelFile}@${run.id}` : modelFile);
     const checks = api.values(args.checks || [], parameters);
     state.validation = checks.length ? { checks, ...api.checkShape(shape, checks, scope, run.candidateRevision) }
       : { passed: null, checks: [], results: [] };
+    run.validation = state.validation;
     const diagnostics = { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean) };
     if (args.commit === false) {
       journal.saveCandidate(run, state, api.saveShape(shape), inputs);
@@ -520,8 +541,8 @@ export class Store {
     if (state.validation.passed === false)
       throw Object.assign(localizedError("尺寸检查未通过，当前版本未被覆盖", "dimensional checks failed; saved revision retained"), { validation: state.validation });
     const finishedRun = { ...run, phase: "done", committedRevision: run.candidateRevision, updated: now() };
-    this.record(key, modelFile, state, api.saveShape(shape), args.summary, head, inputs, materials, {
-      actor: run.actor, selectModel: !args.preserveSelection, extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finishedRun)]]),
+    this.record(key, modelFile, state, api.saveShape(shape), args.summary, head, inputs, new Map([...materials, ...journal.archive(finishedRun)]), {
+      actor: run.actor, processRunId: run.id, selectModel: !args.preserveSelection, extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finishedRun)]]),
     });
     return { ...this.project(key, modelFile), committed: true, diagnostics };
   }
@@ -530,29 +551,41 @@ export class Store {
     const journal = new ProcessJournal(directory, args.modelFile);
     const candidate = journal.candidate(args.runId), { run, state, folder, inputs, materials } = candidate;
     const model = task.models[args.modelFile];
-    this.expect(model?.head || 0, args);
-    this.expect(run.baseRevision, args);
-    if (run.phase !== "preview") throw new Conflict();
-    const api = await this.kernel();
-    const checks = [...new Map([...(state.validation?.checks || []), ...(args.checks || [])]
-      .map(check => [JSON.stringify(check), check])).values()];
-    const shape = api.readShape(fs.readFileSync(join(folder, "model.smp")), "model.smp", state.parts, state.entities);
-    api.requireNames(shape);
-    state.validation = checks.length ? { checks, ...api.checkShape(
-      shape,
-      checks, api.modelScope(key, `${args.modelFile}@${run.id}`), run.candidateRevision,
-    ) } : { passed: null, checks: [], results: [] };
-    if (state.validation.passed === false)
-      throw Object.assign(localizedError("尺寸检查未通过，当前版本未被覆盖", "dimensional checks failed; saved revision retained"), { validation: state.validation });
-    state.preview = api.previewShape(shape);
-    const finished = { ...run, phase: "done", committedRevision: nextRevision(model), updated: now() };
-    this.record(key, args.modelFile, state, fs.readFileSync(join(folder, "model.smp")),
-      args.summary || run.summary, run.baseRevision, inputs, materials, {
-        actor: run.actor, selectModel: !args.preserveSelection,
-        extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finished)], [journal.index, jsonBytes({ id: run.id })]]),
-      });
-    return { ...this.project(key, args.modelFile), committed: true,
-      diagnostics: { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean) } };
+    let published = false;
+    try {
+      journal.finish(run, "validating");
+      atomicWrite(journal.index, jsonBytes({ id: run.id }));
+      this.expect(model?.head || 0, args);
+      this.expect(run.baseRevision, args);
+      const api = await this.kernel();
+      const checks = [...new Map([...(state.validation?.checks || []), ...(args.checks || [])]
+        .map(check => [JSON.stringify(check), check])).values()];
+      const shape = api.readShape(fs.readFileSync(join(folder, "model.smp")), "model.smp", state.parts, state.entities);
+      api.requireNames(shape);
+      state.validation = checks.length ? { checks, ...api.checkShape(
+        shape,
+        checks, api.modelScope(key, `${args.modelFile}@${run.id}`), run.candidateRevision,
+      ) } : { passed: null, checks: [], results: [] };
+      if (state.validation.passed === false)
+        throw Object.assign(localizedError("尺寸检查未通过，当前版本未被覆盖", "dimensional checks failed; saved revision retained"), { validation: state.validation });
+      state.preview = api.previewShape(shape);
+      const finished = { ...run, phase: "done", summary: args.summary || run.summary, validation: state.validation,
+        publicationError: undefined, publicationValidation: undefined, committedRevision: nextRevision(model), updated: now() };
+      this.record(key, args.modelFile, state, fs.readFileSync(join(folder, "model.smp")),
+        args.summary || run.summary, run.baseRevision, inputs, new Map([...materials, ...journal.archive(finished)]), {
+          actor: run.actor, processRunId: run.id, selectModel: !args.preserveSelection,
+          extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finished)], [journal.index, jsonBytes({ id: run.id })]]),
+        });
+      published = true;
+      return { ...this.project(key, args.modelFile), committed: true,
+        diagnostics: { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean) } };
+    } catch (error) {
+      if (!published) {
+        try { journal.finish(run, "preview", { publicationError: error.localized || String(error.message || error), publicationValidation: error.validation }); }
+        catch (storageError) { appendErrorDetail(error, "保存失败记录未能写入", "Could not record publication failure", `: ${storageError.message}`); }
+      }
+      throw error;
+    }
   }
   async setGeometryIdFormat(key, modelFile, head, args) {
     this.expect(head, args);
@@ -573,14 +606,25 @@ export class Store {
     // Preview regeneration may have refreshed the cache metadata.
     const state = this.snapshot(key, head, modelFile).state;
     state.geometryIds = geometryIds;
-    const materials = new Map([["operations.json", jsonBytes({ tool: "cad_set_geometry_id_format", inputRevision: head, geometryIds })]]);
-    const revision = this.record(key, modelFile, state, fs.readFileSync(join(saved.folder, "model.smp")),
-      args.summary, head, undefined, materials, {
-        selectModel: false,
-        writeWorkingFiles: false,
-        previewBytes: fs.readFileSync(path),
-      });
-    return { modelFile, head: revision, committed: true, geometryIds };
+    const materials = new Map([["operations.json", jsonBytes({ tool: "cad_set_geometry_id_format", inputModel: modelFile, inputRevision: head, geometryIds })]]);
+    const [directory, , task] = this.locate(key), journal = new ProcessJournal(directory, modelFile);
+    const run = journal.begin(modelFile, head, nextRevision(task.models[modelFile]), args.summary, geometryIds);
+    try {
+      const previewBytes = fs.readFileSync(path);
+      journal.saveMaterials(run, materials);
+      journal.capture(run, { ...state, preview: decodePreview(previewBytes) }, "", "result");
+      const finished = { ...run, phase: "done", committedRevision: run.candidateRevision, validation: state.validation, updated: now() };
+      const revision = this.record(key, modelFile, state, fs.readFileSync(join(saved.folder, "model.smp")),
+        args.summary, head, undefined, new Map([...materials, ...journal.archive(finished)]), {
+          processRunId: run.id, selectModel: false, writeWorkingFiles: false, previewBytes,
+          extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finished)]]),
+        });
+      return { modelFile, head: revision, committed: true, geometryIds };
+    } catch (error) {
+      try { journal.finish(run, "error", { error: error.localized || String(error.message || error) }); }
+      catch (storageError) { appendErrorDetail(error, "过程记录保存失败", "Process log save failed", `: ${storageError.message}`); }
+      throw error;
+    }
   }
   async export(key, args) {
     const saved = this.snapshot(key, args.revision, args.modelFile);
@@ -607,6 +651,12 @@ export class Store {
           if (!entry.isFile()) continue;
           const file = join(entry.parentPath, entry.name);
           archive[portable(relative(saved.folder, file))] = fs.readFileSync(file);
+        }
+        if (!archive["process/run.json"]) {
+          const journal = new ProcessJournal(root, state.modelFile);
+          const revision = task.models[state.modelFile].revisions.find(entry => entry.revision === state.revision);
+          const run = journal.committed(revision);
+          if (run) for (const [name, data] of journal.archive(run)) archive[name] = data;
         }
         bytes = Buffer.from(zipSync(archive));
         mediaType = "application/zip";
@@ -717,12 +767,17 @@ export class Store {
     if (method === "process_location") return { directory, modelFile };
     if (["process_state", "process_history", "checkpoint_file"].includes(method)) {
       const journal = new ProcessJournal(directory, modelFile);
-      if (method === "process_state") return journal.latest();
-      if (method === "process_history") return journal.runs().toReversed();
+      if (method === "process_state") return journal.describe(journal.latest());
+      if (method === "process_history") return journal.history(args.revision);
       if (method === "checkpoint_file") return journal.preview(args.runId, args.sequence);
     }
     if (method === "variants") return this.variants(key, { ...args, modelFile });
     if (method === "get") return this.project(key, modelFile);
+    if (method === "revision_state") {
+      const saved = this.snapshot(key, args.revision, modelFile);
+      if (!saved) throw localizedError("版本不存在", "Version not found");
+      return { ...saved.state, geometryScope: createHash("sha256").update(`${key}\0${modelFile}`).digest("hex").slice(0, 24) };
+    }
     if (method === "publish_panel") return this.publishPanel(key, { ...args, modelFile });
     if (method === "apply_panel") return this.applyPanel(key, { ...args, modelFile });
     if (method === "compare") {
@@ -907,6 +962,18 @@ export class Store {
       const branch = { ...structuredClone(task), id: id(), title: args.title || basename(target),
         sessions: args.sessionId ? [args.sessionId] : [], activeSessionId: args.sessionId || null,
         created: now(), updated: now() };
+      for (const [file, model] of Object.entries(branch.models)) {
+        const journal = new ProcessJournal(directory, file), runs = journal.runs();
+        for (const entry of model.revisions) {
+          const run = journal.committed(entry, runs);
+          if (!run) continue;
+          entry.processRunId = run.id;
+          for (const [name, bytes] of journal.archive(run)) {
+            const path = inside(target, `${entry.folder}/${name}`);
+            if (!changes.has(path)) changes.set(path, bytes);
+          }
+        }
+      }
       changes.set(this.designFile(target), jsonBytes(branch));
       changes.set(this.registry, jsonBytes({ version: 1, paths: [target, ...this.registered()] }));
       this.commit(changes);

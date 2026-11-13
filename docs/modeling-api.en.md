@@ -34,11 +34,13 @@ A changed format commits a revision immediately. The workbench and `cad_query` u
 
 Revision entries and process runs record the initiator in `actor`: `agent` for agent tool submissions, `user` for direct parameter-panel applications. Both use the same kernel. Older revisions derive their origin from `operations.json`; unavailable provenance returns `null` without blocking model recovery.
 
+Saved revisions bind to their execution through `processRunId`, never a provisional `candidateRevision`. A run's `baseRevision` is its publication parent; `inputModel` / `inputRevision` identify the actual input, which may differ for pinned panel baselines or builds based on another model. A revision's process shows its published execution. The current revision additionally lists its uncommitted trials, failures and stopped runs. Panel default validation is recorded separately from model steps. Dimensional results and publication failures persist with the run, including failures before the first checkpoint.
+
 `head` identifies the current revision. Use `cad_restore` to switch it. Each commit records the current revision as its `parent` and takes the next number across all saved revisions of that file. Save or import pending model changes before switching revisions.
 
 `cad_build`, `cad_edit` and `cad_import` retain direct commits by default. Set `commit: false` to save a candidate and process checkpoints without replacing the saved solid, metadata or revision. The result supplies `runId` and current `head`. Pass the same `modelFile`, `expectedRevision: head` and `runId` to query, measure and check that candidate. Candidate references belong to that candidate, not the saved model.
 
-Publish once with `cad_commit`, supplying `runId`, the original `expectedRevision`, `summary` and complete `checks`. Publication uses the exact candidate without rerunning model code. Candidates persist under `.cad-process/` across restarts; a changed saved revision or working model files requires another trial. Trial mode isolates CAD publication; it does not undo arbitrary filesystem writes made by custom JavaScript.
+Publish once with `cad_commit`, supplying `runId`, the original `expectedRevision`, `summary` and complete `checks`. Publication uses the exact candidate without rerunning model code. Candidates persist under `.cad-process/` across restarts; publication requires the original base revision and unchanged model working files and recorded inputs. Trial mode isolates CAD publication; it does not undo arbitrary filesystem writes made by custom JavaScript.
 
 All modeling commits accept `checks`; failed checks preserve the previous revision. `cad_commit` retains trial checks and adds new ones; an empty list cannot discard failed candidate checks. Correct a check definition by evaluating a new trial. Each check can include `name` and `basis` to record the dimension and its drawing view, annotation and units. Definitions and results persist with the revision and in ZIP `state.json`. `cad_check` is read-only, so supply the complete check list when publishing. A successful build without checks establishes valid geometry, not drawing compliance. Never change a drawing target to the measured value merely to pass a check.
 
@@ -55,6 +57,8 @@ function build(parameters, cad) {
   return plate;
 }
 ```
+
+Consecutive checkpoints with identical geometry and part metadata share one frame while retaining a later explicit stage label. Builds scoped with `part` replay the complete assembly, including its other parts.
 
 Use `cad_api` to inspect the kernel API and `cad.log(...)` or `console.log(...)` for diagnostics during actual modeling. Tool results include logs and checkpoint labels; failures include their phase, operation and source stack. Do not create dummy geometry or deliberately throw exceptions just to inspect the API or read logs.
 
@@ -305,6 +309,8 @@ Choose faces from the actual part and add checks for hole positions, dimensions 
 
 Publication evaluates initial values, requires passing checks and unchanged occupied volume, and creates no model revision. Failure retains any existing panel. When the user applies values, the service accepts only the panel ID, model, revision and field values, then executes the stored recipe without model inference. Every application reruns the panel's checks; failure retains the saved model. Success saves one revision with the panel and updated values. Unchanged values create no revision.
 
+A panel application's process records the fields changed relative to its parent and one final checkpoint. Internal operations that recompute the pinned baseline do not become user steps. Field names, old/new values, option labels and units persist with the run.
+
 The panel captures a separate exact baseline. Every application starts from that same baseline through `cad.current` or the operation input, and receives the complete set of desired values. Changes do not accumulate on the previous result. The new revision's parent remains the current revision before application. Panels belong to a particular model and revision; restoring a revision restores its panel, while later agent edits require a fresh panel. `cad_read_project` returns controls and values; source is not sent to the browser.
 
 Each revision's `panel.json` stores the definition, values and baseline reference information; `panel/model.smp` and `panel/state.json` hold the independent baseline. Full design copies and ZIP exports include these files. Importing only SMP and model metadata does not restore an interactive panel.
@@ -318,6 +324,7 @@ Revisions live under `.cad-history/<model path without .smp>/vNNNN/`. Only `mode
 | `model.smp` | Required: exact geometry, topology and colors |
 | `state.json` | Required: format version, units, part IDs/names and entity mapping, plus geometry summaries and checks for this revision |
 | `preview.bin` | Regenerable workbench mesh cache |
+| `process/run.json`, `process/*.bin` | Published execution and checkpoint previews for process replay |
 | `operations.json` | Tool call, input model/revision, kernel version, operations and checks; an audit record, never a geometry replay dependency |
 | `build/source.js` | Required archive of the actual source whenever this revision used cad_build |
 | `build/base.smp`, `build/base.state.json` | Archived input snapshot when building on an existing model; the operation record identifies the selected part |
@@ -328,5 +335,7 @@ Revisions live under `.cad-history/<model path without .smp>/vNNNN/`. Only `mode
 Working models are `<name>.smp` and `<name>.state.json`. `.cad-design.json` manages model lists, revision relationships and current pointers. ZIP exports contain the revision snapshot and its execution materials. Import the SMP as `file` and metadata as `metadataFile` to restore part identity without the original workspace. Checks record this revision's verification, not persistent constraints.
 
 Subsequent cad_edit calls never rewrite or copy earlier source. Explicit script execution creates a new candidate; use `cad.current` to edit the current exact geometry. Failed and uncommitted source, parameters and inputs remain in their `.cad-process/` run.
+
+Published process records are archived with their revision, so **Save as** and revision ZIP exports retain replay materials. For older revisions whose published process exists only in `.cad-process/`, copying or exporting adds those materials without rewriting the source design. Uncommitted trials are excluded from **Save as**.
 
 External SMB remains supported as a single-body exchange format.

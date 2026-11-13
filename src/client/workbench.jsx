@@ -377,7 +377,7 @@ export function Workbench({
           }
         }
         const step = state.progress?.steps.at(-1), current = projectRef.current;
-        if (state.running && step && current && state.progress.modelFile === current.modelFile && ["working", "validating"].includes(state.progress.phase)) {
+        if (state.running && step && current && state.progress.purpose !== "panel_validation" && state.progress.modelFile === current.modelFile && ["working", "validating"].includes(state.progress.phase)) {
           const key = `${state.progress.id}:${step.sequence}`;
           if (processKey.current !== key) {
             const previewData = await request("checkpoint", { projectId: selected, modelFile: current.modelFile, runId: state.progress.id, sequence: step.sequence }, loadController.current.signal);

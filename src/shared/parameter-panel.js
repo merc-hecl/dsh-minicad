@@ -48,3 +48,21 @@ export function panelView(panel, revision) {
   return panel ? { id: panel.id, revision, title: panel.title,
     fields: panel.fields.map(field => ({ ...field, value: panel.values[field.key] })) } : null;
 }
+
+export function panelChanges(panel, before, after) {
+  return panel.fields.filter(field => before[field.key] !== after[field.key]).map(field => ({
+    key: field.key, label: field.label, from: before[field.key], to: after[field.key],
+    ...(field.unit ? { unit: field.unit } : {}),
+    ...(field.options?.find(option => option.value === before[field.key]) ? { fromLabel: field.options.find(option => option.value === before[field.key]).label } : {}),
+    ...(field.options?.find(option => option.value === after[field.key]) ? { toLabel: field.options.find(option => option.value === after[field.key]).label } : {}),
+  }));
+}
+
+export function panelChangeSummary(changes, language) {
+  const lang = language === "zh" ? "zh" : "en";
+  const value = (raw, label, unit) => label ? label[lang]
+    : typeof raw === "boolean" ? (lang === "zh" ? raw ? "开" : "关" : raw ? "On" : "Off")
+      : `${raw}${unit ? ` ${unit}` : ""}`;
+  return changes.map(change => `${change.label[lang]}: ${value(change.from, change.fromLabel, change.unit)} → ${value(change.to, change.toLabel, change.unit)}`)
+    .join(lang === "zh" ? "；" : "; ");
+}

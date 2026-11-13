@@ -4,6 +4,7 @@ import { Button, StateDot, Tag, IconCloseOutlineRegular,
 import { ErrorDetails } from "./workbench-dialog.jsx";
 import { revisionPath } from "./revision-path.js";
 import { errorDetail } from "../shared/errors.js";
+import { panelChangeSummary } from "../shared/parameter-panel.js";
 
 export function ModelThumbnail({ entry, load }) {
   const mount = useRef(null), canvas = useRef(null);
@@ -43,7 +44,11 @@ export function ModelThumbnail({ entry, load }) {
 function FrameThumbnail({ entry, load, selected, onSelect }) {
   const mount = useRef(null);
   useEffect(() => {
-    if (selected) mount.current.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (!selected) return;
+    const item = mount.current, strip = item.closest(".mc-record-frames");
+    const rect = item.getBoundingClientRect(), bounds = strip.getBoundingClientRect();
+    if (rect.left < bounds.left) strip.scrollLeft += rect.left - bounds.left;
+    else if (rect.right > bounds.right) strip.scrollLeft += rect.right - bounds.right;
   }, [selected]);
   return <li ref={mount}>
     <Button className="mc-record-frame mc-panel" variant="ghost" aria-current={selected ? "step" : undefined}
@@ -62,6 +67,7 @@ export function RevisionRecord({ project, entry, runs, historyError, historyLoad
   const [loading, setLoading] = useState(true), [error, setError] = useState(null);
   const reel = useRef(null);
   const controller = useRef(new AbortController()), cache = useRef(new Map());
+  useEffect(() => { setScope(entry ? "version" : "process"); setSelectedRun(null); setSelectedStep(null); }, [entry?.revision]);
   useEffect(() => {
     const container = reel.current;
     const scrollRecords = event => {
@@ -81,21 +87,17 @@ export function RevisionRecord({ project, entry, runs, historyError, historyLoad
     revision: entry.revision, parent: entry.parent, created: entry.created, title: entry.summary || t("savedVersion"),
   }), [entry, project.head, t]);
   const canTimelapse = revisionPath(project.revisions, versionFocus?.revision ?? project.head).length > 1;
-  const processRuns = useMemo(() => runs.filter(run => {
-    if (!run.steps.length) return false;
-    if (run.committedRevision) return run.committedRevision === versionFocus?.revision;
-    // Trials leading to this revision share its target number and parent.
-    return (run.candidateRevision === versionFocus?.revision && run.baseRevision === (versionFocus?.parent ?? 0))
-      || (run.baseRevision === project.head && (!versionFocus || versionFocus.revision === project.head));
-  }).sort((a, b) => b.created - a.created), [runs, versionFocus, project.head]);
+  const processRuns = runs;
   const activeRun = processRuns.find(run => run.id === selectedRun)
     || processRuns.find(run => run.committedRevision === versionFocus?.revision) || processRuns[0];
-  const steps = useMemo(() => activeRun ? activeRun.steps.map(step => ({ key: `${activeRun.id}:${step.sequence}`,
-    label: `${t("checkpoint")} ${step.sequence}`, runId: activeRun.id, sequence: step.sequence,
-    metrics: step.metrics, geometryIds: activeRun.geometryIds, created: step.created,
-    title: step.label || (step.operation === "result" ? activeRun.summary : "") || t(step.operation || "modeling"),
-    baseRevision: activeRun.baseRevision })) : [], [activeRun, t]);
+  const steps = useMemo(() => activeRun ? activeRun.steps.map((step, index) => ({ key: `${activeRun.id}:${step.sequence}`,
+    label: `${t("checkpoint")} ${index + 1}`, runId: activeRun.id, sequence: step.sequence,
+    metrics: step.metrics, parts: step.parts, entities: step.entities, geometryIds: activeRun.geometryIds, created: step.created,
+    title: activeRun.purpose === "panel_apply" ? panelChangeSummary(activeRun.changes || [], language) || activeRun.summary
+      : step.label || (step.operation === "result" ? activeRun.summary : "") || t(step.operation || "modeling"),
+    baseRevision: activeRun.baseRevision, committedRevision: activeRun.committedRevision })) : [], [activeRun, t, language]);
   const focus = scope === "version" ? versionFocus : steps.find(entry => entry.key === selectedStep) || steps.at(-1);
+  const previewFocus = focus || versionFocus;
   const changeScope = value => {
     if (value === "process") {
       const related = processRuns.find(run => run.committedRevision === versionFocus?.revision);
@@ -104,37 +106,47 @@ export function RevisionRecord({ project, entry, runs, historyError, historyLoad
     setScope(value);
   };
   const index = steps.indexOf(focus);
-  const currentPreview = project.design?.previewData;
+  const currentDesign = project.design;
   const load = useCallback(async (entry) => {
-    if (entry.revision === project.head && currentPreview)
-      return { previewData: currentPreview, modelFile: project.modelFile, revision: entry.revision };
+    if (entry.revision === project.head && currentDesign?.previewData)
+      return { ...currentDesign, modelFile: project.modelFile, revision: entry.revision };
     let promise = cache.current.get(entry.key);
     if (!promise) {
-      promise = request(entry.runId ? "checkpoint" : "preview", {
+      const target = {
         projectId: project.id, modelFile: project.modelFile,
         ...(entry.runId ? { runId: entry.runId, sequence: entry.sequence } : { revision: entry.revision }),
-      }, controller.current.signal).then(previewData => ({ previewData, metrics: entry.metrics,
-        modelFile: project.modelFile, revision: entry.revision || entry.baseRevision, geometryIds: entry.geometryIds }));
+      };
+      promise = entry.runId ? request("checkpoint", target, controller.current.signal).then(previewData => ({ previewData,
+        metrics: entry.metrics, parts: entry.parts, entities: entry.entities, geometryIds: entry.geometryIds,
+        modelFile: project.modelFile, revision: entry.committedRevision ?? entry.baseRevision,
+        checkpoint: { runId: entry.runId, sequence: entry.sequence } }))
+        : Promise.all([request("preview", target, controller.current.signal), request("revision_state", target, controller.current.signal)])
+          .then(([previewData, state]) => ({ ...state, previewData }));
       cache.current.set(entry.key, promise);
       if (cache.current.size > 6) cache.current.delete(cache.current.keys().next().value);
       promise.catch(() => { if (cache.current.get(entry.key) === promise) cache.current.delete(entry.key); });
     }
     return promise;
-  }, [project.id, project.modelFile, project.head, currentPreview, request]);
+  }, [project.id, project.modelFile, project.head, currentDesign, request]);
   useEffect(() => {
-    if (!focus) { setLoading(false); setDesign(null); setError(null); return; }
+    if (!previewFocus) { setLoading(false); setDesign(null); setError(null); return; }
     let disposed = false;
     setLoading(true); setDesign(null); setError(null);
-    load(focus).then(value => { if (!disposed) setDesign(value); })
+    load(previewFocus).then(value => { if (!disposed) setDesign(value); })
       .catch(error => { if (!disposed && error.name !== "AbortError") setError(errorDetail(error)); })
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
-  }, [focus?.key, load]);
+  }, [previewFocus?.key, load]);
   const dateFormatter = new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
     month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
   });
   useEffect(() => { onPreview(design); }, [design, onPreview]);
-  const failure = error || (scope === "process" ? historyError : null);
+  const runFailure = activeRun?.publicationError || activeRun?.error;
+  const validation = activeRun?.publicationValidation || activeRun?.validation;
+  const failedChecks = validation?.passed === false;
+  const failure = error || (scope === "process" ? historyError || runFailure || (failedChecks ? t("processChecksFailed") : null) : null);
+  const failureDetail = !error && scope === "process" && failedChecks
+    ? JSON.stringify({ error: failure, validation }, null, 2) : failure;
   const pending = loading || (scope === "process" && !focus && historyLoading);
   return <section className="mc-revision-detail" aria-label={t("recordModel")}>
     <header className="mc-record-toolbar mc-panel">
@@ -158,7 +170,7 @@ export function RevisionRecord({ project, entry, runs, historyError, historyLoad
       {pending && !failure && <div className="mc-record-placeholder" role="status"><StateDot state="ongoing" />{t("loading")}</div>}
       {!focus && !pending && !failure && <div className="mc-record-placeholder">{t("noProcessSteps")}</div>}
       {failure && <div className="mc-record-error mc-panel" role="alert"><div className="mc-record-error-content mc-panel-scroll">
-        <span>{t("previewUnavailable")}</span><ErrorDetails detail={failure} t={t} />
+        <span>{t(scope === "process" && (runFailure || failedChecks) ? "processFailed" : "previewUnavailable")}</span><ErrorDetails detail={failureDetail} t={t} />
       </div></div>}
     </div>
     <footer ref={reel} className="mc-record-reel" data-scope={scope}>
@@ -175,8 +187,8 @@ export function RevisionRecord({ project, entry, runs, historyError, historyLoad
           {processRuns.map(run => <Button key={run.id} variant="ghost" size="sm" aria-pressed={run.id === activeRun?.id}
             title={`${run.summary || t("modeling")} · ${dateFormatter.format(run.created * 1000)}`}
             onClick={() => { setSelectedRun(run.id); setSelectedStep(null); }}>
-            <span className="mc-record-run-title">{run.summary || t("modeling")}</span>
-            <span className="mc-muted">{run.committedRevision ? `v${run.committedRevision}` : t(run.phase === "preview" ? "unsavedTrial" : `taskStatus.${run.phase}`)} · {dateFormatter.format(run.created * 1000)}</span>
+            <span className="mc-record-run-title">{run.purpose === "panel_apply" ? panelChangeSummary(run.changes || [], language) || run.summary : run.summary || t("modeling")}</span>
+            <span className="mc-muted">{run.committedRevision ? `v${run.committedRevision}` : t(run.publicationError ? "processPublishFailed" : run.validation?.passed === false ? "processChecksFailed" : run.phase === "preview" ? "unsavedTrial" : `taskStatus.${run.phase}`)} · {dateFormatter.format(run.created * 1000)}</span>
             <span className="mc-muted">{t("stepCount", { count: run.steps.length })}</span>
           </Button>)}
         </div>

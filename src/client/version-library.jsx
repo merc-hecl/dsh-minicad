@@ -28,26 +28,22 @@ function layoutRevisions(revisions) {
 
 export function VersionLibrary({ project, progress, request, language, disabled, initialRevision, onSelect, onClose, onPreview, onTimelapse, t }) {
   const [selected, setSelected] = useState(initialRevision ?? project.head);
-  const [runs, setRuns] = useState([]), [historyError, setHistoryError] = useState(null);
+  const [history, setHistory] = useState({ revision: null, runs: [] }), [historyError, setHistoryError] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(true);
-  // Revision details remount on selection; the map keeps its camera across those remounts.
+  // Keep the map camera while browsing version and process previews.
   const mapCamera = useRef(null);
   const { nodes, width, height } = useMemo(() => layoutRevisions(project.revisions), [project.revisions]);
   const entry = nodes.get(selected) || nodes.get(project.head);
+  const runs = history.revision === (entry?.revision ?? 0) ? history.runs : [];
   useEffect(() => {
     const controller = new AbortController();
     setHistoryError(null); setHistoryLoading(true);
-    request("process_history", { projectId: project.id, modelFile: project.modelFile }, controller.signal)
-      .then(data => { if (!controller.signal.aborted) setRuns(data); })
+    request("process_history", { projectId: project.id, modelFile: project.modelFile, revision: entry?.revision ?? 0 }, controller.signal)
+      .then(data => { if (!controller.signal.aborted) setHistory({ revision: entry?.revision ?? 0, runs: data }); })
       .catch(error => { if (!controller.signal.aborted) setHistoryError(errorDetail(error)); })
       .finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
     return () => controller.abort();
-  }, [project.id, project.modelFile, project.head, request]);
-  const allRuns = useMemo(() => {
-    const items = new Map(runs.map(run => [run.id, run]));
-    if (progress?.modelFile === project.modelFile) items.set(progress.id, progress);
-    return [...items.values()];
-  }, [runs, progress, project.modelFile]);
+  }, [project.id, project.modelFile, project.head, entry?.revision, progress?.id, progress?.phase, progress?.updated, request]);
   const renderVersions = load => <RevisionMap camera={mapCamera} nodes={nodes} width={width} height={height}
     cardWidth={nodeWidth} cardHeight={nodeHeight} selected={entry?.revision} current={project.head}
     onSelect={setSelected} onCurrent={() => setSelected(project.head)} t={t}>
@@ -80,7 +76,7 @@ export function VersionLibrary({ project, progress, request, language, disabled,
       </div>
   </RevisionMap>;
   return <section id="mc-version-library" className="mc-version-library" aria-label={t("versionLibrary")}>
-    <RevisionRecord key={entry?.revision || "unsaved"} project={project} entry={entry} runs={allRuns}
+    <RevisionRecord project={project} entry={entry} runs={runs}
       historyError={historyError} historyLoading={historyLoading}
       request={request} language={language} disabled={disabled} onSelect={onSelect} onClose={onClose}
       onPreview={onPreview} onTimelapse={onTimelapse} onCurrent={() => setSelected(project.head)} renderVersions={renderVersions} t={t} />

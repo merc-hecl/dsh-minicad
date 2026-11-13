@@ -40,6 +40,9 @@ test("direct panel adjustments preserve holes, use a fixed baseline across resta
     assert.equal(current.revisions.length, 1);
     assert.equal(current.revisions[0].actor, "agent");
     assert.equal((await worker.call("process_state", target)).actor, "agent");
+    assert.equal((await worker.call("process_state", target)).purpose, "panel_validation");
+    assert.equal((await worker.call("process_state", target)).phase, "done");
+    assert.equal((await worker.call("process_history", { ...target, revision: 1 })).length, 1);
     assert.equal(current.workingTreeChanged, false);
     const applied = await worker.call("apply_panel", { ...target, expectedRevision: 1, panelId, values: { thickness: 8 } });
     assert.equal(applied.head, 2);
@@ -55,6 +58,12 @@ test("direct panel adjustments preserve holes, use a fixed baseline across resta
     assert.equal((await worker.call("process_state", target)).actor, "user");
     near(second.design.metrics.volume, (40 * 30 - 2 * Math.PI * 2.5 ** 2) * 9);
     assert.equal(second.parameterPanel.fields[0].value, 9);
+    const process = await worker.call("process_history", { ...target, revision: 3 });
+    assert.equal(process.length, 1);
+    assert.equal(process[0].inputRevision, 1);
+    assert.equal(process[0].baseRevision, 2);
+    assert.equal(process[0].steps.length, 1);
+    assert.deepEqual(process[0].changes.map(({ key, from, to }) => ({ key, from, to })), [{ key: "thickness", from: 8, to: 9 }]);
     const holes = (await worker.call("query", { ...target, expectedRevision: 3, kind: "holes" })).items;
     assert.equal(holes.length, 2);
     for (const hole of holes) { near(hole.hole.diameter, 5); near(Math.abs(hole.hole.center[0]), 10); assert.equal(hole.hole.through, true); }
@@ -118,6 +127,11 @@ test("structured recipes resolve pinned geometry references and reject a mismatc
       panel: { ...definition, operations: [{ op: "translate", by: [20, 0, 0] }] } }), /初始值/);
     const current = await worker.call("get", target);
     assert.equal(current.parameterPanel.id, parameterPanel.id);
+    const failedValidation = await worker.call("process_state", target);
+    assert.equal(failedValidation.phase, "error");
+    assert.equal(failedValidation.purpose, "panel_validation");
+    assert.ok(failedValidation.error);
+    assert.equal((await worker.call("process_history", { ...target, revision: 1 })).length, 1);
     for (const [expectedRevision, offset] of [[1, 1], [2, 2]]) {
       const result = await worker.call("apply_panel", { ...target, expectedRevision, panelId: parameterPanel.id, values: { offset } });
       near(result.design.metrics.volume, 10 * 20 * (6 + offset));
@@ -155,5 +169,11 @@ test("choice, toggle and integer controls drive one checked assembly revision wh
     near(parts.find(part => part.id === "base").volume, 400);
     near(parts.find(part => part.id === "cover").volume, 480);
     assert.equal(parts.find(part => part.id === "cover").color, "#FF0000");
+    const recolored = await worker.call("apply_panel", { ...target, expectedRevision: 2, panelId: published.parameterPanel.id,
+      values: { layers: 2, wide: true, finish: "blue" } });
+    const process = (await worker.call("process_history", { ...target, revision: recolored.head }))[0];
+    assert.equal(process.steps.length, 1);
+    assert.equal(process.steps[0].parts.length, 2);
+    assert.deepEqual(process.changes.map(({ key, from, to }) => ({ key, from, to })), [{ key: "finish", from: "red", to: "blue" }]);
   } finally { await worker.dispose(); await rm(dataDir, { recursive: true, force: true }); }
 });

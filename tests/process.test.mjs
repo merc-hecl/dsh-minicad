@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdtemp, mkdir, rm, readFile } from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { createWorker } from "../src/host/worker.js";
 import { decodePreview } from "../src/shared/preview.js";
+import { unzipSync } from "fflate";
 
 test("real checkpoints stream before commit, persist on failure/cancel, and retain the saved head", { timeout: 90000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "minicad-process-"));
@@ -67,6 +68,78 @@ test("real checkpoints stream before commit, persist on failure/cancel, and reta
     await assert.rejects(worker.call("checkpoint_file", { ...args, runId: "../elsewhere", sequence: 1 }), /不存在/);
   } finally {
     await worker.dispose();
+    await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+  }
+});
+
+test("agent trials bind to the published run across conflicts, branches, failures, save-as and archive-only replay", { timeout: 120000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "minicad-process-bindings-"));
+  let worker = createWorker({ dataDir: root });
+  try {
+    const project = await worker.call("create"), target = { projectId: project.id, modelFile: "model.smp" };
+    await worker.call("edit", { ...target, expectedRevision: 0, operations: [{ op: "box", size: [10, 20, 30], name: "底座" }] });
+    const trials = [];
+    for (const x of [1, 2]) trials.push(await worker.call("edit", { ...target, expectedRevision: 1,
+      commit: false, summary: `平移 ${x}`, operations: [{ op: "translate", by: [x, 0, 0] }] }));
+    const bad = await worker.call("edit", { ...target, expectedRevision: 1, commit: false,
+      operations: [{ op: "translate", by: [3, 0, 0] }],
+      checks: [{ measurement: { kind: "size", axis: "x" }, expected: 11, tolerance: 1e-6 }] });
+    assert.equal(bad.validation.passed, false);
+    await assert.rejects(worker.call("commit", { ...target, expectedRevision: 1, runId: bad.runId }), /检查/);
+    const rejected = await worker.call("process_state", target);
+    assert.equal(rejected.id, bad.runId);
+    assert.equal(rejected.phase, "preview");
+    assert.equal(rejected.publicationValidation.passed, false);
+    assert.ok(rejected.publicationError);
+    const saved = await worker.call("commit", { ...target, expectedRevision: 1, runId: trials[1].runId, summary: "采用第二个方案" });
+    assert.equal(saved.head, 2);
+    const atTwo = await worker.call("process_history", { ...target, revision: 2 });
+    assert.deepEqual(atTwo.map(run => run.id), [trials[1].runId]);
+    assert.equal(atTwo[0].summary, "采用第二个方案");
+    await assert.rejects(worker.call("commit", { ...target, expectedRevision: 2, runId: trials[0].runId }), { status: 409 });
+    assert.ok((await worker.call("process_state", target)).publicationError);
+    assert.equal((await worker.call("get", target)).head, 2);
+    await worker.call("restore", { ...target, expectedRevision: 2, revision: 1 });
+    const branch = await worker.call("commit", { ...target, expectedRevision: 1, runId: trials[0].runId, summary: "从原版分支" });
+    assert.equal(branch.head, 3);
+    const atThree = await worker.call("process_history", { ...target, revision: 3 });
+    assert.equal(atThree.length, 1);
+    assert.equal(atThree[0].id, trials[0].runId);
+    assert.equal(atThree[0].candidateRevision, 2);
+    assert.equal(atThree[0].committedRevision, 3);
+    assert.equal(atThree[0].baseRevision, 1);
+    assert.equal(atThree[0].publicationError, undefined);
+    await assert.rejects(worker.call("build", { ...target, expectedRevision: 3,
+      source: "function build(){throw new Error('failure before first checkpoint');}" }), /before first/);
+    const failed = (await worker.call("process_history", { ...target, revision: 3 })).find(run => run.phase === "error");
+    assert.equal(failed.steps.length, 0);
+    assert.match(failed.error, /before first/);
+    assert.equal((await worker.call("get", target)).head, 3);
+
+    const copy = join(root, "saved-copy"); await mkdir(copy);
+    const fork = await worker.call("fork_project", { projectId: project.id, path: copy });
+    const forkTarget = { ...target, projectId: fork.id };
+    const copied = await worker.call("process_history", forkTarget);
+    assert.equal(copied.length, 3);
+    assert.ok(copied.every(run => run.phase === "done" && run.committedRevision));
+    assert.equal((await worker.call("checkpoint_file", { ...forkTarget, runId: trials[0].runId, sequence: 1 })).design.revision, 3);
+    const processDir = join(project.directory, ".cad-process");
+    assert.ok(resolve(processDir).startsWith(resolve(root) + sep));
+    await rm(processDir, { recursive: true });
+    await worker.dispose(); worker = createWorker({ dataDir: root });
+    assert.equal((await worker.call("process_history", target)).length, 3);
+    assert.equal((await worker.call("process_state", target)).committedRevision, 3);
+    const checkpoint = await worker.call("checkpoint_file", { ...target, runId: trials[0].runId, sequence: 1 });
+    assert.equal(checkpoint.design.revision, 3);
+    assert.ok(Math.abs(checkpoint.design.metrics.volume - 6000) < 1e-6);
+    assert.ok(decodePreview(await readFile(checkpoint.path)).positions.length);
+    const zip = await worker.call("export", { ...target, revision: 3, format: "zip" });
+    const archive = unzipSync(await readFile(zip.path));
+    assert.equal(JSON.parse(Buffer.from(archive["process/run.json"])).id, trials[0].runId);
+    assert.ok(decodePreview(archive["process/1.bin"]).positions.length);
+  } finally {
+    await worker.dispose();
+    assert.ok(resolve(root).startsWith(resolve(tmpdir()) + sep));
     await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
   }
 });

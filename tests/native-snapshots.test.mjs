@@ -59,6 +59,14 @@ test("SMP snapshots remain editable without code, parameters, resources or previ
   try { assert.ok(readback.isValid()); near(readback.volume, next.design.metrics.volume); near(readback.bbox().center.x, 10); }
   finally { readback.dispose(); }
 
+  const derivedTarget = { ...target, modelFile: "derived.smp" };
+  await worker.call("build", { ...derivedTarget, expectedRevision: 0, baseModelFile: "model.smp",
+    source: "function build(p,cad){return cad.current.translate(0,5,0);}" });
+  const derivedProcess = await worker.call("process_state", derivedTarget);
+  assert.equal(derivedProcess.baseRevision, 0);
+  assert.equal(derivedProcess.inputModel, "model.smp");
+  assert.equal(derivedProcess.inputRevision, 3);
+
   const other = await worker.call("create"), snapshot = join(directory, next.revisions[0].folder);
   await copyFile(join(snapshot, "model.smp"), join(other.directory, "input.smp"));
   await copyFile(join(snapshot, "state.json"), join(other.directory, "input.state.json"));
@@ -92,11 +100,26 @@ test("explicit builds edit the current SMP part; failed and conflicting trials r
   ] });
   await worker.call("edit", { ...target, expectedRevision: 1, operations: [{ op: "translate", part: "lid", by: [0, 0, 10] }] });
   const built = await worker.call("build", { ...target, expectedRevision: 2, part: "lid",
-    source: "function build(p,cad){return cad.current.cut(cad.Cylinder(2,40));}" });
+    source: `function build(p,cad){
+      const lid=cad.edit(cad.current,[{op:"cut",tool:{shape:"cylinder",radius:2,height:40}}]);
+      cad.checkpoint(lid,"盖板钻孔"); return lid;
+    }` });
   near(built.design.parts.find(p => p.id === "lid").center[2], 15);
   near(built.design.parts.find(p => p.id === "lid").volume, 2400 - 8 * Math.PI);
   assert.equal(built.design.parts.find(p => p.id === "lid").name, "盖板");
   near(built.design.parts.find(p => p.id === "base").volume, 9600);
+  const process = await worker.call("process_state", target);
+  assert.equal(process.steps.length, 1);
+  assert.equal(process.steps[0].label, "盖板钻孔");
+  assert.equal(process.steps[0].parts.length, 2);
+  const checkpoint = await worker.call("checkpoint_file", { ...target, runId: process.id, sequence: 1 });
+  near(checkpoint.design.parts.find(p => p.id === "base").volume, 9600);
+  near(checkpoint.design.metrics.volume, built.design.metrics.volume);
+  const historical = await worker.call("revision_state", { ...target, revision: 1 });
+  near(historical.parts.find(p => p.id === "lid").center[2], 5);
+  assert.equal(historical.revision, 1);
+  assert.equal(historical.entities[0].name, "底座");
+  assert.equal((await worker.call("get", target)).head, 3);
   const materials = join(project.directory, built.revisions[0].folder, "build");
   const base = cad.fromSmp(await readFile(join(materials, "base.smp")));
   try { assert.equal(base.length, 2); near(base[1].volume, 2400); near(base[1].bbox().center.z, 15); }

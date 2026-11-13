@@ -233,6 +233,12 @@ test("numbering changes commit a restorable revision without rebuilding the mode
   const changed = await setFormats(1, { faceFormat: "Face-{n:3}", edgeFormat: "Edge-{n:3}" });
   assert.equal(changed.head, 2);
   assert.equal(changed.committed, true);
+  const process = await worker.call("process_history", { ...args, revision: 2 });
+  assert.equal(process.length, 1);
+  assert.equal(process[0].committedRevision, 2);
+  assert.equal(process[0].summary, "Change face and edge numbering");
+  const frame = await worker.call("checkpoint_file", { ...args, runId: process[0].id, sequence: 1 });
+  assert.equal(frame.design.geometryIds.faceFormat, "Face-{n:3}");
   assert.equal(await readFile(workingFile, "utf8"), draft);
   assert.equal((await query(2, "faces"))[0].displayId, "Face-001");
   assert.equal((await query(2, "edges"))[9].displayId, "Edge-010");

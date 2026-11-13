@@ -11,6 +11,7 @@ import { ProcessJournal } from "../kernel/process.js";
 const localMethods = new Set([
   "list",
   "get",
+  "revision_state",
   "preview_file",
   "create",
   "by_session",
@@ -184,8 +185,8 @@ export function createWorker({
   }
   function call(method, params = {}, signal) {
     const journal = activeJournal(params);
-    if (journal && method === "process_state") return Promise.resolve(journal.latest());
-    if (journal && method === "process_history") return Promise.resolve(journal.runs().toReversed());
+    if (journal && method === "process_state") return Promise.resolve(journal.describe(journal.latest()));
+    if (journal && method === "process_history") return Promise.resolve(journal.history(params.revision));
     if (journal && method === "checkpoint_file") return Promise.resolve(journal.preview(params.runId, params.sequence));
     const run = async () => {
       if (stopped) throw localizedError("MiniCAD 已关闭", "MiniCAD is closed");
@@ -230,8 +231,11 @@ export function createWorker({
         }
       } catch (error) {
         const run = modeling?.journal.latest();
-        if (constructs && run && ["working", "validating"].includes(run.phase))
-          modeling.journal.finish(run, signal?.aborted ? "stopped" : "error", { error: error.message });
+        if (constructs && run && ["working", "validating"].includes(run.phase)) {
+          const detail = error.localized || error.message;
+          if (method === "commit") modeling.journal.finish(run, "preview", { publicationError: detail });
+          else modeling.journal.finish(run, signal?.aborted ? "stopped" : "error", { error: detail });
+        }
         throw error;
       } finally {
         if (constructs) modeling = undefined;
@@ -243,7 +247,7 @@ export function createWorker({
   }
   return {
     call,
-    processState: (params) => activeJournal(params)?.latest() || null,
+    processState: (params) => { const journal = activeJournal(params); return journal ? journal.describe(journal.latest()) : null; },
     dispose: () => {
       stopped = true;
       return stop(current);

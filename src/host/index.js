@@ -30,7 +30,7 @@ const clientMethods = new Set([
   "process_state", "process_history",
   "geometry_annotation", "query", "measure", "compare",
   "list",
-  "get", "select_model",
+  "get", "revision_state", "select_model",
   "rename",
   "attach",
   "reference_file",
