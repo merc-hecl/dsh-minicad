@@ -25,6 +25,7 @@ import { encodePreview, previewInfo, PREVIEW_VERSION } from "../shared/preview.j
 import { ProcessJournal } from "./process.js";
 import { readApi } from "./api.js";
 import { format, isDeepStrictEqual } from "node:util";
+import { definePanel, panelValues, panelView } from "../shared/parameter-panel.js";
 const kernel = () => import("./model.js");
 const now = () => Date.now() / 1000;
 const id = () => randomUUID().replaceAll("-", "");
@@ -39,6 +40,15 @@ const cleanName = (name) =>
     .slice(0, 100) || "design";
 const equalBytes = (a, b) =>
   a === null ? b === null : b !== null && a.equals(b);
+function revisionActor(root, entry) {
+  if (entry.actor) return entry.actor;
+  // Execution materials are optional; unavailable provenance must not block exact snapshot recovery.
+  try {
+    const { tool } = readJson(join(inside(root, entry.folder), "operations.json"));
+    return tool === "cad_apply_panel" ? "user"
+      : ["cad_build", "cad_edit", "cad_import", "cad_set_geometry_id_format"].includes(tool) ? "agent" : null;
+  } catch { return null; }
+}
 export class KernelRequired extends Error {
   constructor() {
     super("此操作需要独立建模进程 / isolated kernel process required");
@@ -234,9 +244,11 @@ export class Store {
       state.geometryScope = createHash("sha256").update(`${key}\0${task.modelFile}`).digest("hex").slice(0, 24);
     }
     result.design = state;
+    const panelFile = saved && join(saved.folder, "panel.json");
+    result.parameterPanel = panelFile && fs.existsSync(panelFile) ? panelView(readJson(panelFile), result.head) : null;
     result.revisions = [
       ...(task.models[task.modelFile]?.revisions || []),
-    ].sort((a, b) => b.revision - a.revision);
+    ].map(entry => ({ ...entry, actor: revisionActor(directory, entry) })).sort((a, b) => b.revision - a.revision);
     result.attachments = (task.attachments || []).map(
       ({ path, ...entry }) => entry,
     );
@@ -277,6 +289,7 @@ export class Store {
       extraFiles = new Map(),
       writeWorkingFiles = true,
       previewBytes,
+      actor = "agent",
     } = {},
   ) {
     const [root, data, task] = this.locate(key),
@@ -300,6 +313,7 @@ export class Store {
     model.updated = time;
     model.revisions.push({
       revision,
+      actor,
       parent: expected || null,
       folder: portable(relative(directory, folder)),
       summary: String(summary || "更新设计").slice(0, 200),
@@ -335,7 +349,68 @@ export class Store {
     this.commit(changes);
     return revision;
   }
-  async build(key, args, edit = false) {
+  async publishPanel(key, args) {
+    const project = this.project(key, args.modelFile);
+    this.expect(project.head, args);
+    if (project.workingTreeChanged) throw new Conflict();
+    const saved = this.snapshot(key, project.head, project.modelFile);
+    if (!saved) throw localizedError("请先完成建模", "Build a model first");
+    const definition = definePanel(args.panel);
+    const names = ["panel.json", "panel/model.smp", "panel/state.json"];
+    if (!definition) {
+      this.commit(new Map(names.map(name => [join(saved.folder, name), null])));
+      return { modelFile: project.modelFile, head: project.head, parameterPanel: null };
+    }
+    const panel = { ...definition, id: id(), baseRevision: project.head,
+      baseScope: (await this.kernel()).modelScope(key, project.modelFile) };
+    const materials = new Map([
+      ["panel.json", jsonBytes(panel)],
+      ["panel/model.smp", fs.readFileSync(join(saved.folder, "model.smp"))],
+      ["panel/state.json", jsonBytes(saved.state)],
+    ]);
+    const trial = await this.build(key, { modelFile: project.modelFile, expectedRevision: project.head,
+      ...this.panelRecipe(panel), parameters: panel.values, commit: false, summary: panel.title.zh },
+      Boolean(panel.operations), { base: saved, scope: panel.baseScope, materials });
+    const api = await this.kernel();
+    const candidate = new ProcessJournal(project.directory, project.modelFile).candidate(trial.runId);
+    const original = await this.shape(saved), result = await this.shape(candidate);
+    try {
+      api.requireNames(result);
+      const difference = api.compareShapes(original, result);
+      const tolerance = Math.max(1, saved.state.metrics.volume) * 1e-8;
+      if (trial.validation.passed === false || [difference.added, difference.removed].some(region => region && region.metrics.volume > tolerance))
+        throw Object.assign(localizedError("面板初始值未保持当前模型或尺寸检查失败", "Panel defaults must preserve the current model and pass dimensional checks"), { validation: trial.validation });
+    } finally { original.dispose(); result.dispose(); }
+    const current = this.project(key, project.modelFile);
+    this.expect(current.head, args);
+    if (current.workingTreeChanged) throw new Conflict();
+    this.commit(new Map([...materials].map(([name, bytes]) => [join(saved.folder, name), bytes])));
+    return { modelFile: project.modelFile, head: project.head, parameterPanel: panelView(panel, project.head) };
+  }
+  panelRecipe(panel) {
+    return { operations: panel.operations, source: panel.source, part: panel.part, checks: panel.checks };
+  }
+  async applyPanel(key, args) {
+    const project = this.project(key, args.modelFile);
+    this.expect(project.head, args);
+    const saved = this.snapshot(key, project.head, project.modelFile);
+    const panelFile = saved && join(saved.folder, "panel.json");
+    const panel = panelFile && fs.existsSync(panelFile) ? readJson(panelFile) : null;
+    if (!panel || panel.id !== args.panelId) throw new Conflict("参数面板已更新", "The parameter panel has changed");
+    const values = panelValues(panel, args.values);
+    if (project.workingTreeChanged) throw new Conflict();
+    if (isDeepStrictEqual(values, panel.values)) return { ...project, committed: false };
+    const materials = new Map([
+      ["panel.json", jsonBytes({ ...panel, values })],
+      ...["model.smp", "state.json"].map(name => [`panel/${name}`, fs.readFileSync(join(saved.folder, "panel", name))]),
+    ]);
+    const base = { folder: join(saved.folder, "panel"), state: readJson(join(saved.folder, "panel/state.json")) };
+    const language = args.language === "en" ? "en" : "zh";
+    return this.build(key, { modelFile: project.modelFile, expectedRevision: project.head,
+      ...this.panelRecipe(panel), parameters: values, summary: panel.title[language],
+      preserveSelection: true }, Boolean(panel.operations), { base, scope: panel.baseScope, materials, panelId: panel.id });
+  }
+  async build(key, args, edit = false, panelExecution) {
     const [root, , task] = this.locate(key);
     const directory = root;
     const modelFile = portable(relative(directory, modelPath(directory, args.modelFile || task.modelFile)));
@@ -343,9 +418,10 @@ export class Store {
     this.expect(head, args);
     const saved = this.snapshot(key, undefined, modelFile);
     const journal = new ProcessJournal(directory, modelFile);
-    const run = journal.begin(modelFile, head, nextRevision(task.models[modelFile]), args.summary, saved ? saved.state.geometryIds : defaultIdFormats);
+    const run = journal.begin(modelFile, head, nextRevision(task.models[modelFile]), args.summary, saved ? saved.state.geometryIds : defaultIdFormats,
+      panelExecution?.panelId ? "user" : "agent");
     try {
-      const result = await this.executeBuild(key, args, edit, journal, run, saved);
+      const result = await this.executeBuild(key, args, edit, journal, run, saved, panelExecution);
       return result;
     } catch (error) {
       error.phase ||= run.phase;
@@ -358,7 +434,7 @@ export class Store {
       throw error;
     }
   }
-  async executeBuild(key, args, edit, journal, run, saved) {
+  async executeBuild(key, args, edit, journal, run, saved, panelExecution) {
     const [directory, , task] = this.locate(key);
     const modelFile = portable(relative(directory, modelPath(directory, args.modelFile || task.modelFile)));
     const head = task.models[modelFile]?.head || 0;
@@ -370,10 +446,11 @@ export class Store {
     if (!parameters || typeof parameters !== "object" || Array.isArray(parameters))
       throw localizedError("parameters 必须是 JSON 对象", "parameters must be a JSON object");
     jsonBytes(parameters);
-    const base = args.baseModelFile ? this.snapshot(key, args.baseRevision, args.baseModelFile) : saved;
-    const resources = {}, materials = new Map();
-    const operation = { tool: args.file ? "cad_import" : edit ? "cad_edit" : "cad_build", kernel: api.kernelName,
+    const base = panelExecution?.base || (args.baseModelFile ? this.snapshot(key, args.baseRevision, args.baseModelFile) : saved);
+    const resources = {}, materials = new Map(panelExecution?.materials);
+    const operation = { tool: panelExecution?.panelId ? "cad_apply_panel" : args.file ? "cad_import" : edit ? "cad_edit" : "cad_build", kernel: api.kernelName,
       inputModel: args.baseModelFile || modelFile, inputRevision: base?.state.revision || 0,
+      ...(panelExecution?.panelId ? { panelId: panelExecution.panelId, parameters } : {}),
       ...(args.part ? { part: args.part } : {}),
       ...(edit ? { operations: args.operations, ...(args.parameters !== undefined ? { parameters } : {}) } : {}),
       ...(args.file ? { file: args.file, ...(args.metadataFile ? { metadataFile: args.metadataFile } : {}) } : {}),
@@ -417,7 +494,7 @@ export class Store {
       if (metadata?.geometryIds) run.geometryIds = metadata.geometryIds;
     } else if (edit) {
       const operations = api.normalizeOperations(api.values(args.operations, parameters), shape,
-        base?.state.revision || 0, api.modelScope(key, args.baseModelFile || modelFile));
+        base?.state.revision || 0, panelExecution?.scope || api.modelScope(key, args.baseModelFile || modelFile));
       shape = api.editShape(shape, operations, {}, {
         readModel: name => api.readModel(directory, name, resources, resourceRead), checkpoint,
       });
@@ -444,7 +521,7 @@ export class Store {
       throw Object.assign(localizedError("尺寸检查未通过，当前版本未被覆盖", "dimensional checks failed; saved revision retained"), { validation: state.validation });
     const finishedRun = { ...run, phase: "done", committedRevision: run.candidateRevision, updated: now() };
     this.record(key, modelFile, state, api.saveShape(shape), args.summary, head, inputs, materials, {
-      selectModel: !args.preserveSelection, extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finishedRun)]]),
+      actor: run.actor, selectModel: !args.preserveSelection, extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finishedRun)]]),
     });
     return { ...this.project(key, modelFile), committed: true, diagnostics };
   }
@@ -471,7 +548,7 @@ export class Store {
     const finished = { ...run, phase: "done", committedRevision: nextRevision(model), updated: now() };
     this.record(key, args.modelFile, state, fs.readFileSync(join(folder, "model.smp")),
       args.summary || run.summary, run.baseRevision, inputs, materials, {
-        selectModel: !args.preserveSelection,
+        actor: run.actor, selectModel: !args.preserveSelection,
         extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finished)], [journal.index, jsonBytes({ id: run.id })]]),
       });
     return { ...this.project(key, args.modelFile), committed: true,
@@ -646,6 +723,8 @@ export class Store {
     }
     if (method === "variants") return this.variants(key, { ...args, modelFile });
     if (method === "get") return this.project(key, modelFile);
+    if (method === "publish_panel") return this.publishPanel(key, { ...args, modelFile });
+    if (method === "apply_panel") return this.applyPanel(key, { ...args, modelFile });
     if (method === "compare") {
       const base = this.snapshot(key, args.baseRevision, modelFile);
       const target = this.snapshot(key, args.targetRevision, modelFile);

@@ -12,6 +12,8 @@ import {
   validate,
 } from "../shared/cad-schema.js";
 import { apiTopics } from "../kernel/api.js";
+import { parameterPanelSchema } from "../shared/parameter-panel.js";
+import { randomUUID } from "node:crypto";
 export const inject = ["tools", "minicad", "systemPrompt"];
 const parameters = { type: "object", additionalProperties: true };
 const summary = { ...string, description: "A concise, meaningful title for this modeling change in the user's language. Visible for trials and saved changes. Describe the change, such as 'Create the plate outline and hole pattern'; keep full dimensions in source, parameters and checks. Avoid placeholder names such as probe, probe2, test or debug." };
@@ -21,6 +23,17 @@ const buildOptions = { commit: { type: "boolean", default: true }, checks: check
 const idFormat = { ...string, description: "Exactly one numbering placeholder: {n}, or {n:1} to {n:9} for a minimum zero-padded width. Example: Face-{n:3} gives Face-001." };
 
 export function apply(ctx) {
+  const pendingPanels = new Map(), remindedPanels = new Set();
+  // Verified against installed dsh 0.2.0-rc.2: a stop-boundary steer continues this agent's turn.
+  ctx.on("agent/turn-stopping", ({ agent, signal }) => {
+    if (signal.aborted) return;
+    const pending = [...pendingPanels].filter(([file, head]) => !remindedPanels.has(`${file}:${head}`));
+    if (!pending.length) return;
+    pending.forEach(([file, head]) => remindedPanels.add(`${file}:${head}`));
+    const text = `Saved models still need a version-bound parameter panel: ${JSON.stringify(pending)}. Use cad_publish_panel before finishing. Infer a small set of likely next edits from the current exact geometry, the current branch's history and the user's recent and earlier requirements. Define a directly executable recipe and dimensional checks, or publish fields:[] when no reliable adjustments are useful. Do not change geometry just to create controls.`;
+    agent.steer({ id: randomUUID(), role: "user", source: { kind: "minicad", form: "snapshot", sections: [{ name: "minicad", text }] },
+      content: [{ type: "text", text }] });
+  });
   ctx.systemPrompt.section({
     name: "minicad",
     order: 100,
@@ -45,6 +58,10 @@ Every final solid MUST have a meaningful name describing its purpose, in the use
 Verify the requested properties, not just whether a solid builds. Choose measurements that match the dimension's meaning and attach requirement-based checks to the published change. cad_check is read-only: pass the reviewed checks to build/edit/commit to record them. When results disagree, revisit the evidence, measurement and geometry; keep the requirement intact. Preserve the saved model while resolving failed trials.
 
 Checks record this change only; they do not create persistent constraints. Follow the latest user requirements.
+
+After saving a model version, publish a small, relevant parameter panel with cad_publish_panel before finishing. Consider the actual shape, the current version's parent chain, recent changes and the user's latest and earlier requirements. Read relevant archived operations when needed; do not mix unrelated branches or revive superseded requirements. Favor useful likely next edits, not every available dimension. Keep fixed requirements in recipe checks rather than exposing them as suggested changes. Publish fields:[] if no reliable controls are useful.
+
+Panel controls execute directly in the kernel, without another model request. Supply either operations using {parameter:"key"}, or a self-contained build(parameters,cad) source for linked dimensions, deltas, choices and toggles. The recipe always starts from the exact snapshot captured when published; cad.current is that fixed baseline, never a previous panel result. Use initial field values measured from the current model; they must reproduce the same geometry. Preserve independent parts, names, colors and prior unrelated edits. For an absolute thickness on a 6 mm baseline, apply only parameters.thickness - 6 to the correct face; do not apply the full thickness as an offset. Include dimensional checks for exposed dimensions and requirements that must remain fixed; checks run on every application. Ranges must be justified by geometry or requirements, not guessed engineering limits. Numeric step is an input increment, not proof that all values in the range work. All generated titles, labels, option labels and group labels need zh and en; keep user-provided parameter names in their original form. No teaching or explanatory UI copy. User applications retain the panel and save one new version; later agent edits require a fresh panel.
 
 Reply in the user's language with the saved revision, what changed, what was checked and what remains uncertain. Let the user inspect the model in the workbench. Export only on request; include model, source or export links only when explicitly requested.
 `,
@@ -123,13 +140,24 @@ Reply in the user's language with the saved revision, what changed, what was che
       },
       signal,
     );
+    if (["build", "import", "edit", "commit", "set_geometry_id_format"].includes(method) && result.committed)
+      pendingPanels.set(result.modelFile, result.head);
+    if (method === "publish_panel" && pendingPanels.get(result.modelFile) === result.head)
+      pendingPanels.delete(result.modelFile);
+    if (method === "variants") for (const item of result.items) pendingPanels.set(item.modelFile, item.revision);
     if (!["build", "import", "edit", "commit"].includes(method) || !result.committed) return result;
     return { modelFile: result.modelFile, head: result.head, committed: true,
       metrics: result.design.metrics, validation: result.design.validation,
       ...(result.design.parts === undefined ? {} : { parts: result.design.parts }),
       diagnostics: result.diagnostics,
-      note: "Only the listed checks are verified; valid geometry does not establish full drawing compliance." };
+      note: "Only the listed checks are verified; valid geometry does not establish full drawing compliance. Publish a version-bound parameter panel with cad_publish_panel before finishing." };
   };
+  register(
+    "cad_publish_panel",
+    "Publish up to eight likely next adjustments for this exact saved version. Provide bilingual title/labels, measured initial values, optional groups/ranges/units, and exactly one recipe: operations with parameter references OR self-contained build(parameters,cad) source. The recipe executes directly on a pinned baseline whenever the user applies values; cad.current always means that baseline. Include checks for adjusted dimensions and fixed requirements. Publishing evaluates defaults, requires unchanged geometry and passing checks, and creates no model revision. fields:[] explicitly clears/omits a panel. Numeric fields use type:number or integer; choice has labeled options; toggle is boolean. Later agent edits invalidate the old panel. Read the modeling API documentation for a complete example.",
+    schema({ ...target, panel: parameterPanelSchema }, ["modelFile", "expectedRevision", "panel"]),
+    call("publish_panel"),
+  );
   register(
     "cad_build",
     "Use when cad_edit lacks a needed geometry or operation, or a specialized algorithm offers a clear reliability or efficiency advantage. Prefer cad_edit when its existing operations express the result clearly and reliably. Source is a plain JavaScript function build(parameters,cad) {...}, without import/export. Use cad.Location, cad.Box, etc.; SMLib names are not globals. cad_api(topic:minicad) documents plugin helpers. cad.current is the saved exact model (null for a new model), or the selected assembly part when part is provided. Return the complete valid Part or assembly for that scope. Preserve independent part IDs and name every final solid. Give the run a meaningful summary; use cad.checkpoint(part,label) for meaningful intermediate modeling stages. Source and inputs are archived for this execution; later edits do not replay them. Declare additional filesystem inputs in inputs; cad.readModel reads and archives exact resources. commit:false evaluates without publishing.",

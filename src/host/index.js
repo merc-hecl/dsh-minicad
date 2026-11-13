@@ -35,6 +35,7 @@ const clientMethods = new Set([
   "attach",
   "reference_file",
   "restore",
+  "apply_panel",
   "health",
   "open_design",
   "close_design",
@@ -52,7 +53,7 @@ export async function apply(ctx, config = {}) {
     measurements = new Map();
   let disposed = false;
   const call = async (method, args, signal) => {
-    if (!["build", "import", "edit", "restore", "commit", "variants", "set_geometry_id_format"].includes(method)) return worker.call(method, args, signal);
+    if (!["build", "import", "edit", "restore", "commit", "variants", "set_geometry_id_format", "publish_panel", "apply_panel"].includes(method)) return worker.call(method, args, signal);
     if (active.has(args.projectId))
       throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
     const controller = new AbortController();
@@ -61,7 +62,8 @@ export async function apply(ctx, config = {}) {
     signal?.addEventListener("abort", abort, { once: true });
     active.set(args.projectId, controller);
     try {
-      building.set(args.projectId, await worker.call("get", { projectId: args.projectId }, controller.signal));
+      building.set(args.projectId, { ...await worker.call("get", { projectId: args.projectId }, controller.signal),
+        operationActor: method === "apply_panel" ? "user" : "agent" });
       return await worker.call(method, args, controller.signal);
     } finally {
       active.delete(args.projectId);
@@ -239,6 +241,8 @@ export async function apply(ctx, config = {}) {
         head: p.head,
         models: p.models,
         modelVersion: p.modelVersion,
+        parameterPanelId: p.parameterPanel?.id || null,
+        operationActor: inFlight?.operationActor || (sessionRunning(p) ? "agent" : null),
         workspaceDirectory: p.workspaceDirectory,
         modelFile: p.modelFile,
         title: p.title,
@@ -264,7 +268,7 @@ export async function apply(ctx, config = {}) {
     }
     if (!clientMethods.has(method))
       throw Object.assign(localizedError("不支持的操作", "Unsupported operation"), { status: 404 });
-    if (method === "restore" || method === "select_model") {
+    if (method === "restore" || method === "select_model" || method === "apply_panel") {
       const project = building.get(args.projectId) || await call("get", { projectId: args.projectId }, signal);
       if (designBusy(project)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
     }

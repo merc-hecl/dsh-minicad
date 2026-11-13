@@ -10,6 +10,7 @@
 | `cad_build` | 执行本次显式提供的源码；通过 `cad.current` 访问当前精确实体 |
 | `cad_import` | 将精确模型文件导入为新快照；可提供 `metadataFile` 恢复零件身份与名称 |
 | `cad_edit` | 从空模型创建或直接增量修改当前实体，顺序执行 1～100 个现成操作，成功后只提交一个版本 |
+| `cad_publish_panel` | 为当前已保存版本发布动态参数面板；定义直接执行的操作或脚本及检查，发布本身不创建版本 |
 | `cad_query` | 查询面、边、实体、圆柱孔段或顶点坐标；边含端点和可选沿边取点，孔段含轴线与贯穿性；可查询试算候选 |
 | `cad_set_geometry_id_format` | 修改面和边的显示编号格式，保存为一个新版本 |
 | `cad_commit` | 原子保存已试算的候选，检查版本与工作文件未变化，并运行随附尺寸检查 |
@@ -30,6 +31,8 @@
 格式实际变化时直接提交一个新版本，工作台和 `cad_query` 的 `displayId` 都使用该格式。后续建模继承当前版本的格式，恢复历史版本时也恢复其格式。查询、测量和编辑仍使用各自版本的完整 `id` 引用。
 
 ### 试算、检查与发布
+
+版本条目和制作过程的 `actor` 记录操作发起者：`agent` 表示 agent 工具提交，`user` 表示用户直接应用参数面板。实体仍由同一内核执行。旧版本从 `operations.json` 识别来源；缺少可追溯材料时返回 `null`，不影响模型恢复。
 
 `head` 是当前版本，可用 `cad_restore` 切换。每次提交把当前版本记录为 `parent`，编号在该文件的所有已保存版本中递增。切换版本前，先保存或导入模型工作文件的改动。
 
@@ -267,6 +270,43 @@ function build(p, cad) {
 ```
 
 一次 1～20 个规格，每个规格可附带本次 `parameters` 和 `checks`，不会继承旧版检查。所有规格先试算和检查，再逐个保存与导出；保存或导出失败会报告已保存的规格，各输出独立，不自动跟随原模型变化。
+
+## 动态参数面板
+
+保存版本后，用 `cad_publish_panel` 发布少量与当前需求相关、能可靠执行的后续调整。综合当前几何、当前版本的父链、最近和更早的用户要求；不要混入其他分支或已被替代的要求。固定要求写进检查，不当作建议调整项。没有合适项目时发布 `fields: []`，明确结束本版的面板生成。
+
+面板由双语 `title`、最多八个 `fields`、一种执行方式，以及必需的 `checks` 组成。字段有稳定的 `key`、双语 `label`、初始 `value`，可选双语 `group`：
+
+| `type` | 其他字段 |
+| --- | --- |
+| `number` / `integer` | 可选 `min`、`max`、`step`、`unit`；初值必须是当前模型的真实数值 |
+| `choice` | `options: [{ value, label: { zh, en } }]`，2～8 个字符串或数值选项 |
+| `toggle` | 布尔 `value` |
+
+执行方式二选一：`operations` 使用与 `cad_edit` 相同的操作和 `{ parameter: "key" }`；或 `source` 显式定义 `build(parameters,cad)`，适合联动、差值、选项和开关。`part` 仅用于脚本选择装配体成员，操作模式在每个操作中指定 `part`。脚本必须自包含，以捕获的实体为输入，不依赖会变化的外部文件。标题、字段、分组和选项标签均提供 `zh`、`en`；用户给出的参数名称保持原文，不生成说明性 UI 文案。
+
+例如，当前底板厚 6 mm，沿顶部面调整总厚度：
+
+```json
+{
+  "modelFile": "model.smp",
+  "expectedRevision": 3,
+  "panel": {
+    "title": { "zh": "底板厚度", "en": "Plate thickness" },
+    "fields": [{ "key": "thickness", "type": "number", "label": { "zh": "厚度", "en": "Thickness" }, "value": 6, "unit": "mm" }],
+    "source": "function build(p,cad) { if(p.thickness===6) return cad.current; return cad.edit(cad.current,[{op:'offset_faces',faces:{position:'top',one:true},distance:p.thickness-6}]); }",
+    "checks": [{ "measurement": { "kind": "size", "axis": "z" }, "expected": { "parameter": "thickness" }, "tolerance": 0.000001 }]
+  }
+}
+```
+
+面板必须针对实际零件选择正确的面，并附带需要保留的孔距、尺寸等检查；示例不是任意零件的通用模板。范围根据几何和明确需求设置，不把猜测当作工程限值。`step` 是输入步长，不代表范围内的几何都能成功。
+
+发布时试算初值，要求尺寸检查通过且实体占据的空间保持一致，不创建模型版本；失败不替换已存在的面板。用户点击「应用」后，服务只接受面板 ID、目标模型、版本与字段值，从保存的执行定义直接建模，不请求语言模型。每次应用重新执行原面板的检查，失败保留原模型；成功保存一个新版本，同时保留面板和当前值。相同值不创建版本。
+
+面板捕获独立的精确基准实体。无论已经应用多少次，`cad.current` 和操作输入始终是该基准，参数始终表示一整组目标值，不在上次结果上重复叠加。新版本的父版仍是应用前的当前版本。面板绑定具体模型与版本；切换历史版本会恢复对应面板，agent 后续修改模型不会继承旧面板。`cad_read_project` 返回控件与当前值，执行源码不发送到浏览器。
+
+版本目录中的 `panel.json` 保存面板定义、当前值和基准引用信息，`panel/model.smp` 与 `panel/state.json` 保存独立基准。完整设计复制和 ZIP 导出包含这些材料；只导入 SMP 与模型元数据不恢复交互面板。
 
 ## 快照与脚本归档
 

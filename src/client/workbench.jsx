@@ -22,6 +22,7 @@ import {
   IconFlatListOutlineRegular,
   IconCompareSplitOutlineRegular,
   IconRefreshOutlineRegular,
+  IconSlidersTwoOutlineRegular,
   pointerModality,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { Viewport } from "./viewport.jsx";
@@ -36,6 +37,7 @@ import { Timelapse } from "./timelapse.jsx";
 import { revisionPath } from "./revision-path.js";
 import { SolidViewIcon, WireframeViewIcon, TransparentViewIcon, SelectGeometryIcon, SectionViewIcon, InstrumentIcon } from "./viewport-tool-icons.jsx";
 import { ViewPanel } from "./view-panel.jsx";
+import { ParameterPanel } from "./parameter-panel.jsx";
 import { InstrumentPanel } from "./instrument-panel.jsx";
 import { analyze, strike, playVoice, noteName, encodeMidi } from "./instrument.js";
 import { downloadBlob } from "./download.js";
@@ -157,7 +159,12 @@ export function Workbench({
   const closeVersionLibrary = useCallback(() => { setVersionLibraryOpen(false); setLibraryDesign(null); setLibraryInitial(null); }, []);
   const [diffOpen, setDiffOpen] = useState(false), [diff, setDiff] = useState(null);
   const [progress, setProgress] = useState(null), [processDesign, setProcessDesign] = useState(null);
+  const [operationActor, setOperationActor] = useState(null), [userOperation, setUserOperation] = useState(null);
+  useEffect(() => { setUserOperation(null); setOperationActor(null); }, [project?.id, project?.modelFile, project?.activeSessionId]);
+  const [parameterPanelOpen, setParameterPanelOpen] = useState(false);
+  useEffect(() => { setParameterPanelOpen(false); }, [project?.id, project?.modelFile, project?.parameterPanel?.id]);
   const [nativeRunning, setNativeRunning] = useState(false);
+  useEffect(() => { if (operationActor === "agent" || nativeRunning) setUserOperation(null); }, [operationActor, nativeRunning]);
   useEffect(() => {
     if (narrow && (versionLibraryOpen || diffOpen)) setPanelCollapsed(true);
   }, [narrow, versionLibraryOpen, diffOpen]);
@@ -353,6 +360,7 @@ export function Workbench({
         const state = await api("status", { projectId: selected });
         if (disposed || selection.current !== selected) return;
         setRunning(state.running);
+        setOperationActor(state.operationActor);
         setProgress(state.progress || null);
         if (state.projects) setProjects(state.projects);
         if (state.error && state.error !== lastStatusError.current)
@@ -361,7 +369,7 @@ export function Workbench({
         if (state.title && state.title !== projectRef.current?.title) {
           setProject((current) => current ? { ...current, title: state.title } : current);
         }
-        if (projectRef.current && (JSON.stringify(state.models) !== JSON.stringify(projectRef.current.models) || state.activeSessionId !== projectRef.current.activeSessionId || state.head !== projectRef.current.head || state.modelVersion !== projectRef.current.modelVersion || state.workspaceDirectory !== projectRef.current.workspaceDirectory || state.modelFile !== projectRef.current.modelFile)) {
+        if (projectRef.current && (state.parameterPanelId !== (projectRef.current.parameterPanel?.id || null) || JSON.stringify(state.models) !== JSON.stringify(projectRef.current.models) || state.activeSessionId !== projectRef.current.activeSessionId || state.head !== projectRef.current.head || state.modelVersion !== projectRef.current.modelVersion || state.workspaceDirectory !== projectRef.current.workspaceDirectory || state.modelFile !== projectRef.current.modelFile)) {
           const p = await api("get", { projectId: selected });
           if (!disposed && selection.current === selected) {
             setProject(p);
@@ -676,6 +684,7 @@ export function Workbench({
       }))
     : [], [instrumentRecording, instrumentEvents, restrikeIndex]);
   const displayedDiff = diffOpen && diff?.projectId === project?.id && diff?.modelFile === project?.modelFile ? diff : null;
+  const parameterPanelVisible = parameterPanelOpen && !!project?.parameterPanel && !viewOpen && !instrumentOpen && !timelapseOpen && !diffOpen && !versionLibraryOpen && !selecting && !recordOpen;
   return (
     <div
       ref={workbench}
@@ -811,6 +820,10 @@ export function Workbench({
               aria-expanded={viewOpen} aria-controls={viewOpen ? "mc-view-panel" : undefined}
               disabled={!project?.head || busy || diffOpen || versionLibraryOpen || !!processDesign}
               onClick={toggleViewPanel} />
+            <Btn icon={IconSlidersTwoOutlineRegular} label={t("parameterPanel")} aria-pressed={parameterPanelVisible}
+              aria-expanded={parameterPanelVisible} aria-controls={parameterPanelVisible ? "mc-parameter-panel" : undefined}
+              disabled={!project?.parameterPanel || busy || running || nativeRunning || diffOpen || versionLibraryOpen || !!processDesign}
+              onClick={() => { setViewOpen(false); setInstrumentOpen(false); closeTimelapse(); setRecordOpen(false); clearGeometrySelection(); setSelecting(false); setParameterPanelOpen(!parameterPanelVisible); }} />
             <Btn icon={InstrumentIcon} label={t("instrument")} aria-pressed={instrumentOpen}
               disabled={!project?.head || busy || diffOpen || versionLibraryOpen || timelapseOpen || !!processDesign}
               onClick={toggleInstrument} />
@@ -873,6 +886,16 @@ export function Workbench({
         hidden={hiddenParts} setHidden={setHiddenParts}
         busy={modelSwitchDisabled} onModel={selectModelFile} onMenuOpenChange={setModelMenu}
         onClose={() => { clearGeometrySelection(); setSelecting(false); }} t={t} />}
+      {parameterPanelVisible && <ParameterPanel
+        key={`${project.id}:${project.modelFile}:${project.head}:${project.parameterPanel.id}`} project={project} language={language}
+        disabled={busy || running || nativeRunning || project.workingTreeChanged} request={request} t={t} onClose={() => setParameterPanelOpen(false)}
+        onOperation={setUserOperation}
+        onApplied={async captured => {
+          if (selection.current !== captured.id || projectRef.current?.modelFile !== captured.modelFile) return;
+          const data = await api("get", { projectId: captured.id });
+          if (selection.current === captured.id && projectRef.current?.modelFile === captured.modelFile) setProject(data);
+          await refreshList();
+        }} />}
       {viewOpen && project?.head > 0 && <ViewPanel section={section} explode={explode} explodeAxis={explodeAxis}
         explodeAvailable={(design?.parts?.length || 0) > 1} extent={viewExtent}
         onSection={changeSection} onExplode={setExplode} onExplodeAxis={setExplodeAxis}
@@ -892,10 +915,10 @@ export function Workbench({
       <div id="mc-session-record-host" className="mc-session-record-host" ref={setRecordHost} />
       <ConversationDock key={project?.activeSessionId || "none"} ref={dock} t={t} hidden={versionLibraryOpen}
         embedded={recordOpen}
-        running={running} statusTarget={statusTarget} revision={project?.head || 0} latestRevision={project?.revisions[0]?.revision || 0}
+        running={running} operationActor={operationActor} userOperation={userOperation} statusTarget={statusTarget} revision={project?.head || 0} latestRevision={project?.revisions[0]?.revision || 0}
         onSessionRecord={openSessionRecord} onReveal={closeSessionRecord}
         onFocusComposer={() => { const sessionId = project?.activeSessionId; if (sessionId) focusComposer(sessionId); }}
-        onStart={() => setError(null)}
+        onStart={() => { setError(null); setUserOperation(null); }}
         onCancel={() => action(() => api("cancel", { projectId: selected }))} onRunning={setNativeRunning}>
         {callbacks => <>
         {sessionReference && project && sessionReference.sessionId === project.activeSessionId ? (

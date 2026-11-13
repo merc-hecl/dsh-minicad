@@ -1,4 +1,10 @@
 export const zh = {
+  parameterPanel: "参数调整", applyParameters: "应用", applyingParameters: "正在应用", resetParameters: "重置", parameterPanelChanged: "参数面板已更新",
+  parameterNumberRequired: "{name}：请输入有效数字", parameterIntegerRequired: "{name}：请输入整数",
+  parameterMinimum: "{name}不能小于 {min}", parameterMaximum: "{name}不能大于 {max}",
+  "revisionActor.agent": "Agent", "revisionActor.user": "用户", "revisionActor.unknown": "来源未知",
+  userWorking: "正在应用用户调整", userSaved: "v{version} 已保存 · 用户", userDone: "用户调整已完成",
+  "userStatus.error": "调整未能应用", "userStatus.stopped": "调整已停止",
   inspectModel: "模型查看", modelSpecifications: "模型与规格", displayMode: "显示模式", transparentView: "透明",
   switchDisplayMode: "切换为{mode}",
   assemblyParts: "零件", showAllParts: "显示全部",
@@ -116,7 +122,8 @@ export const zh = {
   model: "模型",
 
   references: "参考图纸",
-  versionLibrary: "版本库",
+  versionLibrary: "版本库", versionMap: "版本地图", fitVersions: "适应全部",
+  zoomIn: "放大", zoomOut: "缩小", actualSize: "原始大小",
   versionCount: "{count} 个版本",
   revisionBase: "基底",
   currentVersion: "当前版本",
@@ -153,6 +160,12 @@ export const zh = {
   copy: "复制",
 };
 export const en = {
+  parameterPanel: "Adjust parameters", applyParameters: "Apply", applyingParameters: "Applying", resetParameters: "Reset", parameterPanelChanged: "The parameter panel has changed",
+  parameterNumberRequired: "{name}: enter a valid number", parameterIntegerRequired: "{name}: enter an integer",
+  parameterMinimum: "{name} must be at least {min}", parameterMaximum: "{name} must be at most {max}",
+  "revisionActor.agent": "Agent", "revisionActor.user": "You", "revisionActor.unknown": "Unknown",
+  userWorking: "Applying your changes", userSaved: "v{version} saved · You", userDone: "Your changes are complete",
+  "userStatus.error": "Changes could not be applied", "userStatus.stopped": "Changes stopped",
   inspectModel: "Model inspection", modelSpecifications: "Models and variants", displayMode: "Display mode", transparentView: "Transparent",
   switchDisplayMode: "Switch to {mode}",
   assemblyParts: "Parts", showAllParts: "Show all",
@@ -271,7 +284,8 @@ export const en = {
   model: "Model",
 
   references: "References",
-  versionLibrary: "Version history",
+  versionLibrary: "Version history", versionMap: "Version map", fitVersions: "Fit all",
+  zoomIn: "Zoom in", zoomOut: "Zoom out", actualSize: "Actual size",
   versionCount: "Versions: {count}",
   revisionBase: "Base",
   currentVersion: "Current version",

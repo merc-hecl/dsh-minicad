@@ -1,7 +1,7 @@
 .mc-session-record-host { position: absolute; inset: 0; pointer-events: none; }
 .mc-session-record {
   position: absolute;
-  inset: var(--mc-content-top) var(--mc-gutter) var(--mc-gutter) var(--mc-panel-left-expanded);
+  inset: var(--mc-tool-panel-top) var(--mc-gutter) var(--mc-gutter) var(--mc-panel-left-expanded);
   z-index: 4;
   display: flex;
   justify-content: flex-end;

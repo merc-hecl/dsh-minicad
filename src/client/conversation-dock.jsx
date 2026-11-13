@@ -7,7 +7,7 @@ import { PluginIcon } from "./plugin-icon.jsx";
 import { useFloatingInput } from "./use-floating-input.js";
 
 const EMPTY = { running: false, waiting: false, pending: false, todos: [], activities: [] };
-export const ConversationDock = forwardRef(function ConversationDock({ children, running,
+export const ConversationDock = forwardRef(function ConversationDock({ children, running, operationActor, userOperation,
   hidden, embedded, t, statusTarget, revision, latestRevision, onCancel, onRunning, onStart, onSessionRecord, onReveal, onFocusComposer }, ref) {
   const [open, setOpen] = useState(false), [expanded, setExpanded] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -15,12 +15,16 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
   const [feedback, setFeedback] = useState(null), [dismissed, setDismissed] = useState(false);
   const input = useRef(null), statusPanel = useRef(null), wasRunning = useRef(false);
   const baseline = useRef(latestRevision), stopped = useRef(false);
+  const lastActor = useRef("agent");
   const closeExpanded = useCallback(() => setExpanded(false), []);
   useDismissOnOutsidePointer(statusPanel, expanded, closeExpanded);
-  const alive = running || native.running || pending;
-  const terminalPhase = ["error", "interrupted", "max-tokens"].includes(native.terminal) ? "error"
+  const direct = userOperation || (operationActor === "user" ? { phase: "working" } : null);
+  const userAction = !!direct || (lastActor.current === "user" && !native.running && !pending && operationActor !== "agent");
+  const alive = direct ? direct.phase === "working" : running || native.running || pending;
+  const terminalPhase = userAction ? null : ["error", "interrupted", "max-tokens"].includes(native.terminal) ? "error"
     : native.terminal === "aborted" ? "stopped" : null;
-  const phase = native.waiting ? "waiting" : alive ? "working" : !dismissed && native.failure ? "error"
+  const phase = direct ? alive ? "working" : dismissed ? null : direct.phase === "error" && stopped.current ? "stopped" : direct.phase
+    : native.waiting ? "waiting" : alive ? "working" : !userAction && !dismissed && native.failure ? "error"
     : feedback ? terminalPhase || feedback : null;
   const visible = !hidden && !embedded && (open || native.waiting);
   const togglePinned = () => setPinned(value => !value);
@@ -53,23 +57,26 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
   useEffect(() => {
     if (!wasRunning.current && alive) {
       baseline.current = latestRevision; stopped.current = false;
+      lastActor.current = direct ? "user" : "agent";
       setFeedback(null); setDismissed(false);
     }
     if (wasRunning.current && !alive) {
-      const result = stopped.current || native.terminal === "aborted" ? "stopped"
-        : native.failure || feedback === "error" || ["error", "interrupted", "max-tokens"].includes(native.terminal) ? "error" : "done";
+      const result = stopped.current || (!userAction && native.terminal === "aborted") ? "stopped"
+        : direct?.phase === "error" || (!userAction && (native.failure || feedback === "error" || ["error", "interrupted", "max-tokens"].includes(native.terminal))) ? "error" : "done";
       setFeedback(result);
       if (result !== "done") setExpanded(true);
     }
     wasRunning.current = alive;
   }, [alive, native.terminal, native.failure, latestRevision]);
   const completed = native.todos.filter(todo => todo.status === "completed").length;
-  const saved = latestRevision > baseline.current;
-  const label = phase === "working" ? native.activity || (native.modelName ? t("agentWorking", { model: native.modelName }) : t("working"))
+  const savedRevision = direct?.revision ?? latestRevision;
+  const saved = savedRevision > baseline.current;
+  const label = phase === "working" ? userAction ? t("userWorking") : native.activity || (native.modelName ? t("agentWorking", { model: native.modelName }) : t("working"))
     : phase === "waiting" ? t(native.interaction === "approval" ? "agentApproval" : native.interaction === "plan-review" ? "agentPlanReview" : "taskStatus.waiting")
-      : phase === "done" ? saved ? t("agentSaved", { version: latestRevision }) : t("agentDone")
-        : phase ? t(`taskStatus.${phase}`) : t("openInput");
-  const failure = native.failure || (native.terminal === "interrupted" ? t("agentInterrupted")
+      : phase === "done" ? saved ? t(userAction ? "userSaved" : "agentSaved", { version: savedRevision }) : t(userAction ? "userDone" : "agentDone")
+        : phase ? t(userAction ? `userStatus.${phase}` : `taskStatus.${phase}`) : t("openInput");
+  const failure = userAction ? (direct?.error ? typeof direct.error === "string" ? direct.error : t("localizedErrorDetail", direct.error) : "")
+    : native.failure || (native.terminal === "interrupted" ? t("agentInterrupted")
     : native.terminal === "max-tokens" ? t("agentTokenLimit") : "");
   const Mark = phase === "done" ? IconCheckOutlineRegular : phase === "waiting" ? IconQuestionOutlineRegular
     : phase === "error" ? IconWarningOutlineRegular : phase === "stopped" ? IconStopFillRegular : PluginIcon;
@@ -79,7 +86,7 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
         aria-expanded={phase ? expanded : undefined} aria-label={label} title={label}>
         <span className="mc-task-status-mark">{phase === "working" ? <StateDot state="ongoing" /> : <Mark size={16} />}</span>
         {phase && <span className="mc-task-status-label" role="status">{phase === "working" ? <TextShimmer active>{label}</TextShimmer> : label}</span>}
-        {native.todos.length > 0 && phase && <span className="mc-task-count">{completed}/{native.todos.length}</span>}
+        {!userAction && native.todos.length > 0 && phase && <span className="mc-task-count">{completed}/{native.todos.length}</span>}
         {phase && <IconChevronDownOutlineRegular className="mc-status-chevron" size={14} />}
       </Button>
       {alive && !native.waiting && <Button variant="ghost" className="mc-status-stop" aria-label={t("stop")} title={t("stop")}
@@ -89,14 +96,14 @@ export const ConversationDock = forwardRef(function ConversationDock({ children,
       <div className="mc-task-status-content mc-panel-scroll">
         <div className="mc-status-detail-heading"><strong>{label}</strong><Button variant="ghost" size="sm" aria-label={t("closeStatus")}
           icon={<IconCloseOutlineRegular size={14} />} onClick={closeExpanded} /></div>
-        {native.activityDetail && <p className="mc-status-current">{native.activityDetail}</p>}
+        {!userAction && native.activityDetail && <p className="mc-status-current">{native.activityDetail}</p>}
         {failure && <p className="mc-task-status-error">{failure}</p>}
         {(phase === "stopped" || phase === "error") && <p className="mc-muted">{t(revision > 0 ? "agentRetained" : "agentNoVersion", { version: revision })}</p>}
-        {native.todos.length > 0 && <><div className="mc-task-list-heading"><span>{t("agentTasks")}</span><span>{completed}/{native.todos.length}</span></div>
+        {!userAction && native.todos.length > 0 && <><div className="mc-task-list-heading"><span>{t("agentTasks")}</span><span>{completed}/{native.todos.length}</span></div>
           <ol className="mc-agent-tasks">{native.todos.map((todo, index) => <li key={index} data-state={todo.status}>
             <span role="img" aria-label={t(`agentTask.${todo.status}`)}><StateDot state={todo.status === "completed" ? "done" : todo.status === "in_progress" ? "ongoing" : "idle"} /></span><span>{todo.content}</span>
           </li>)}</ol></>}
-        {native.activities.length > 0 && <details className="mc-agent-activities"><summary>{t("agentActivities")}</summary>
+        {!userAction && native.activities.length > 0 && <details className="mc-agent-activities"><summary>{t("agentActivities")}</summary>
           {native.activities.map(item => <div key={item.kind}><span>{item.label}</span><span>{item.count}</span></div>)}
         </details>}
         <div className="mc-task-status-actions">

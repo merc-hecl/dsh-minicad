@@ -10,6 +10,7 @@ For both new models and incremental edits, assess the existing `cad_edit` operat
 | `cad_build` | Execute explicitly supplied source; access the saved exact shape through `cad.current` |
 | `cad_import` | Import an exact file as a model snapshot; optional `metadataFile` restores part IDs and names |
 | `cad_edit` | Create from an empty model or edit the saved solid incrementally; execute 1–100 sequential operations and commit one revision only if all succeed |
+| `cad_publish_panel` | Publish a dynamic parameter panel for the saved revision with a directly executable recipe and checks; publication creates no model revision |
 | `cad_query` | Inspect faces, edges, solids, bore segments or vertex coordinates; edges include endpoints and optional arc-length samples, bores include axes and through clearance; supports trial candidates |
 | `cad_set_geometry_id_format` | Change face and edge display numbering and save a new revision |
 | `cad_commit` | Atomically publish an evaluated candidate after checking its base revision, unchanged working files and supplied dimensions |
@@ -30,6 +31,8 @@ Call `cad_set_geometry_id_format` on a saved model with `modelFile`, `expectedRe
 A changed format commits a revision immediately. The workbench and `cad_query` use it for the display ID. Later builds inherit the current revision's formats. Restoring a revision also restores its formats. Queries, measurements and edits continue to use full revision-scoped `id` references.
 
 ### Trials, checks and publication
+
+Revision entries and process runs record the initiator in `actor`: `agent` for agent tool submissions, `user` for direct parameter-panel applications. Both use the same kernel. Older revisions derive their origin from `operations.json`; unavailable provenance returns `null` without blocking model recovery.
 
 `head` identifies the current revision. Use `cad_restore` to switch it. Each commit records the current revision as its `parent` and takes the next number across all saved revisions of that file. Save or import pending model changes before switching revisions.
 
@@ -268,6 +271,43 @@ The plugin's `cad.assembly` supports whole-model `translate` and `rotate`, plus 
 ```
 
 A batch contains 1–20 variants with optional call-local `parameters` and `checks`; old checks are not inherited. Every variant is evaluated before publication. Commits and exports are individually durable; failures report already saved variants. Outputs are independent and do not track later model changes.
+
+## Dynamic parameter panels
+
+After saving a revision, use `cad_publish_panel` to offer a small set of useful, reliably executable next adjustments. Consider the current geometry, its parent chain, recent changes and earlier user requirements. Exclude unrelated branches and superseded requirements. Put fixed requirements into checks rather than suggested editable fields. Publish `fields: []` when no useful reliable controls are available.
+
+A panel has a bilingual `title`, up to eight `fields`, exactly one recipe, and required `checks`. Each field has a stable `key`, bilingual `label`, initial `value`, and optional bilingual `group`:
+
+| `type` | Additional fields |
+| --- | --- |
+| `number` / `integer` | Optional `min`, `max`, `step`, `unit`; initial values must describe the actual current model |
+| `choice` | `options: [{ value, label: { zh, en } }]`, with 2–8 string or numeric choices |
+| `toggle` | Boolean `value` |
+
+Provide either `operations`, using the same operations and `{ parameter: "key" }` references as `cad_edit`, or explicit `source` defining `build(parameters,cad)` for linked dimensions, deltas, choices and toggles. `part` scopes a script to one assembly member; operation recipes specify `part` within each operation. Scripts must be self-contained and use the captured shape rather than changing external files. Titles, labels, groups and option labels require `zh` and `en`; retain user-provided parameter names and omit instructional UI copy.
+
+For an actual 6 mm plate whose top face can be moved to adjust its total thickness:
+
+```json
+{
+  "modelFile": "model.smp",
+  "expectedRevision": 3,
+  "panel": {
+    "title": { "zh": "底板厚度", "en": "Plate thickness" },
+    "fields": [{ "key": "thickness", "type": "number", "label": { "zh": "厚度", "en": "Thickness" }, "value": 6, "unit": "mm" }],
+    "source": "function build(p,cad) { if(p.thickness===6) return cad.current; return cad.edit(cad.current,[{op:'offset_faces',faces:{position:'top',one:true},distance:p.thickness-6}]); }",
+    "checks": [{ "measurement": { "kind": "size", "axis": "z" }, "expected": { "parameter": "thickness" }, "tolerance": 0.000001 }]
+  }
+}
+```
+
+Choose faces from the actual part and add checks for hole positions, dimensions and other fixed requirements. This example is not a universal model template. Justify ranges from geometry or explicit requirements, not guessed engineering limits. `step` is an input increment, not proof that geometry succeeds throughout the range.
+
+Publication evaluates initial values, requires passing checks and unchanged occupied volume, and creates no model revision. Failure retains any existing panel. When the user applies values, the service accepts only the panel ID, model, revision and field values, then executes the stored recipe without model inference. Every application reruns the panel's checks; failure retains the saved model. Success saves one revision with the panel and updated values. Unchanged values create no revision.
+
+The panel captures a separate exact baseline. Every application starts from that same baseline through `cad.current` or the operation input, and receives the complete set of desired values. Changes do not accumulate on the previous result. The new revision's parent remains the current revision before application. Panels belong to a particular model and revision; restoring a revision restores its panel, while later agent edits require a fresh panel. `cad_read_project` returns controls and values; source is not sent to the browser.
+
+Each revision's `panel.json` stores the definition, values and baseline reference information; `panel/model.smp` and `panel/state.json` hold the independent baseline. Full design copies and ZIP exports include these files. Importing only SMP and model metadata does not restore an interactive panel.
 
 ## Native snapshots and build archives
 

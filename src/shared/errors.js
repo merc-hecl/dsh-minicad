@@ -23,6 +23,7 @@ const rules = [
   ["freecadUnavailable", /未检测到 FreeCAD/],
   ["modelAppLaunchFailed", /FreeCAD 启动失败/],
   ["revisionConflict", /设计已更新/],
+  ["parameterPanelChanged", /参数面板已更新/],
   ["workingFilesChanged", /模型工作文件已修改/],
   ["geometryReferenceInvalid", /几何引用已过期|几何引用不存在/],
   ["geometrySelectionMissing", /没有找到匹配的面或边/],

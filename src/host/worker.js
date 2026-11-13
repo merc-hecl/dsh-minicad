@@ -202,7 +202,7 @@ export function createWorker({
           if (!(error instanceof KernelRequired)) throw error;
         }
       }
-      const constructs = ["build", "import", "edit", "commit"].includes(method);
+      const constructs = ["build", "import", "edit", "commit", "publish_panel", "apply_panel"].includes(method);
       const location = params.projectId ? await new Store(dataDir, { allowKernel: false }).dispatch("process_location", params) : null;
       if (constructs) {
         modeling = { projectId: params.projectId, modelFile: location.modelFile,

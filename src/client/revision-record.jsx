@@ -65,9 +65,8 @@ export function RevisionRecord({ project, entry, runs, historyError, historyLoad
   useEffect(() => {
     const container = reel.current;
     const scrollRecords = event => {
-      const strip = event.target.closest(".mc-record-frames, .mc-record-runs, .mc-revision-tree");
+      const strip = event.target.closest(".mc-record-frames, .mc-record-runs");
       if (!strip || event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY) || strip.scrollWidth <= strip.clientWidth) return;
-      if (strip.matches(".mc-revision-tree") && strip.scrollHeight > strip.clientHeight && !event.shiftKey) return;
       const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? parseFloat(getComputedStyle(strip).lineHeight)
         : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? strip.clientWidth : 1;
       event.preventDefault();

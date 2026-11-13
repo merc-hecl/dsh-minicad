@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Button, Tag } from "@deepseek-ai/dsh-client-ui-primitives";
 import { RevisionRecord, ModelThumbnail } from "./revision-record.jsx";
+import { RevisionMap } from "./revision-map.jsx";
 import { errorDetail } from "../shared/errors.js";
 
 const columnWidth = 180, rowHeight = 136, nodeWidth = 148, nodeHeight = 116;
@@ -29,6 +30,8 @@ export function VersionLibrary({ project, progress, request, language, disabled,
   const [selected, setSelected] = useState(initialRevision ?? project.head);
   const [runs, setRuns] = useState([]), [historyError, setHistoryError] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(true);
+  // Revision details remount on selection; the map keeps its camera across those remounts.
+  const mapCamera = useRef(null);
   const { nodes, width, height } = useMemo(() => layoutRevisions(project.revisions), [project.revisions]);
   const entry = nodes.get(selected) || nodes.get(project.head);
   useEffect(() => {
@@ -45,12 +48,9 @@ export function VersionLibrary({ project, progress, request, language, disabled,
     if (progress?.modelFile === project.modelFile) items.set(progress.id, progress);
     return [...items.values()];
   }, [runs, progress, project.modelFile]);
-  const tree = useCallback(element => {
-    element?.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [entry?.revision]);
-
-  const renderVersions = load => <>
-    <div ref={tree} className="mc-revision-tree">
+  const renderVersions = load => <RevisionMap camera={mapCamera} nodes={nodes} width={width} height={height}
+    cardWidth={nodeWidth} cardHeight={nodeHeight} selected={entry?.revision} current={project.head}
+    onSelect={setSelected} onCurrent={() => setSelected(project.head)} t={t}>
       <div className="mc-revision-tree-graph" style={{ width, height }}>
         <svg width={width} height={height} fill="none" aria-hidden="true">
           {[...nodes.values()].map(node => {
@@ -58,7 +58,7 @@ export function VersionLibrary({ project, progress, request, language, disabled,
             if (!parent) return null;
             const x = parent.x + nodeWidth, y = parent.y + nodeHeight / 2;
             const endY = node.y + nodeHeight / 2, mid = (x + node.x) / 2;
-            return <path key={node.revision} data-branch={parent.lane !== node.lane || undefined}
+            return <path key={node.revision} vectorEffect="non-scaling-stroke" data-branch={parent.lane !== node.lane || undefined}
               d={`M${x} ${y} C${mid} ${y} ${mid} ${endY} ${node.x} ${endY}`} />;
           })}
         </svg>
@@ -66,18 +66,19 @@ export function VersionLibrary({ project, progress, request, language, disabled,
           const current = node.revision === project.head;
           return <Button key={node.revision} className="mc-revision-node mc-panel" variant="ghost" size="sm"
             style={{ left: node.x, top: node.y, width: nodeWidth, height: nodeHeight }}
+            data-revision={node.revision}
             aria-current={current || undefined} aria-pressed={node.revision === entry?.revision}
-            onClick={() => setSelected(node.revision)}>
+            onClick={event => { if (event.detail === 0) setSelected(node.revision); }}>
             <span className="mc-revision-card-heading"><strong>v{node.revision}</strong>
-              {current && <span>{t("current")}</span>}</span>
+              <span className="mc-revision-card-labels">{current && <span className="mc-revision-card-current">{t("current")}</span>}
+                <Tag tone={node.actor === "user" ? "info" : "neutral"}>{t(`revisionActor.${node.actor || "unknown"}`)}</Tag>
+              </span></span>
             <ModelThumbnail entry={{ key: `v${node.revision}`, revision: node.revision }} load={load} />
             <span className="mc-revision-card-summary" title={node.summary}>{node.summary || t("savedVersion")}</span>
           </Button>;
         })}
       </div>
-      {!nodes.size && <div className="mc-revision-empty">{t("noSavedVersions")}</div>}
-    </div>
-  </>;
+  </RevisionMap>;
   return <section id="mc-version-library" className="mc-version-library" aria-label={t("versionLibrary")}>
     <RevisionRecord key={entry?.revision || "unsaved"} project={project} entry={entry} runs={allRuns}
       historyError={historyError} historyLoading={historyLoading}

@@ -37,7 +37,7 @@ export class ProcessJournal {
     return new Map(fs.readdirSync(root, { recursive: true, withFileTypes: true })
       .filter(entry => entry.isFile())
       .map(entry => relative(root, join(entry.parentPath, entry.name)).split(sep).join("/"))
-      .filter(name => name === "operations.json" || name.startsWith("build/") || name.startsWith("inputs/"))
+      .filter(name => name === "operations.json" || name === "panel.json" || name.startsWith("panel/") || name.startsWith("build/") || name.startsWith("inputs/"))
       .map(name => [name, fs.readFileSync(inside(root, name))]));
   }
   saveCandidate(run, state, binary, inputs) {
@@ -60,8 +60,8 @@ export class ProcessJournal {
     };
   }
   save(run) { atomicWrite(this.manifest(run.id), jsonBytes(run)); }
-  begin(modelFile, baseRevision, candidateRevision, summary, geometryIds) {
-    const run = { id: randomUUID(), modelFile, baseRevision, candidateRevision, summary: summary || "", geometryIds,
+  begin(modelFile, baseRevision, candidateRevision, summary, geometryIds, actor = "agent") {
+    const run = { id: randomUUID(), modelFile, baseRevision, candidateRevision, summary: summary || "", geometryIds, actor,
       phase: "working", created: Date.now() / 1000, updated: Date.now() / 1000, steps: [] };
     fs.mkdirSync(join(this.root, run.id), { recursive: true });
     this.save(run);
