@@ -44,7 +44,6 @@
     "README.en.md",
     "LICENSE",
     "NOTICE.md",
-    "docs/*.md",
     "docs/images",
     "docs/licenses",
     "AGENTS.md"

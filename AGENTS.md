@@ -22,6 +22,23 @@
 - DSH 插件开发遵循 `dsh-plugin-dev-notes`；API 以当前安装的 DSH 源码为准。
 - 完成后明确报告已执行的内核验证范围，以及交由用户验收的部分。不要将未经验收的功能宣称为已验证完成，也不要将可打开的界面等同于建模和 agent 链路已完成。
 
+## 开发与打包
+
+使用 Node.js 22.19+，在仓库目录安装依赖并构建：
+
+```sh
+npm ci
+npm run setup
+```
+
+在桌面插件页或 Web CLI 安装 `link:仓库的绝对路径`。客户端重新构建后支持 DSH HMR，主机和预设改动需重启 DSH。
+
+- `npm run dev` 使用真实 DSH 的 `minicad-dev` profile，默认端口 3079、数据目录 `.local/designs`，沿用 DSH_HOME 的设置与凭据。`PORT` 可覆盖端口；`DSH_ELECTRON` 和 `DSH_CLI` 可分别指定已安装桌面版可执行文件与内置 CLI。
+- `npm run check` 做语法与构建检查；`npm test` 串行运行建模内核测试。按前述验收约定选择检查范围，非内核改动不运行测试，不启动界面验收。
+- 创建 `dist` 目录后执行 `npm pack --pack-destination dist`。打包自动构建并包含运行依赖；GitHub 源码 ZIP 不包含预构建内容。
+
+用户文档集中在中英文 README。Agent 身份由 `cordis.patch.yml` 的 `persona` 定义，建模决策、验证与交付规则集中在 `src/host/prompts.js`；工具用法与参数契约保留在 `src/host/tools.js` 和对应 Schema，安装版本的 API 声明通过 `cad_api` 查询。不要另行维护重复的通用流程或接口手册。
+
 ## 提交规范
 
 - 使用 Conventional Commits：`<type>(<scope>): <description>`，`scope` 可省略。常用类型：`feat`、`fix`、`docs`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`、`revert`。
