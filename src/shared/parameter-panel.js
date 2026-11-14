@@ -8,7 +8,7 @@ const numeric = type => object({ ...keyLabel, type: { const: type }, value: { ty
 const choice = { anyOf: [{ type: "string" }, { type: "number" }] };
 export const parameterPanelSchema = object({
   title: label,
-  fields: { type: "array", minItems: 0, maxItems: 8, items: { anyOf: [
+  fields: { type: "array", minItems: 0, items: { anyOf: [
     numeric("number"), numeric("integer"),
     object({ ...keyLabel, type: { const: "toggle" }, value: { type: "boolean" } }, ["key", "label", "type", "value"]),
     object({ ...keyLabel, type: { const: "choice" }, value: choice,

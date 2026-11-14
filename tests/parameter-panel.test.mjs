@@ -11,6 +11,42 @@ const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-5,
 const label = (zh, en = zh) => ({ zh, en });
 const sizeCheck = (axis, expected) => ({ measurement: { kind: "size", axis }, expected, tolerance: 1e-6 });
 
+test("a panel with nine dimensional and position controls publishes and adjusts a drilled plate", { timeout: 120000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "minicad-panel-many-fields-"));
+  const worker = createWorker({ dataDir });
+  try {
+    const project = await worker.call("create");
+    const target = { projectId: project.id, modelFile: "model.smp" };
+    const parameters = { length: 40, width: 30, thickness: 6, centerX: 0, centerY: 0, centerZ: 0, holeRadius: 2, holeX: 6, holeY: 4 };
+    const source = `function build(p,cad) {
+      return cad.Box(p.length,p.width,p.thickness)
+        .cut(cad.Cylinder(p.holeRadius,p.thickness*2).translate(p.holeX,p.holeY,0))
+        .translate(p.centerX,p.centerY,p.centerZ).named("可调安装板");
+    }`;
+    await worker.call("build", { ...target, expectedRevision: 0, source, parameters });
+    const names = { length: "长度", width: "宽度", thickness: "厚度", centerX: "中心 X", centerY: "中心 Y", centerZ: "中心 Z",
+      holeRadius: "孔半径", holeX: "孔 X", holeY: "孔 Y" };
+    const published = await worker.call("publish_panel", { ...target, expectedRevision: 1, panel: {
+      title: label("安装板尺寸与位置", "Plate dimensions and position"),
+      fields: Object.entries(parameters).map(([key, value]) => ({ key, type: "number", label: label(names[key], key), value, unit: "mm" })),
+      source,
+      checks: [sizeCheck("x", { parameter: "length" }), sizeCheck("y", { parameter: "width" }), sizeCheck("z", { parameter: "thickness" }),
+        { measurement: { kind: "count", entityKind: "holes" }, expected: 1 }],
+    } });
+    const values = { length: 50, width: 36, thickness: 8, centerX: 10, centerY: 12, centerZ: 5, holeRadius: 3, holeX: 7, holeY: -4 };
+    const applied = await worker.call("apply_panel", { ...target, expectedRevision: 1, panelId: published.parameterPanel.id, values });
+    assert.equal(applied.head, 2);
+    assert.equal(applied.design.validation.passed, true);
+    near(applied.design.metrics.volume, (50 * 36 - Math.PI * 3 ** 2) * 8);
+    assert.deepEqual(Object.fromEntries(applied.parameterPanel.fields.map(field => [field.key, field.value])), values);
+    const holes = (await worker.call("query", { ...target, expectedRevision: 2, kind: "holes" })).items;
+    assert.equal(holes.length, 1);
+    near(holes[0].hole.diameter, 6);
+    [17, 8, 5].forEach((coordinate, axis) => near(holes[0].hole.center[axis], coordinate));
+    assert.equal(holes[0].hole.through, true);
+  } finally { await worker.dispose(); await rm(dataDir, { recursive: true, force: true }); }
+});
+
 test("direct panel adjustments preserve holes, use a fixed baseline across restarts, retain failures and branch with their version", { timeout: 120000 }, async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "minicad-panel-"));
   let worker = createWorker({ dataDir });
