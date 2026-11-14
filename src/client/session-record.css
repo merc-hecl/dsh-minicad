@@ -8,13 +8,26 @@
   min-width: 0;
   min-height: 0;
   pointer-events: none;
-  container: mc-session-record / inline-size;
 }
 .mc-session-record[hidden] { display: none; }
 .mc-session-reader {
+  position: relative;
   display: flex; flex: none; flex-direction: column;
-  width: 57%; min-width: min(330px, 100%); max-width: 100%; height: 100%; min-height: 0;
+  width: min(max(var(--mc-tool-panel-width), var(--mc-session-reader-width, var(--mc-tool-panel-width))), 100%);
+  min-width: 0; height: 100%; min-height: 0;
   pointer-events: auto;
+}
+.mc-session-reader .mc-session-resize {
+  position: absolute; z-index: 2; left: -10px; top: calc(50% - 32px);
+  width: 20px; height: 64px; min-height: 0; padding: 0; border: 0;
+  border-radius: var(--dsw-radius-sm); background: transparent; box-shadow: none;
+  color: var(--mc-muted); cursor: ew-resize; touch-action: none; user-select: none;
+}
+.mc-session-resize > span { width: 3px; height: 32px; border-radius: 999px; background: currentColor; }
+.mc-session-reader .mc-session-resize:hover, .mc-session-reader[data-resizing] .mc-session-resize { color: var(--mc-accent); }
+.mc-session-resize:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+.mc-workbench:has(.mc-session-reader[data-resizing]), .mc-workbench:has(.mc-session-reader[data-resizing]) * {
+  cursor: ew-resize !important; user-select: none;
 }
 .mc-session-reader-bar {
   display: flex; flex: none; align-items: center; gap: 12px;
@@ -54,11 +67,7 @@
 .mc-session-scrubber:disabled { cursor: default; }
 .mc-session-scrubber:disabled::-webkit-slider-thumb { background: var(--mc-muted); }
 .mc-session-scrubber:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 3px; border-radius: var(--dsw-radius-sm); }
-@container mc-session-record (max-width: 650px) {
-  .mc-session-reader { width: 72%; min-width: min(290px, 100%); }
-}
 @container mc-workbench (max-width: 760px) {
-  .mc-session-reader { width: 100%; min-width: 0; }
   .mc-session-reader-bar { gap: 8px; }
   .mc-session-timeline { padding: 6px 8px; gap: 4px; }
 }

@@ -78,12 +78,14 @@ html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-version-library, 
   .mc-native-input, .mc-task-status, .mc-task-status::before, .mc-task-status-mark, .mc-task-status-details, .mc-version-library, .mc-sidebar { animation: none !important; transition: none !important; }
 }
 
-.mc-inspection {
+:is(.mc-inspection, .mc-view-panel, .mc-timelapse, .mc-instrument, .mc-parameter-panel, .mc-version-diff) {
   position: absolute;
-  z-index: 12;
   top: var(--mc-tool-panel-top);
   right: var(--mc-gutter);
-  width: min(300px, calc(100% - 40px));
+  width: min(var(--mc-tool-panel-width), calc(100% - var(--mc-panel-left) - var(--mc-gutter)));
+}
+.mc-inspection {
+  z-index: 12;
   max-height: calc(100% - var(--mc-tool-panel-top) - 170px);
   overflow: hidden;
   border-radius: 16px;
@@ -105,11 +107,7 @@ html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-version-library, 
 .mc-inspection-part[data-hidden] .mc-part-name, .mc-inspection-part[data-hidden] .mc-part-visibility { color: var(--mc-muted); }
 
 .mc-view-panel {
-  position: absolute;
   z-index: 12;
-  top: var(--mc-tool-panel-top);
-  right: var(--mc-gutter);
-  width: min(300px, calc(100% - 40px));
   padding: 12px;
   border: 1px solid var(--mc-border);
   border-radius: 16px;
@@ -133,11 +131,7 @@ html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-version-library, 
 .mc-view-readout { flex: none; font-size: 12px; color: var(--mc-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .mc-timelapse {
-  position: absolute;
   z-index: 13;
-  top: var(--mc-tool-panel-top);
-  left: var(--mc-panel-left);
-  width: min(640px, calc(100% - var(--mc-panel-left) - var(--mc-gutter) - 48px));
   padding: 12px 14px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -148,18 +142,14 @@ html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-version-library, 
 .mc-timelapse-version { flex: none; font-size: 13px; font-weight: 600; color: var(--mc-accent); font-variant-numeric: tabular-nums; }
 .mc-timelapse-summary { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--dsh-content-font-size-secondary, 13px); line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px)); font-weight: 500; }
 .mc-timelapse-back, .mc-timelapse-close { flex: none; }
-.mc-timelapse-controls { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mc-timelapse-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .mc-timelapse-slider { flex: 1; min-width: 0; accent-color: var(--mc-accent); }
 .mc-timelapse-count { flex: none; min-width: 52px; text-align: center; color: var(--mc-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .mc-timelapse-export { flex: none; display: flex; gap: 6px; }
 .mc-timelapse-status { display: flex; align-items: center; gap: 8px; color: var(--mc-muted); font-size: 12px; }
 
 .mc-instrument {
-  position: absolute;
   z-index: 13;
-  top: var(--mc-tool-panel-top);
-  right: var(--mc-gutter);
-  width: min(360px, calc(100% - var(--mc-panel-left) - var(--mc-gutter) - 48px));
   padding: 12px 14px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -170,15 +160,11 @@ html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-version-library, 
 .mc-instrument-note { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: var(--dsh-content-font-size-secondary, 13px); }
 .mc-instrument-note strong { flex: none; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .mc-instrument-note span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mc-muted); }
-.mc-instrument-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mc-instrument-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .mc-instrument-actions button[aria-pressed="true"] { background: var(--mc-selected); color: var(--mc-accent); }
 .mc-instrument-count { margin-left: auto; color: var(--mc-muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mc-parameter-panel {
-  position: absolute;
   z-index: 13;
-  top: var(--mc-tool-panel-top);
-  right: var(--mc-gutter);
-  width: min(340px, calc(100% - var(--mc-panel-left) - var(--mc-gutter)));
   max-height: calc(100% - var(--mc-tool-panel-top) - 120px);
   overflow: hidden;
   padding: 12px 14px;

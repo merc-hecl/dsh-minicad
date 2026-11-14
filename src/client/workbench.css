@@ -18,6 +18,7 @@
   --mc-sidebar-rail: var(--mc-sidebar-width);
   --mc-header-top: calc(10px + var(--mc-top-inset));
   --mc-header-height: 40px;
+  --mc-tool-panel-width: 360px;
   --mc-tool-panel-top: calc(var(--mc-header-top) + var(--mc-header-height) + 8px);
   --mc-content-top: calc(80px + var(--mc-top-inset));
   --mc-panel-left: calc(var(--mc-gutter) + var(--mc-sidebar-rail) + var(--mc-panel-gap));
@@ -324,9 +325,10 @@ body[data-ds-dark-theme] .mc-instrument-anchor { box-shadow: 0 0 0 1.5px #15181d
 }
 .mc-header-actions {
   justify-self: end;
-  width: max-content;
+  width: var(--mc-tool-panel-width);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 4px;
   padding: 4px;
 }
@@ -344,11 +346,7 @@ body[data-ds-dark-theme] .mc-instrument-anchor { box-shadow: 0 0 0 1.5px #15181d
   color: var(--mc-muted);
 }
 .mc-version-diff {
-  position: absolute;
   z-index: 2;
-  top: var(--mc-tool-panel-top);
-  left: var(--mc-panel-left);
-  width: min(720px, calc(100% - var(--mc-panel-left) - var(--mc-gutter) - 48px));
   padding: 10px 14px;
   container: mc-diff / inline-size;
   font-size: var(--dsh-content-font-size-secondary, 13px);
