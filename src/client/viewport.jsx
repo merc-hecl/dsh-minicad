@@ -1153,7 +1153,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     s.theme();
   }, [wire, design?.previewData]);
   return (
-    <div id={id} ref={mount} aria-hidden={!active} className={`mc-viewport ${selecting || striking ? "mc-selecting" : ""}`} aria-label="3D">
+    <div id={id} ref={mount} aria-hidden={!active} className={`mc-viewport ${selecting ? "mc-selecting" : ""} ${striking ? "mc-striking" : ""}`} aria-label="3D">
       {presentation === "workbench" && <div ref={partHover} className="mc-part-hover mc-panel" hidden />}
       {marks.length > 0 && <div ref={marksLayer} className="mc-instrument-marks">
         {marks.map(mark => <span key={mark.index} className="mc-instrument-mark" data-restrike={mark.armed || undefined}>
