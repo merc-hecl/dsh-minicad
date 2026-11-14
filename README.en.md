@@ -8,7 +8,7 @@ Give the DSH agent dimensions or a reference drawing. It builds, revises and exp
 
 **AI coding disclosure:** 100% of this project's code was written by AI.
 
-![MiniCAD workbench with independent parts, design conversations and the canvas composer](docs/images/workbench.jpg)
+![MiniCAD workbench with independent parts, design conversations and the canvas composer](docs/images/workbench.png)
 
 *Workbench overview: inspect independent parts and request changes on the same canvas.*
 
@@ -24,12 +24,12 @@ Give the DSH agent dimensions or a reference drawing. It builds, revises and exp
 
 | Parameter controls | Geometry measurements |
 | --- | --- |
-| ![Parameter panel for plate thickness, hole diameters, spacing and color](docs/images/parameters.jpg) | ![Selected plate face with its area and area centroid](docs/images/measurement.jpg) |
+| ![Parameter panel for plate thickness, hole diameters, spacing and color](docs/images/parameters.png) | ![Selected plate face with its area and area centroid](docs/images/measurement.png) |
 | Adjust plate thickness, hole diameters, part spacing and color. | Select geometry, inspect measurements and reference it in a request. |
 
 | Revision branches | Geometry comparison |
 | --- | --- |
-| ![Version tree showing model history and branches](docs/images/version-library.jpg) | ![Added and removed volume between two model revisions](docs/images/version-diff.jpg) |
+| ![Version tree showing model history and branches](docs/images/version-library.png) | ![Added and removed volume between two model revisions](docs/images/version-diff.png) |
 | Browse branches, preview revisions and restore earlier models. | Green shows added volume; red shows removed volume. |
 
 ## Install

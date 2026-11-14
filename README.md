@@ -8,7 +8,7 @@
 
 **AI 编写声明：** 本项目代码 100% 由 AI 编写。
 
-![MiniCAD 工作台：多零件模型、设计会话与画布对话](docs/images/workbench.jpg)
+![MiniCAD 工作台：多零件模型、设计会话与画布对话](docs/images/workbench.png)
 
 *工作台总览：在同一画布中查看多零件模型并提出修改需求。*
 
@@ -24,12 +24,12 @@
 
 | 参数调整 | 几何测量 |
 | --- | --- |
-| ![板厚、孔径、间距与颜色的参数调整面板](docs/images/parameters.jpg) | ![选中底板表面，显示面积与面积质心](docs/images/measurement.jpg) |
+| ![板厚、孔径、间距与颜色的参数调整面板](docs/images/parameters.png) | ![选中底板表面，显示面积与面积质心](docs/images/measurement.png) |
 | 调整板厚、孔径、零件间距与颜色。 | 选中几何，查看测量结果并引用给 agent。 |
 
 | 版本分支 | 几何对比 |
 | --- | --- |
-| ![版本树展示模型演变与分支关系](docs/images/version-library.jpg) | ![两个模型版本的新增与删除体积](docs/images/version-diff.jpg) |
+| ![版本树展示模型演变与分支关系](docs/images/version-library.png) | ![两个模型版本的新增与删除体积](docs/images/version-diff.png) |
 | 查看版本分支，预览并恢复历史模型。 | 绿色为新增体积，红色为删除体积。 |
 
 ## 安装
