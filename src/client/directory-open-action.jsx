@@ -2,12 +2,23 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { Menu, Tooltip, Toast, IconChevronDownOutlineRegular, IconRightUpOutlineRegular,
   IconWarningOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 import freecadIcon from "./assets/freecad.svg";
+import cadAssistantIcon from "./assets/cad-assistant.png";
+import rhinoIcon from "./assets/rhino.png";
+import solidworksIcon from "./assets/solidworks.svg";
+import inventorIcon from "./assets/inventor.svg";
 import { errorKey } from "../shared/errors.js";
 
 // Directory presentation adapted from DSH 0.2.1-rc.5 OpenInAppAction and
 // OpenTargetButton. The native injected catalog, locale and launch controller
-// remain authoritative; the FreeCAD action belongs only to this MiniCAD seat.
+// remain authoritative; the model actions belong only to this MiniCAD seat.
 const choiceKey = "minicad.openInApp.choice";
+const modelIcons = {
+  freecad: freecadIcon,
+  "cad-assistant": cadAssistantIcon,
+  rhino: rhinoIcon,
+  solidworks: solidworksIcon,
+  inventor: inventorIcon,
+};
 
 function ApplicationIcon({ source, size = 14 }) {
   const [failed, setFailed] = useState(false);
@@ -22,8 +33,9 @@ export function DirectoryOpenAction(props) {
   const nativeChoice = props.useOpenInAppChoice(id => id);
   const operation = props.useOpenInAppLaunch(value => value);
   const shortcut = props.useShortcuts(rows => rows.find(row => row.id === "workspace.openLocal"));
-  const [modelChoice, setModelChoice] = useState(() => localStorage.getItem(choiceKey) === "freecad");
-  const [freecad, setFreecad] = useState(null), [menuOpen, setMenuOpen] = useState(false);
+  const [modelChoice, setModelChoice] = useState(() => localStorage.getItem(choiceKey));
+  const [modelApps, setModelApps] = useState([{ id: "freecad", name: "FreeCAD" }]);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [pending, setPending] = useState(false), [banner, setBanner] = useState(null);
   const inFlight = useRef(false), sequence = useRef(0);
   const menuAnchor = useRef(null);
@@ -38,7 +50,7 @@ export function DirectoryOpenAction(props) {
   }, []);
   const notify = text => setBanner({ text, sequence: ++sequence.current });
   const refresh = async signal => {
-    try { setFreecad((await request("model_apps", {}, signal)).find(app => app.id === "freecad")); }
+    try { setModelApps(await request("model_apps", {}, signal)); }
     catch (error) { if (error.name !== "AbortError") notify(t("path.appsError")); }
   };
   useEffect(() => {
@@ -50,10 +62,14 @@ export function DirectoryOpenAction(props) {
     const key = `app.${id}`, name = t(key);
     return name === key ? [] : [{ id, name, icon: props.iconUrl(id) }];
   });
-  apps.push({ id: "freecad", name: freecad?.available === false
-    ? minicadT("modelAppUnavailable", { app: "FreeCAD" }) : "FreeCAD",
-    icon: freecadIcon, disabled: !hasModel || !freecad?.available });
-  const preferred = apps.find(app => app.id === (modelChoice ? "freecad" : nativeChoice) && !app.disabled)
+  apps.push(...modelApps.map(app => ({
+    id: `model:${app.id}`, modelApp: app,
+    name: app.available === false ? minicadT("modelAppUnavailable", { app: app.name }) : app.name,
+    icon: modelIcons[app.id],
+    disabled: !hasModel || !app.available,
+  })));
+  const preferred = apps.find(app => app.modelApp?.id === modelChoice && !app.disabled)
+    ?? apps.find(app => app.id === nativeChoice && !app.disabled)
     ?? apps.find(app => !app.disabled) ?? apps[0];
   const busy = pending || operation.phase === "busy";
   useLayoutEffect(() => {
@@ -61,21 +77,23 @@ export function DirectoryOpenAction(props) {
     return () => onMenuOpenChange?.(false);
   }, [menuOpen, busy, onMenuOpenChange]);
   const primaryLabel = t("open.title", { app: preferred.name });
-  const nativeShortcut = preferred.id === "freecad" ? undefined : shortcut;
+  const nativeShortcut = preferred.modelApp ? undefined : shortcut;
   const act = async id => {
-    if (inFlight.current || busy) return;
+    const app = apps.find(app => app.id === id);
+    if (!app || app.disabled || inFlight.current || busy) return;
     inFlight.current = true; setPending(true); setMenuOpen(false);
     try {
-      if (id === "freecad") {
-        await request("open_model", { projectId, modelFile, application: id });
-        localStorage.setItem(choiceKey, id); setModelChoice(true);
+      if (app.modelApp) {
+        await request("open_model", { projectId, modelFile, application: app.modelApp.id });
+        localStorage.setItem(choiceKey, app.modelApp.id); setModelChoice(app.modelApp.id);
       } else {
         await props.launch(id, absolutePath);
         props.choose(id);
-        localStorage.removeItem(choiceKey); setModelChoice(false);
+        localStorage.removeItem(choiceKey); setModelChoice(null);
       }
     } catch (error) {
-      notify(id === "freecad" ? minicadT(error.uiKey || errorKey(error.message)) : t("path.openError"));
+      notify(app.modelApp ? minicadT(error.uiKey || errorKey(error.message), { app: app.modelApp.name })
+        : t("path.openError"));
     } finally { inFlight.current = false; setPending(false); }
   };
   return <>

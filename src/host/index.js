@@ -17,6 +17,10 @@ export const Config = z.object({
   dataDir: z.string().default(""),
   timeout: z.number().min(10000).max(600000).default(120000),
   freecadExecutable: z.string().default(""),
+  cadAssistantExecutable: z.string().default(""),
+  rhinoExecutable: z.string().default(""),
+  solidworksExecutable: z.string().default(""),
+  inventorExecutable: z.string().default(""),
 });
 const json = (value, status = 200) =>
   new Response(JSON.stringify(value), {

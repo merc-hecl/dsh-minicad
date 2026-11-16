@@ -19,7 +19,7 @@ Give the DSH agent dimensions or a reference drawing. It builds, revises and exp
 - **Inspect and measure** — Solid, wireframe and transparent display, part visibility, sections and exploded views. Measure faces, edges and distances, reference selected geometry in requests, and check part clearance or interference.
 - **Review revisions and processes** — Branch, switch and restore in the version tree, review modeling steps and geometry differences, and export design replays as WebM or GIF.
 - **Manage designs and conversations** — Share a design across conversations and read their history; save an independent copy or generate model variants.
-- **Deliver models** — Import SMP, SMB or STEP, export whole models or individual parts as STEP/STL, save a project ZIP, or open the current model in FreeCAD.
+- **Deliver models** — Import SMP, SMB or STEP, export whole models or individual parts as STEP/STL, save a project ZIP, or open the current model in an external CAD application.
 - **Play the part instrument** — Click the model to synthesize geometry-dependent strikes, record a performance and export MIDI.
 
 | Parameter controls | Geometry measurements |
@@ -70,14 +70,24 @@ For a Desktop npm installation, uninstall through **Plugins** and reinstall by p
 
 Double-click the canvas to open the composer. After saving a model, use **Adjust parameters** in the toolbar to apply controls supplied by the agent; it is disabled when no suitable controls are available. Reading PDF drawings depends on available PDF tools and an image-capable model in DSH.
 
-## FreeCAD
+## Open in an external CAD application
 
-Open the current model from the native navigation menu at the top right. MiniCAD detects installed FreeCAD applications automatically. If detection fails, set an absolute executable path in DSH's `minicad` configuration:
+Choose an application from the native navigation menu at the top right. MiniCAD exports the current revision as STEP and opens it in the selected application. FreeCAD remains available across platforms. Windows supports all the applications below.
+
+| Application | DSH setting |
+| --- | --- |
+| FreeCAD | `freecadExecutable` |
+| [CAD Assistant](https://www.opencascade.com/products/cad-assistant/) | `cadAssistantExecutable` |
+| [Rhino](https://docs.mcneel.com/rhino/8/help/en-us/fileio/step_stp_import_export.htm) | `rhinoExecutable` |
+| [SOLIDWORKS](https://help.solidworks.com/2026/english/SolidWorks/Sldworks/c_Step_Files.htm) | `solidworksExecutable` |
+| [Autodesk Inventor](https://help.autodesk.com/cloudhelp/2026/ENU/Inventor-Help/files/GUID-7CF00AFC-D40C-4FFC-B781-338AE2476527.htm) | `inventorExecutable` |
+
+MiniCAD detects installed applications automatically. If detection fails, set the application's absolute executable path in DSH's `minicad` configuration as shown below.
 
 ```yaml
 - id: minicad
   config:
-    freecadExecutable: C:/Program Files/FreeCAD/bin/FreeCAD.exe
+    rhinoExecutable: C:/Program Files/Rhino 8/System/Rhino.exe
 ```
 
 Leave it empty for automatic detection. When using a Web configuration patch, preserve any other settings on that row. Restart DSH after changing it. External CAD edits are not written back automatically; ask the agent to import the modified file to keep them.

@@ -42,7 +42,7 @@ await build({
     ),
     __MINICAD_REQUIRE__: "require",
   },
-  loader: { ".css": "text", ".svg": "dataurl" },
+  loader: { ".css": "text", ".svg": "dataurl", ".png": "dataurl" },
   banner: {
     js: 'window.__ModuleLoader__.load({id:"dsh-minicad",factory:(require)=>{var module={exports:{}};var exports=module.exports;',
   },

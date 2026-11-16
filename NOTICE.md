@@ -2,9 +2,16 @@
 
 MiniCAD uses the DSH host's React runtime, UI primitives, locale and theme services.
 
-The MiniCAD navigation menu adapts the compact directory button presentation from DeepSeek Harness 0.2.1-rc.5 (`packages/client/ui-open-in-app/src/client/OpenTargetButton` and `OpenInAppAction`). It retains native catalog, locale, preference and directory-launch injections, and adds the plugin's FreeCAD model action. Scoped presentation copies are in `src/client/directory-open-action.jsx` and `directory-open-action.css`; the DSH MIT license is preserved in [docs/licenses/dsh-workspace-MIT.txt](docs/licenses/dsh-workspace-MIT.txt).
+The MiniCAD navigation menu adapts the compact directory button presentation from DeepSeek Harness 0.2.1-rc.5 (`packages/client/ui-open-in-app/src/client/OpenTargetButton` and `OpenInAppAction`). It retains native catalog, locale, preference and directory-launch injections, and adds the plugin's external CAD actions. Scoped presentation copies are in `src/client/directory-open-action.jsx` and `directory-open-action.css`. The DSH MIT license is preserved in [docs/licenses/dsh-workspace-MIT.txt](docs/licenses/dsh-workspace-MIT.txt).
 
 The unmodified FreeCAD icon in `src/client/assets/freecad.svg` comes from [selfh.st/icons](https://cdn.jsdelivr.net/gh/selfhst/icons@main/svg/freecad.svg). Attribution: selfh.st/icons and its contributors. The collection's [CC BY 4.0 license](https://github.com/selfhst/icons/blob/main/LICENSE) is preserved in [docs/licenses/selfhst-icons-CC-BY-4.0.txt](docs/licenses/selfhst-icons-CC-BY-4.0.txt). Product names and trademarks belong to their respective owners.
+
+The external CAD menu also includes the following application icons:
+
+- `cad-assistant.png` is extracted from `CADAssistant.exe` in [Open Cascade's official Windows archive](https://opencascade.com/source-mirror/sites/default/files/private/occt/applications/cad_assistant_1.6.0_2021-10-05_win64.zip).
+- `rhino.png` is a resized copy of [McNeel's Rhino 8 icon](https://www.rhino3d.com/8/v8-icon-small.png).
+- `solidworks.svg` is the unmodified [SOLIDWORKS icon from Dashboard Icons](https://dashboardicons.com/icons/solidworks), contributed by Tim Smith. The [Apache 2.0 license](https://dashboardicons.com/license) is preserved in [docs/licenses/dashboard-icons-Apache-2.0.txt](docs/licenses/dashboard-icons-Apache-2.0.txt).
+- `inventor.svg` is Autodesk's simplified product icon from the [Inventor product page](https://www.autodesk.com/products/inventor/overview).
 
 The MiniCAD agent preset's standard tool composition in `cordis.patch.yml` is adapted from DeepSeek Harness 0.2.1-rc.5 (`packages/bundle/web-app/presets/standard.patch.yml`). It retains the official platform conditions and isolation groups, with MiniCAD tools added. The same DSH MIT license is preserved in [docs/licenses/dsh-workspace-MIT.txt](docs/licenses/dsh-workspace-MIT.txt).
 

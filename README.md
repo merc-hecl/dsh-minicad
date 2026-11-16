@@ -19,7 +19,7 @@
 - **查看与核验** — 实体、线框、透明显示，零件显隐、剖切和爆炸视图；测量面、边和目标间距离，将选中几何引用给 agent，检查零件间隙与干涉。
 - **版本与过程** — 在树状版本库中分支、切换和恢复，回看制作过程与几何差异；回放设计演变并导出 WebM/GIF。
 - **设计与会话** — 多个会话共享一个设计，查看会话记录；另存为独立方案，或生成多个模型规格。
-- **模型交付** — 导入 SMP、SMB、STEP，整组或按零件导出 STEP、STL，导出项目 ZIP，或将当前模型交给 FreeCAD 打开。
+- **模型交付** — 导入 SMP、SMB、STEP，整组或按零件导出 STEP、STL，导出项目 ZIP，或在外部 CAD 软件中打开当前模型。
 - **零件乐器** — 点击模型发出随几何变化的敲击声，录制演奏并导出 MIDI。
 
 | 参数调整 | 几何测量 |
@@ -70,14 +70,24 @@ npx @deepseek-ai/dsh@0.2.2-rc.1 plugin --profile web add dsh-minicad -w
 
 双击画布打开输入框。模型保存后，可用工具栏的「参数调整」应用 agent 提供的调整项；没有合适调整项时入口置灰。PDF 图纸读取取决于 DSH 中可用的 PDF 工具与支持图片的模型。
 
-## FreeCAD
+## 在外部 CAD 软件中打开
 
-从右上角原生导航菜单打开当前模型。插件自动检测已安装的 FreeCAD；未检测到时，在 DSH 的 `minicad` 配置中设置可执行文件的绝对路径：
+从右上角原生导航菜单选择应用，MiniCAD 会导出当前版本为 STEP 并交给该应用打开。FreeCAD 沿用原有的跨平台支持，Windows 还支持以下应用：
+
+| 应用 | DSH 配置项 |
+| --- | --- |
+| FreeCAD | `freecadExecutable` |
+| [CAD Assistant](https://www.opencascade.com/products/cad-assistant/) | `cadAssistantExecutable` |
+| [Rhino](https://docs.mcneel.com/rhino/8/help/en-us/fileio/step_stp_import_export.htm) | `rhinoExecutable` |
+| [SOLIDWORKS](https://help.solidworks.com/2026/english/SolidWorks/Sldworks/c_Step_Files.htm) | `solidworksExecutable` |
+| [Autodesk Inventor](https://help.autodesk.com/cloudhelp/2026/ENU/Inventor-Help/files/GUID-7CF00AFC-D40C-4FFC-B781-338AE2476527.htm) | `inventorExecutable` |
+
+插件自动检测已安装的应用。未检测到时，在 DSH 的 `minicad` 配置中设置对应可执行文件的绝对路径，例如：
 
 ```yaml
 - id: minicad
   config:
-    freecadExecutable: C:/Program Files/FreeCAD/bin/FreeCAD.exe
+    rhinoExecutable: C:/Program Files/Rhino 8/System/Rhino.exe
 ```
 
 留空使用自动检测。Web 使用补丁配置时，保留该行已有的其他配置；修改后重启 DSH。外部 CAD 修改不会自动写回，需要保留时让 agent 导入修改后的文件。

@@ -20,8 +20,8 @@ export function appendErrorDetail(error, zh, en, suffix) {
 
 // Stable translation keys for error summaries.
 const rules = [
-  ["freecadUnavailable", /未检测到 FreeCAD/],
-  ["modelAppLaunchFailed", /FreeCAD 启动失败/],
+  ["modelAppNotFound", /^未检测到 .+，请安装或配置应用路径/],
+  ["modelAppLaunchFailed", /^.+ 启动失败 \/ Could not launch /],
   ["revisionConflict", /设计已更新/],
   ["parameterPanelChanged", /参数面板已更新/],
   ["workingFilesChanged", /模型工作文件已修改/],
