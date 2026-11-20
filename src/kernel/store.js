@@ -40,6 +40,32 @@ const cleanName = (name) =>
     .slice(0, 100) || "design";
 const equalBytes = (a, b) =>
   a === null ? b === null : b !== null && a.equals(b);
+
+async function evaluateRecipe(api, args, { directory, shape, edit, revision, scope, resourceRead = () => {}, checkpoint, log }) {
+  const resources = {};
+  if (edit) {
+    const operations = api.normalizeOperations(api.values(args.operations, args.parameters), shape, revision, scope);
+    return api.editShape(shape, operations, {}, {
+      readModel: name => api.readModel(directory, name, resources, resourceRead), checkpoint,
+    });
+  }
+  const current = args.part ? shape.part(args.part).shape : shape;
+  const result = await api.buildShape(args.source, args.parameters, inside(directory, "build.js"), resources,
+    resourceRead, directory, checkpoint, log, current);
+  return args.part ? api.replacePart(shape, args.part, result) : result;
+}
+
+function buildValidation(api, shape, args, scope, revision) {
+  const checks = api.values(args.checks || [], args.parameters);
+  return checks.length ? { checks, ...api.checkShape(shape, checks, scope, revision) }
+    : { passed: null, checks: [], results: [] };
+}
+
+function requirePassedChecks(validation) {
+  if (validation.passed === false)
+    throw Object.assign(localizedError("尺寸检查未通过，当前版本未被覆盖", "dimensional checks failed; saved revision retained"), { validation });
+}
+
 function revisionActor(root, entry) {
   if (entry.actor) return entry.actor;
   // Execution materials are optional; unavailable provenance must not block exact snapshot recovery.
@@ -402,7 +428,7 @@ export class Store {
   panelRecipe(panel) {
     return { operations: panel.operations, source: panel.source, part: panel.part, checks: panel.checks };
   }
-  async applyPanel(key, args) {
+  async adjustPanel(key, args, preview) {
     const project = this.project(key, args.modelFile);
     this.expect(project.head, args);
     const saved = this.snapshot(key, project.head, project.modelFile);
@@ -411,17 +437,28 @@ export class Store {
     if (!panel || panel.id !== args.panelId) throw new Conflict("参数面板已更新", "The parameter panel has changed");
     const values = panelValues(panel, args.values);
     if (project.workingTreeChanged) throw new Conflict();
-    if (isDeepStrictEqual(values, panel.values)) return { ...project, committed: false };
+    if (!preview && isDeepStrictEqual(values, panel.values)) return { ...project, committed: false };
+    const base = { folder: join(saved.folder, "panel"), state: readJson(join(saved.folder, "panel/state.json")) };
+    const recipe = { ...this.panelRecipe(panel), parameters: values };
+    const edit = Boolean(panel.operations);
+    if (preview) {
+      const api = await this.kernel(), scope = api.modelScope(key, project.modelFile);
+      const shape = await evaluateRecipe(api, recipe, { directory: project.directory, shape: await this.shape(base),
+        edit, revision: base.state.revision, scope: panel.baseScope || scope });
+      const state = api.describeShape(shape);
+      api.requireNames(shape);
+      requirePassedChecks(buildValidation(api, shape, recipe, scope, project.revisions[0].revision + 1));
+      return { parts: state.parts, preview: Buffer.from(encodePreview(state.preview)).toString("base64") };
+    }
     const materials = new Map([
       ["panel.json", jsonBytes({ ...panel, values })],
-      ...["model.smp", "state.json"].map(name => [`panel/${name}`, fs.readFileSync(join(saved.folder, "panel", name))]),
+      ...["model.smp", "state.json"].map(name => [`panel/${name}`, fs.readFileSync(join(base.folder, name))]),
     ]);
-    const base = { folder: join(saved.folder, "panel"), state: readJson(join(saved.folder, "panel/state.json")) };
     const language = args.language === "en" ? "en" : "zh";
     const changes = panelChanges(panel, panel.values, values);
     return this.build(key, { modelFile: project.modelFile, expectedRevision: project.head,
-      ...this.panelRecipe(panel), parameters: values, summary: panelChangeSummary(changes, language) || panel.title[language],
-      preserveSelection: true }, Boolean(panel.operations), { base, scope: panel.baseScope, materials, panelId: panel.id, changes });
+      ...recipe, summary: panelChangeSummary(changes, language) || panel.title[language], preserveSelection: true },
+      edit, { base, scope: panel.baseScope, materials, panelId: panel.id, changes });
   }
   async build(key, args, edit = false, panelExecution) {
     const [root, , task] = this.locate(key);
@@ -460,8 +497,9 @@ export class Store {
     if (!parameters || typeof parameters !== "object" || Array.isArray(parameters))
       throw localizedError("parameters 必须是 JSON 对象", "parameters must be a JSON object");
     jsonBytes(parameters);
+    const recipe = { ...args, parameters };
     const base = panelExecution?.base || (args.baseModelFile ? this.snapshot(key, args.baseRevision, args.baseModelFile) : saved);
-    const resources = {}, materials = new Map(panelExecution?.materials);
+    const materials = new Map(panelExecution?.materials);
     const operation = { tool: panelExecution?.panelId ? "cad_apply_panel" : args.file ? "cad_import" : edit ? "cad_edit" : "cad_build", kernel: api.kernelName,
       inputModel: args.baseModelFile || modelFile, inputRevision: base?.state.revision || 0,
       ...(panelExecution?.panelId ? { panelId: panelExecution.panelId, parameters, changes: panelExecution.changes } : {}),
@@ -493,13 +531,11 @@ export class Store {
       journal.saveMaterials(run, new Map([[nameInArchive, bytes]]));
     };
     for (const name of args.inputs || []) resourceRead(name, fs.readFileSync(inside(directory, name)));
-    const checkpoint = (part, label, operation) => {
-      if (run.purpose === "modeling") {
-        const visible = args.part && !edit ? api.replacePart(shape, args.part, part) : part;
-        journal.capture(run, api.describeShape(visible), label, operation);
-      }
+    const checkpoint = run.purpose === "modeling" ? (part, label, operation) => {
+      const visible = args.part && !edit ? api.replacePart(shape, args.part, part) : part;
+      journal.capture(run, api.describeShape(visible), label, operation);
       return part;
-    };
+    } : undefined;
     let shape = base ? await this.shape(base) : null;
     if (args.file) {
       const bytes = fs.readFileSync(inside(directory, args.file));
@@ -512,34 +548,26 @@ export class Store {
       }
       shape = api.readShape(bytes, args.file, metadata?.parts, metadata?.entities);
       if (metadata?.geometryIds) run.geometryIds = metadata.geometryIds;
-    } else if (edit) {
-      const operations = api.normalizeOperations(api.values(args.operations, parameters), shape,
-        base?.state.revision || 0, panelExecution?.scope || api.modelScope(key, args.baseModelFile || modelFile));
-      shape = api.editShape(shape, operations, {}, {
-        readModel: name => api.readModel(directory, name, resources, resourceRead), checkpoint,
-      });
     } else {
-      const current = args.part ? shape.part(args.part).shape : shape;
-      const result = await api.buildShape(args.source, parameters, inside(directory, "build.js"), resources,
-        resourceRead, directory, checkpoint, (...args) => journal.log(run, format(...args)), current);
-      shape = args.part ? api.replacePart(shape, args.part, result) : result;
+      shape = await evaluateRecipe(api, recipe, {
+        directory, shape, edit, revision: base?.state.revision || 0,
+        scope: panelExecution?.scope || api.modelScope(key, args.baseModelFile || modelFile),
+        resourceRead, checkpoint, log: (...args) => journal.log(run, format(...args)),
+      });
     }
     const state = { ...api.describeShape(shape), formatVersion: 2, unit: "mm", geometryIds: run.geometryIds };
     if (args.commit !== false) api.requireNames(shape);
     journal.capture(run, state, "", run.purpose === "panel_apply" ? "panel_apply" : "result");
     journal.finish(run, "validating");
     const scope = api.modelScope(key, args.commit === false ? `${modelFile}@${run.id}` : modelFile);
-    const checks = api.values(args.checks || [], parameters);
-    state.validation = checks.length ? { checks, ...api.checkShape(shape, checks, scope, run.candidateRevision) }
-      : { passed: null, checks: [], results: [] };
+    state.validation = buildValidation(api, shape, recipe, scope, run.candidateRevision);
     run.validation = state.validation;
     const diagnostics = { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean) };
     if (args.commit === false) {
       journal.saveCandidate(run, state, api.saveShape(shape), inputs);
       return { modelFile, head, committed: false, runId: run.id, metrics: state.metrics, validation: state.validation, diagnostics };
     }
-    if (state.validation.passed === false)
-      throw Object.assign(localizedError("尺寸检查未通过，当前版本未被覆盖", "dimensional checks failed; saved revision retained"), { validation: state.validation });
+    requirePassedChecks(state.validation);
     const finishedRun = { ...run, phase: "done", committedRevision: run.candidateRevision, updated: now() };
     this.record(key, modelFile, state, api.saveShape(shape), args.summary, head, inputs, new Map([...materials, ...journal.archive(finishedRun)]), {
       actor: run.actor, processRunId: run.id, selectModel: !args.preserveSelection, extraFiles: new Map([[journal.manifest(run.id), jsonBytes(finishedRun)]]),
@@ -566,8 +594,7 @@ export class Store {
         shape,
         checks, api.modelScope(key, `${args.modelFile}@${run.id}`), run.candidateRevision,
       ) } : { passed: null, checks: [], results: [] };
-      if (state.validation.passed === false)
-        throw Object.assign(localizedError("尺寸检查未通过，当前版本未被覆盖", "dimensional checks failed; saved revision retained"), { validation: state.validation });
+      requirePassedChecks(state.validation);
       state.preview = api.previewShape(shape);
       const finished = { ...run, phase: "done", summary: args.summary || run.summary, validation: state.validation,
         publicationError: undefined, publicationValidation: undefined, committedRevision: nextRevision(model), updated: now() };
@@ -779,7 +806,8 @@ export class Store {
       return { ...saved.state, geometryScope: createHash("sha256").update(`${key}\0${modelFile}`).digest("hex").slice(0, 24) };
     }
     if (method === "publish_panel") return this.publishPanel(key, { ...args, modelFile });
-    if (method === "apply_panel") return this.applyPanel(key, { ...args, modelFile });
+    if (method === "apply_panel" || method === "preview_panel")
+      return this.adjustPanel(key, { ...args, modelFile }, method === "preview_panel");
     if (method === "compare") {
       const base = this.snapshot(key, args.baseRevision, modelFile);
       const target = this.snapshot(key, args.targetRevision, modelFile);

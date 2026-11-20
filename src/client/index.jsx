@@ -15,6 +15,14 @@ import designNavigatorCss from "./design-navigator.css";
 import directoryOpenCss from "./directory-open-action.css";
 import conversationDockCss from "./conversation-dock.css";
 import sessionRecordCss from "./session-record.css";
+
+function decodePreviewPayload(encoded) {
+  const data = atob(encoded);
+  const bytes = new Uint8Array(data.length);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = data.charCodeAt(i);
+  return decodePreview(bytes);
+}
+
 export const inject = [
   "slots", "layout", "locale", "sessions", "conversation", "uiWorkspace", "workspaces", "shortcuts", "inputTriggers", "uiConversation", "contextMenus", "modelDirectories",
 ];
@@ -61,10 +69,11 @@ export function apply(ctx) {
         uiKey: data.code,
         localized: data.localized,
       });
+    if (method === "preview_panel") return { parts: data.parts, previewData: decodePreviewPayload(data.preview) };
     if (method === "compare") {
       for (const name of ["added", "removed", "unchanged"]) {
         if (data[name]) {
-          data[name].previewData = decodePreview(Uint8Array.from(atob(data[name].preview), char => char.charCodeAt(0)));
+          data[name].previewData = decodePreviewPayload(data[name].preview);
           delete data[name].preview;
         }
       }

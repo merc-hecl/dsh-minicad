@@ -39,7 +39,7 @@ const clientMethods = new Set([
   "attach",
   "reference_file",
   "restore",
-  "apply_panel",
+  "apply_panel", "preview_panel",
   "health",
   "open_design",
   "close_design",
@@ -272,7 +272,7 @@ export async function apply(ctx, config = {}) {
     }
     if (!clientMethods.has(method))
       throw Object.assign(localizedError("不支持的操作", "Unsupported operation"), { status: 404 });
-    if (method === "restore" || method === "select_model" || method === "apply_panel") {
+    if (["restore", "select_model", "apply_panel", "preview_panel"].includes(method)) {
       const project = building.get(args.projectId) || await call("get", { projectId: args.projectId }, signal);
       if (designBusy(project)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
     }

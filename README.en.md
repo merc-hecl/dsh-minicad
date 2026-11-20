@@ -68,7 +68,9 @@ For a Desktop npm installation, uninstall through **Plugins** and reinstall by p
 
 > Make an 80 × 50 × 6 mm base plate with a 5 mm through hole at each corner. Each hole center is 8 mm from both adjacent edges.
 
-Double-click the canvas to open the composer. After saving a model, use **Adjust parameters** in the toolbar to apply controls supplied by the agent; it is disabled when no suitable controls are available. Reading PDF drawings depends on available PDF tools and an image-capable model in DSH.
+Double-click the canvas to open the composer. Reading PDF drawings depends on available PDF tools and an image-capable model in DSH.
+
+**Adjust parameters** becomes available in the toolbar once the agent provides controls for a saved model. Change a parameter and select **Preview** to see the temporary result on the canvas. Editing a parameter again, resetting the values, or closing the panel brings back the saved model. **Apply** saves a new version once the checks pass.
 
 ## Open in an external CAD application
 

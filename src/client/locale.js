@@ -1,5 +1,6 @@
 export const zh = {
   parameterPanel: "参数调整", applyParameters: "应用", applyingParameters: "正在应用", resetParameters: "重置", parameterPanelChanged: "参数面板已更新",
+  previewParameters: "预览", previewingParameters: "正在预览",
   parameterNumberRequired: "{name}：请输入有效数字", parameterIntegerRequired: "{name}：请输入整数",
   parameterMinimum: "{name}不能小于 {min}", parameterMaximum: "{name}不能大于 {max}",
   "revisionActor.agent": "Agent", "revisionActor.user": "用户", "revisionActor.unknown": "来源未知",
@@ -162,6 +163,7 @@ export const zh = {
 };
 export const en = {
   parameterPanel: "Adjust parameters", applyParameters: "Apply", applyingParameters: "Applying", resetParameters: "Reset", parameterPanelChanged: "The parameter panel has changed",
+  previewParameters: "Preview", previewingParameters: "Previewing",
   parameterNumberRequired: "{name}: enter a valid number", parameterIntegerRequired: "{name}: enter an integer",
   parameterMinimum: "{name} must be at least {min}", parameterMaximum: "{name} must be at most {max}",
   "revisionActor.agent": "Agent", "revisionActor.user": "You", "revisionActor.unknown": "Unknown",

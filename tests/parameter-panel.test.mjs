@@ -1,15 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as cad from "@classcad/smlibwasm";
 import { unzipSync } from "fflate";
 import { createWorker } from "../src/host/worker.js";
+import { decodePreview } from "../src/shared/preview.js";
 
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-5, `${actual} != ${expected}`);
 const label = (zh, en = zh) => ({ zh, en });
 const sizeCheck = (axis, expected) => ({ measurement: { kind: "size", axis }, expected, tolerance: 1e-6 });
+function previewHeight(preview) {
+  const z = decodePreview(Buffer.from(preview, "base64")).positions.filter((_, i) => i % 3 === 2);
+  return Math.max(...z) - Math.min(...z);
+}
 
 test("a panel with nine dimensional and position controls publishes and adjusts a drilled plate", { timeout: 120000 }, async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "minicad-panel-many-fields-"));
@@ -47,7 +52,7 @@ test("a panel with nine dimensional and position controls publishes and adjusts 
   } finally { await worker.dispose(); await rm(dataDir, { recursive: true, force: true }); }
 });
 
-test("direct panel adjustments preserve holes, use a fixed baseline across restarts, retain failures and branch with their version", { timeout: 120000 }, async () => {
+test("direct panel adjustments preview without saving, use a fixed baseline, retain failures and branch with their version", { timeout: 120000 }, async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "minicad-panel-"));
   let worker = createWorker({ dataDir });
   try {
@@ -108,6 +113,19 @@ test("direct panel adjustments preserve holes, use a fixed baseline across resta
     assert.equal(solids[0].color, "#528BCC");
     const files = ["model.smp", "model.state.json", ".cad-design.json"];
     const before = await Promise.all(files.map(file => readFile(join(project.directory, file))));
+    const entries = (await readdir(project.directory, { recursive: true })).sort();
+    const history = await worker.call("process_history", target);
+    const panelTarget = { ...target, expectedRevision: 3, panelId };
+    const previewed = await worker.call("preview_panel", { ...panelTarget, values: { thickness: 7.5 } });
+    near(previewHeight(previewed.preview), 7.5);
+    await assert.rejects(worker.call("preview_panel", { ...panelTarget, values: { thickness: 4 } }), error => error.validation?.passed === false);
+    await assert.rejects(worker.call("preview_panel", { ...panelTarget, expectedRevision: 2, values: { thickness: 8 } }), error => error.status === 409);
+    const afterPreview = await worker.call("get", target);
+    assert.deepEqual(afterPreview.revisions, second.revisions);
+    assert.deepEqual(afterPreview.parameterPanel, second.parameterPanel);
+    assert.deepEqual(await worker.call("process_history", target), history);
+    assert.deepEqual((await readdir(project.directory, { recursive: true })).sort(), entries);
+    for (let i = 0; i < files.length; i++) assert.deepEqual(await readFile(join(project.directory, files[i])), before[i]);
     for (const values of [{ thickness: 4 }, { thickness: 20 }, { thickness: 8, extra: 1 }])
       await assert.rejects(worker.call("apply_panel", { ...target, expectedRevision: 3, panelId, values }));
     await assert.rejects(worker.call("apply_panel", { ...target, expectedRevision: 1, panelId, values: { thickness: 7 } }), error => error.status === 409);
@@ -172,10 +190,12 @@ test("structured recipes resolve pinned geometry references and reject a mismatc
       const result = await worker.call("apply_panel", { ...target, expectedRevision, panelId: parameterPanel.id, values: { offset } });
       near(result.design.metrics.volume, 10 * 20 * (6 + offset));
     }
+    const adjusted = await worker.call("preview_panel", { ...target, expectedRevision: 3, panelId: parameterPanel.id, values: { offset: 3 } });
+    near(previewHeight(adjusted.preview), 9);
   } finally { await worker.dispose(); await rm(dataDir, { recursive: true, force: true }); }
 });
 
-test("choice, toggle and integer controls drive one checked assembly revision while preserving the other part", { timeout: 120000 }, async () => {
+test("choice, toggle and integer controls preview and save a checked assembly while preserving the other part", { timeout: 120000 }, async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "minicad-panel-assembly-"));
   const worker = createWorker({ dataDir });
   try {
@@ -198,8 +218,13 @@ test("choice, toggle and integer controls drive one checked assembly revision wh
     const published = await worker.call("publish_panel", { ...target, expectedRevision: 1, panel });
     for (const values of [{ layers: 1.5, wide: false, finish: "blue" }, { layers: 1, wide: false, finish: "green" }])
       await assert.rejects(worker.call("apply_panel", { ...target, expectedRevision: 1, panelId: published.parameterPanel.id, values }));
-    const result = await worker.call("apply_panel", { ...target, expectedRevision: 1, panelId: published.parameterPanel.id,
-      values: { layers: 2, wide: true, finish: "red" } });
+    const adjustment = { ...target, expectedRevision: 1, panelId: published.parameterPanel.id, values: { layers: 2, wide: true, finish: "red" } };
+    const previewed = await worker.call("preview_panel", adjustment);
+    const cover = previewed.parts.find(part => part.id === "cover");
+    near(cover.volume, 480);
+    const { faceColors } = decodePreview(Buffer.from(previewed.preview, "base64"));
+    assert.equal(faceColors[cover.faceStart], 0xFF0000 + 1);
+    const result = await worker.call("apply_panel", adjustment);
     assert.equal(result.head, 2);
     const parts = (await worker.call("query", { ...target, expectedRevision: 2, kind: "parts" })).items;
     near(parts.find(part => part.id === "base").volume, 400);

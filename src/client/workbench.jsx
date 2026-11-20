@@ -162,6 +162,7 @@ export function Workbench({
   const [operationActor, setOperationActor] = useState(null), [userOperation, setUserOperation] = useState(null);
   useEffect(() => { setUserOperation(null); setOperationActor(null); }, [project?.id, project?.modelFile, project?.activeSessionId]);
   const [parameterPanelOpen, setParameterPanelOpen] = useState(false);
+  const [parameterPreview, setParameterPreview] = useState(null);
   useEffect(() => { setParameterPanelOpen(false); }, [project?.id, project?.modelFile, project?.parameterPanel?.id]);
   const [nativeRunning, setNativeRunning] = useState(false);
   useEffect(() => { if (operationActor === "agent" || nativeRunning) setUserOperation(null); }, [operationActor, nativeRunning]);
@@ -648,7 +649,11 @@ export function Workbench({
     revision: timelapseFrame.revision,
     previewData: timelapseFrame.previewData,
   } : null, [timelapseFrame, project?.modelFile]);
-  const originalDesign = timelapseOpen ? timelapseDesign || design : versionLibraryOpen ? libraryDesign : diffOpen ? design : processDesign || design;
+  const parameterPanelVisible = parameterPanelOpen && !!project?.parameterPanel && !viewOpen && !instrumentOpen && !timelapseOpen && !diffOpen && !versionLibraryOpen && !selecting && !recordOpen;
+  const parameterPanelKey = JSON.stringify([project?.id, project?.modelFile, project?.head, project?.parameterPanel?.id]);
+  const parameterPreviewDesign = parameterPanelVisible && !project.workingTreeChanged && parameterPreview?.key === parameterPanelKey
+    ? parameterPreview.design : null;
+  const originalDesign = timelapseOpen ? timelapseDesign || design : versionLibraryOpen ? libraryDesign : diffOpen ? design : processDesign || parameterPreviewDesign || design;
   const displayedDesign = useMemo(() => originalDesign && ({ ...originalDesign,
     previewData: visiblePreview(originalDesign.previewData, originalDesign.parts, diffOpen || versionLibraryOpen ? [] : hiddenParts) }), [originalDesign, hiddenParts, diffOpen, versionLibraryOpen]);
   const viewExtent = useMemo(() => {
@@ -684,7 +689,6 @@ export function Workbench({
       }))
     : [], [instrumentRecording, instrumentEvents, restrikeIndex]);
   const displayedDiff = diffOpen && diff?.projectId === project?.id && diff?.modelFile === project?.modelFile ? diff : null;
-  const parameterPanelVisible = parameterPanelOpen && !!project?.parameterPanel && !viewOpen && !instrumentOpen && !timelapseOpen && !diffOpen && !versionLibraryOpen && !selecting && !recordOpen;
   return (
     <div
       ref={workbench}
@@ -887,7 +891,8 @@ export function Workbench({
         busy={modelSwitchDisabled} onModel={selectModelFile} onMenuOpenChange={setModelMenu}
         onClose={() => { clearGeometrySelection(); setSelecting(false); }} t={t} />}
       {parameterPanelVisible && <ParameterPanel
-        key={`${project.id}:${project.modelFile}:${project.head}:${project.parameterPanel.id}`} project={project} language={language}
+        key={parameterPanelKey} project={project} language={language}
+        previewKey={parameterPanelKey} previewActive={!!parameterPreviewDesign && !processDesign} onPreview={setParameterPreview}
         disabled={busy || running || nativeRunning || project.workingTreeChanged} request={request} t={t} onClose={() => setParameterPanelOpen(false)}
         onOperation={setUserOperation}
         onApplied={async captured => {

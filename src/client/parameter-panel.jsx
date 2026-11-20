@@ -1,16 +1,21 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button, Input, Switch, SegmentedControl, StateDot, Toast, IconWarningOutlineRegular, IconCloseOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 import { ErrorDetails } from "./workbench-dialog.jsx";
 import { errorDetail, errorKey } from "../shared/errors.js";
 
-export function ParameterPanel({ project, language, disabled, request, onApplied, onOperation, onClose, t }) {
+export function ParameterPanel({ project, language, disabled, request, previewKey, previewActive, onPreview, onApplied, onOperation, onClose, t }) {
   const panel = project.parameterPanel;
   const label = value => value[language === "zh" ? "zh" : "en"];
   const initial = Object.fromEntries(panel.fields.map(field => [field.key, field.value]));
-  const [draft, setDraft] = useState(initial), [busy, setBusy] = useState(false), [error, setError] = useState(null);
+  const [draft, setDraft] = useState(initial), [pending, setPending] = useState(null), [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const panelElement = useRef(null), inputElements = useRef(new Map());
-  const submitting = useRef(false);
+  const submitting = useRef(false), previewRequest = useRef(null);
+  useEffect(() => () => {
+    previewRequest.current?.abort();
+    onPreview(null);
+  }, [onPreview]);
+  const busy = pending !== null, previewing = pending === "preview_panel", applying = pending === "apply_panel";
   const locked = disabled || busy;
   const values = Object.fromEntries(panel.fields.map(field => [field.key,
     field.type === "number" || field.type === "integer" ? draft[field.key] === "" ? null : Number(draft[field.key]) : draft[field.key],
@@ -21,9 +26,10 @@ export function ParameterPanel({ project, language, disabled, request, onApplied
     && !(typeof values[field.key] === "number" && Number.isFinite(values[field.key])
       && (field.type !== "integer" || Number.isInteger(values[field.key]))
       && (field.min === undefined || values[field.key] >= field.min) && (field.max === undefined || values[field.key] <= field.max)));
-  const change = (key, value) => { setDraft(current => ({ ...current, [key]: value })); setError(null); setNotice(null); };
-  const apply = async event => {
-    event.preventDefault();
+  const change = (key, value) => {
+    setDraft(current => ({ ...current, [key]: value })); onPreview(null); setError(null); setNotice(null);
+  };
+  const submit = async method => {
     if (locked || !dirty || submitting.current) return;
     if (invalidField) {
       const value = values[invalidField.key];
@@ -34,26 +40,39 @@ export function ParameterPanel({ project, language, disabled, request, onApplied
       inputElements.current.get(invalidField.key)?.focus();
       return;
     }
-    submitting.current = true; setBusy(true); setError(null);
-    onOperation({ phase: "working" });
+    const preview = method === "preview_panel";
+    const controller = preview ? new AbortController() : null;
+    previewRequest.current = controller;
+    submitting.current = true; setPending(method); setError(null);
+    if (!preview) onOperation({ phase: "working" });
     let saved = false;
     try {
-      const result = await request("apply_panel", { projectId: project.id, modelFile: project.modelFile,
-        expectedRevision: project.head, panelId: panel.id, values, language });
+      const result = await request(method, { projectId: project.id, modelFile: project.modelFile,
+        expectedRevision: project.head, panelId: panel.id, values, language }, controller?.signal);
+      if (preview) {
+        if (!controller.signal.aborted) onPreview({ key: previewKey, design: result });
+        return;
+      }
       saved = true;
       onOperation({ phase: "done", revision: result.head });
       await onApplied(project);
     } catch (error) {
-      if (!saved) onOperation({ phase: "error", error: errorDetail(error) });
-      setError({ key: errorKey(error.message), detail: errorDetail(error) });
-    } finally { submitting.current = false; setBusy(false); }
+      if (controller?.signal.aborted) return;
+      if (!preview && !saved) onOperation({ phase: "error", error: errorDetail(error) });
+      onPreview(null);
+      setError({ key: error.uiKey || errorKey(error.message), detail: errorDetail(error) });
+    } finally {
+      previewRequest.current = null;
+      submitting.current = false;
+      if (!controller?.signal.aborted) setPending(null);
+    }
   };
   return <section ref={panelElement} id="mc-parameter-panel" className="mc-parameter-panel mc-panel" aria-label={t("parameterPanel")} aria-busy={busy}>
     <header className="mc-view-header">
-      <strong>{label(panel.title)}</strong><span className="mc-parameter-version">v{project.head}</span>
-      <Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={14} />} disabled={busy} aria-label={t("close")} onClick={onClose} />
+      <strong>{label(panel.title)}</strong><span className="mc-parameter-version" aria-live="polite">v{project.head}{previewActive && ` · ${t("previewParameters")}`}</span>
+      <Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={14} />} disabled={applying} aria-label={t("close")} onClick={onClose} />
     </header>
-    <div className="mc-panel-scroll"><form noValidate onSubmit={apply}>
+    <div className="mc-panel-scroll"><form noValidate onSubmit={event => { event.preventDefault(); submit("apply_panel"); }}>
       <fieldset disabled={locked}>
         {panel.fields.map((field, index) => {
           const id = `mc-parameter-${index}`, title = label(field.label);
@@ -78,9 +97,13 @@ export function ParameterPanel({ project, language, disabled, request, onApplied
         })}
       </fieldset>
       <div className="mc-parameter-actions">
-        <Button type="button" variant="ghost" size="sm" disabled={locked || !dirty} onClick={() => { setDraft(initial); setError(null); setNotice(null); }}>{t("resetParameters")}</Button>
+        <Button type="button" variant="ghost" size="sm" disabled={locked || !dirty} onClick={() => { setDraft(initial); onPreview(null); setError(null); setNotice(null); }}>{t("resetParameters")}</Button>
+        <Button type="button" variant="outline" size="sm" disabled={locked || !dirty || previewActive}
+          onClick={() => submit("preview_panel")} icon={previewing ? <StateDot state="ongoing" /> : undefined}>
+          {t(previewing ? "previewingParameters" : "previewParameters")}
+        </Button>
         <Button type="submit" variant="primary" size="sm" disabled={locked || !dirty}
-          icon={busy ? <StateDot state="ongoing" /> : undefined}>{t(busy ? "applyingParameters" : "applyParameters")}</Button>
+          icon={applying ? <StateDot state="ongoing" /> : undefined}>{t(applying ? "applyingParameters" : "applyParameters")}</Button>
       </div>
     </form>
     {error && <div className="mc-geometry-error" role="alert"><p>{t(error.key)}</p><ErrorDetails detail={error.detail} t={t} /></div>}</div>
