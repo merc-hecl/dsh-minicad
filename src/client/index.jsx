@@ -87,8 +87,6 @@ export function apply(ctx) {
   const addGeometryReference = registerGeometryReferences(ctx, request);
   const focusComposer = sessionId => ctx.conversation.input.shell(sessionId)?.focus();
   const setSidebarCollapsed = (workbench, collapsed) => {
-    // DSH rc.5 exposes toggleSidebar but no state getter or explicit setter.
-    // Read AppFrame's published state marker; leave all layout writes to DSH.
     const current = workbench.closest("[data-sidebar-collapsed]") !== null;
     if (current !== collapsed) ctx.layout.toggleSidebar();
   };
@@ -110,7 +108,6 @@ export function apply(ctx) {
       ctx.uiWorkspace.openSession(selection.subagentAddress ?? selection.sessionId);
       return;
     }
-    // Design folders use the same new-conversation route as the main sidebar.
     if (designId && designCatalog.getSnapshot().some(item => item.id === designId)) {
       const project = await request("new_session", { projectId: designId });
       ctx.uiWorkspace.openSession(project.activeSessionId);
@@ -122,7 +119,7 @@ export function apply(ctx) {
     }
     const workspace = await ctx.workspaces.initializeDefault(controller.signal);
     if (workspace) await ctx.uiWorkspace.openWorkspace(workspace.workspaceId);
-    else ctx.uiWorkspace.clearMain(); // Respect DSH's policy when its default workspace is unavailable.
+    else ctx.uiWorkspace.clearMain();
   };
   ctx.slots.inject("main", () =>
     ctx.slots.register(
@@ -179,8 +176,6 @@ export function apply(ctx) {
     }, props => <Composer {...props} minicadT={t} chatT={chatT} />),
   );
   const mirror = (...args) => mirrorNativeSlot(ctx, ...args);
-  // This is the same directory control used by the Session header, with an
-  // explicit design path so renamed workspaces never use an old Session cwd.
   mirror("minicad.directoryActions", "sidebar.right.tab.files.actions", entry => entry.options.id === "open-in-app",
     () => ({ request, minicadT: t }), DirectoryOpenAction);
   mirror("minicad.session.menu", "sidebar.workspaces.session.menu.item");
@@ -192,8 +187,6 @@ export function apply(ctx) {
     useRenameRequest: select => select(props.renameTarget), settleSessionRename: props.onSettleRename,
     renameSession: props.onRenameSession,
   }));
-  // Reuse the active native/browse occupant without redeclaring the host's hole.
-  // DSH 0.2.1-rc.5 exposes component/inject on its public slot-entry records.
   ctx.slots.inject("minicad.directoryFlow", () => {
     let current, dispose;
     const sync = () => {

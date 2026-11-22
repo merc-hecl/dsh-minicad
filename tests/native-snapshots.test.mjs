@@ -81,7 +81,6 @@ test("SMP snapshots remain editable without code, parameters, resources or previ
   const continued = await worker.call("edit", { ...importedTarget, expectedRevision: 1,
     operations: [{ op: "translate", by: [1, 0, 0] }] });
   near(continued.design.metrics.volume, next.design.metrics.volume);
-  // A changed working SMP is adopted only through an explicit import.
   const external = cad.Box(15, 20, 4).named("外部修改").colored("#4682b4");
   try { await writeFile(join(other.directory, "model.smp"), cad.toSmp(external)); }
   finally { external.dispose(); }

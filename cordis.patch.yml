@@ -9,7 +9,6 @@
         name: MiniCAD
         description: 参数化零件设计与图纸建模
         order: 20
-        # Presets do not inherit tools from DSH's standard preset.
         plugins:
           - id: persona
             name: '@deepseek-ai/dsh-persona'

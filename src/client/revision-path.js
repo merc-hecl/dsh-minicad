@@ -1,5 +1,3 @@
-// Ancestry path from the root revision to the target, oldest first. Branches
-// outside the selected revision's parent chain are excluded.
 export function revisionPath(revisions, target) {
   const byRevision = new Map(revisions.map(entry => [entry.revision, entry]));
   const path = [];

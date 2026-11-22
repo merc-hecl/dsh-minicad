@@ -43,7 +43,6 @@ export function SessionActionMenu({ anchor, open, setOpen, sessionId, displayTit
       const menu = occurrence.current;
       if (!menu) return;
       close();
-      // Keep the workbench's dialog styling and fork placement in the design.
       if (id === "session.rename/rename" || id === "session.fork/fork") {
         if (!menu.source.getSnapshot().some(action => action.id === id && !action.disabled)) return;
         if (id === "session.rename/rename") onRename(sessionId, displayTitle);

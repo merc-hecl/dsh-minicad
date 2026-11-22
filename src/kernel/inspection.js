@@ -20,7 +20,6 @@ import {
 import { nearestPair, farthestPair } from "./distances.js";
 
 const vector = (v) => [v.x, v.y, v.z];
-// Keep existing edge indices stable; seam edges are appended to the query list.
 export function topologyItems(shape, kind) {
   if (shape instanceof Assembly) return new cad.ShapeList(...shape.parts.flatMap(p => [...topologyItems(p.shape, kind)]));
   const items = shape[kind]();
@@ -43,7 +42,6 @@ export const modelScope = (projectId, modelFile) =>
     .digest("hex")
     .slice(0, 24);
 const round = (n) => Math.round(n * 1e6) / 1e6;
-// Structural checks protect operation references; positional nearest-neighbour guessing is never used for IDs.
 const topologyCache = new WeakMap();
 function topology(shape) {
   if (topologyCache.has(shape)) return topologyCache.get(shape);
@@ -300,8 +298,6 @@ function naturalCenter(item) {
   }
   throw localizedError("中心测量需使用圆边、球面、圆柱面或显式点", "center measurement requires a circle, sphere, cylinder or explicit point");
 }
-// Cylindrical bore segments, not semantic machining features. Open side cutouts
-// stay distinguishable from complete cylindrical walls and through bores.
 const boreCache = new WeakMap();
 function cylindricalHole(shape, face) {
   if (shape instanceof Assembly) {
@@ -331,8 +327,6 @@ function inspectCylindricalHole(shape, face) {
   let through = false;
   const clearanceTolerance = Math.max(1e-5, face.radius * 1e-6);
   if (closedWall && shape.raycast(start, unit).length === 0 && face.radius > clearanceTolerance) {
-    // An unobstructed centerline alone would incorrectly mark a counterbore's
-    // larger diameter as through. Intersect the entire bore cylinder instead.
     let probe = cad.Cylinder(face.radius - clearanceTolerance, extent * 2);
     const axis = [-unit[1], unit[0], 0];
     if (Math.hypot(...axis) > 1e-10)
@@ -416,9 +410,6 @@ function thickness(shape, request) {
 }
 export function measureShape(shape, requests, scope, revision) {
   validate(requests, measurementsSchema, "measurements");
-  // Share the same nearest-point pair across distance and XYZ requests. Apart
-  // from avoiding repeated geometry searches, this keeps nonunique minima
-  // consistent within one batch for both the workbench and agent tools.
   const minimumPairs = new Map(), maximumPairs = new Map();
   function distancePair(request) {
     const maximum = request.kind === "max_distance";

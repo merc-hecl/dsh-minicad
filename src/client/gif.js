@@ -1,5 +1,3 @@
-// Minimal GIF89a writer: median-cut global palette, LZW-compressed frames.
-// Input frames are RGBA pixel buffers from a 2D canvas.
 const BITS = 5;
 const LEVELS = 1 << (BITS * 3);
 const binOf = (r, g, b) => ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
@@ -125,10 +123,10 @@ export function encodeGif(frames, { width, height, delay = 70 }) {
   const out = [];
   const push = (...values) => { for (const value of values) out.push(value); };
   const u16 = value => out.push(value & 255, (value >> 8) & 255);
-  push(71, 73, 70, 56, 57, 97); // GIF89a
+  push(71, 73, 70, 56, 57, 97);
   u16(width);
   u16(height);
-  push(0xF7, 0x00, 0x00); // global palette, 256 entries
+  push(0xF7, 0x00, 0x00);
   for (const color of colors) push(color[0], color[1], color[2]);
   push(0x21, 0xFF, 0x0B, 78, 69, 84, 83, 67, 65, 80, 69, 50, 46, 48, 0x03, 0x01, 0x00, 0x00, 0x00);
   for (const pixels of frames) {

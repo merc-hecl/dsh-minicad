@@ -162,8 +162,6 @@ test(
   },
 );
 
-// Fault injection at the process boundary; all successful geometry requests use
-// the real service. No attempt is made to exhaust the user's system memory.
 function failedAllocation() {
   const child = new EventEmitter();
   child.stdin = new PassThrough();

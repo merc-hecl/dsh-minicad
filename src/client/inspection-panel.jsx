@@ -47,7 +47,6 @@ export function InspectionPanel({ project, parts, hidden, setHidden, onModel, on
   </section>;
 }
 
-// Filter display triangles and edges, retaining the original geometry IDs.
 export function visiblePreview(preview, parts, hidden) {
   if (!preview || !parts?.length || !hidden.length) return preview;
   const visible = parts.filter(part => !hidden.includes(part.id));

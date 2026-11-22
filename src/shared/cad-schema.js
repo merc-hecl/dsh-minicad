@@ -1,4 +1,3 @@
-// One contract for model-facing schemas and kernel validation. No UI dependency.
 import { localizedError } from "./errors.js";
 
 export const object = (properties, required = Object.keys(properties)) => ({
@@ -333,11 +332,7 @@ export const checksSchema = array({
   ],
 });
 
-// DSH rc.5 enforces a deliberately smaller JSON Schema subset. Preserve disjoint
-// alternatives as oneOf, and describe bounds that the kernel enforces at runtime.
 export function toDshSchema(rule) {
-  // DSH has no $ref/$defs. Group the operation names while sharing field
-  // definitions. The kernel still validates each operation's exact fields.
   if (rule === operationSchema) {
     const properties = Object.assign(
       {},
@@ -468,7 +463,6 @@ export function toDshSchema(rule) {
   return result;
 }
 
-// Validate this module's JSON Schema subset, also at the service boundary (not just in DSH).
 export function validate(value, rule, path = "input") {
   if (rule.anyOf) {
     const errors = [];
@@ -480,7 +474,6 @@ export function validate(value, rule, path = "input") {
         errors.push(error.message);
       }
     }
-    // Discriminated unions should report the matching variant's field error.
     const matched = rule.anyOf.find((option) =>
       Object.entries(option.properties || {}).some(
         ([key, field]) =>

@@ -37,8 +37,6 @@ function fitText(ctx, text, maxWidth) {
   return `${text.slice(0, low)}…`;
 }
 
-// Paint the live viewport plus the version title into a plain 2D canvas so the
-// shared video or GIF does not depend on the app background.
 function paintFrame(ctx, source, frame, width, height) {
   const dark = document.body.hasAttribute("data-ds-dark-theme");
   ctx.fillStyle = dark ? "#15181d" : "#f6f7f9";

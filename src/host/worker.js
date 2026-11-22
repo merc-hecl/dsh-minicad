@@ -37,7 +37,6 @@ const retryableReads = new Set([
 const allocationFailure =
   /VirtualAlloc failed|low_level_alloc|out of memory|cannot allocate memory|could not allocate memory|not enough memory/i;
 
-/** One transaction queue; ordinary reads stay local, geometry runs in disposable processes. */
 export function createWorker({
   dataDir = join(
     process.env.DSH_HOME?.trim() || join(homedir(), ".dsh"),
@@ -69,8 +68,6 @@ export function createWorker({
         resolve();
       });
       if (process.platform === "win32") {
-        // Windows process-tree enumeration can stall (for example when WMI is
-        // unresponsive). Never leave the actual kernel alive waiting for it.
         fallback = setTimeout(() => {
           killer?.kill();
           target.kill();
@@ -133,7 +130,6 @@ export function createWorker({
           const parsed = JSON.parse(line);
           if (parsed.id === id) response = parsed;
         } catch {
-          /* Diagnostics go to stderr. */
         }
       });
       child.on("error", (error) => {
@@ -193,8 +189,6 @@ export function createWorker({
       if (signal?.aborted) throw localizedError("操作已取消", "Operation cancelled");
       if (localMethods.has(method)) {
         try {
-          // No model code or WASM can run here. Preview regeneration runs
-          // in the isolated process instead of loading the kernel in DSH.
           return await new Store(dataDir, { allowKernel: false }).dispatch(
             method,
             params,

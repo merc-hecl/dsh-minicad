@@ -1,10 +1,3 @@
-// Adapted from this author's dsh-plugin-emote-chat release workflow.
-/**
- * [INPUT]: 完整 Git 历史、正式版本标签、包元数据与 changelogen
- * [OUTPUT]: 两个版本间按 Conventional Commits 分类的英文 Release Markdown 与贡献者列表
- * [POS]: 只生成发布说明；不修改版本、提交、标签或执行发布
- * [PROTOCOL]: 变更时更新此头部，然后检查 AGENTS.md
- */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -58,7 +51,6 @@ export async function releaseNotes(tag, cwd = process.cwd()) {
 
   const pkg = JSON.parse(git("show", `${tag}:package.json`));
   if (tag !== `v${pkg.version}`) throw new Error("Release tag must match package.json version");
-  // 只取当前标签的祖先版本；忽略预发布标签及同一提交上的更高版本。
   const tags = git("tag", "--merged", tag, "--sort=-version:refname", "--list", "v*")
     .split("\n").filter((entry) => stableTag.test(entry));
   const previous = tags[tags.indexOf(tag) + 1] ?? "";
@@ -77,7 +69,6 @@ export async function releaseNotes(tag, cwd = process.cwd()) {
   const commits = parsed
     .map((commit) => ({ ...commit, type: commit.type.toLowerCase(), author: undefined }))
     .filter((commit) => types[commit.type]);
-  // 本地收集作者和 Co-authored-by，避免依赖 changelogen 的远端作者查询。
   const markdown = await generateMarkDown(commits, config);
   const body = markdown
     .replace(/^## [^\n]+\n*/, "")

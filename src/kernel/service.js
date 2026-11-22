@@ -1,7 +1,6 @@
 import { createInterface } from "node:readline";
 import { Console } from "node:console";
 import { Store } from "./store.js";
-// Keep model logging out of the protocol. Each request has fresh module state.
 globalThis.console = new Console(process.stderr);
 const root = process.argv[process.argv.indexOf("--data-dir") + 1];
 let request = {};
@@ -19,7 +18,6 @@ try {
     break;
   }
 } catch (error) {
-  // Diagnostics returned to tools are English; keep the localized message for the workbench.
   const english = error?.localized?.en;
   const frames = error?.stack ? error.stack.split("\n").slice(1).join("\n") : "";
   console.error(english === undefined ? error.stack || error

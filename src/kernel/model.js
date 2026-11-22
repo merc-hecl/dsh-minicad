@@ -403,8 +403,6 @@ export function editShape(part, operations, parameters = {}, context = {}) {
         part = applyOperation(part, op, base, context);
         if (previous && !primitiveOps.has(op.op)) nameEditedShape(previous, part, op.op);
       }
-      // Structured solid operations publish valid solids; UDFs can choose their
-      // own meaningful checkpoints instead of publishing open construction.
       if (context.checkpoint && part?.solids().length && part.isValid() && part.volume > 0)
         context.checkpoint(part, "", raw.op);
     } catch (cause) {
@@ -494,8 +492,6 @@ export function describeShape(shape) {
   };
 }
 
-// Compare exact saved solids, independent of revision-local face IDs or meshing.
-// Added/removed regions describe the base revision relative to the target.
 export function compareShapes(base, target) {
   if (base instanceof Assembly || target instanceof Assembly) {
     const a = base instanceof Assembly ? base.material() : base;
@@ -542,8 +538,6 @@ export function previewShape(shape) {
     }));
   }
   const size = vector(shape.bbox().size);
-  // The public faceMeshes API returns meshes in shape.faces() order, keeping
-  // ownership exact without guessing from triangle positions or normals.
   const meshes = cad.faceMeshes(
     shape,
     Math.max(0.01, Math.max(...size) * 0.0003),

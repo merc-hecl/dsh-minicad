@@ -122,8 +122,6 @@ test(
             geometryLabel(kind, index, built.design.geometryIds),
           );
         }
-        // Query reads the serialized solid in a fresh process. Its ordering must
-        // still agree with the ownership saved during the original build.
         for (let i = 0; i < owners.length; i++) {
           const bounds = items[owners[i]].bounds;
           const points =

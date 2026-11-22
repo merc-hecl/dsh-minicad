@@ -6,8 +6,6 @@ import { SessionRecord } from "./session-record.jsx";
 const SessionRecordContext = createContext(false);
 function WorkbenchViews({ renderSlot }) {
   const visible = useContext(SessionRecordContext);
-  // Keep DSH's draft-persistence binding mounted even when Chat is not read.
-  // An unmatched view filter avoids loading/rendering a hidden transcript.
   return <div hidden={!visible} className={visible ? "mc-session-record-views" : undefined}>
     {renderSlot("conversation.session", { view: visible ? "chat" : "minicad.folded" })}
   </div>;
@@ -56,8 +54,6 @@ export function Composer({ renderFactorySlot, useSession, useInput, useSessionSt
   const conversation = useConversation(s => s);
   const inlineHost = useRef(null);
   const [readerTarget, setReaderTarget] = useState(null);
-  // Only this unowned outer node moves. React keeps the same native Conversation,
-  // Lexical editor, draft binding and pending interactions mounted inside it.
   const [nativeMount] = useState(() => {
     const element = document.createElement("div");
     element.className = "mc-native-session-container";
@@ -84,7 +80,6 @@ export function Composer({ renderFactorySlot, useSession, useInput, useSessionSt
   const activity = retry?.retryState === "scheduled" ? minicadT("agentRetry", { current: retry.retry, total: retry.mode === "normal" ? retry.maxRetries : "∞" })
     : tool?.name ? minicadT(tool.phase === "preparing" ? "agentPreparingTool" : "agentRunningTool", { tool: tool.name })
       : summary && !groupState.data.closed ? chatT(`message.stepProcess.${summary.preparing ? `prepare.${activityKind === "thinking" ? "tools" : activityKind}` : activityKind}`) : "";
-  // Keep the current turn's prose visible while tools and todos change.
   const activityDetail = latestAssistantOutput(chat, turnId);
   const callbacks = useRef(null);
   callbacks.current = { onSubmitted, onSessionState, onRestored };

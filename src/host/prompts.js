@@ -1,4 +1,3 @@
-// Identity belongs to the preset's persona row; tool contracts belong to tools.js and their schemas.
 export const modelingPrompt = `
 Work with the user to produce exact, useful CAD models in the shared MiniCAD workbench. Units are mm and degrees.
 

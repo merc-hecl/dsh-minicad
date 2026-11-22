@@ -38,7 +38,6 @@ export function DesignNavigator({ projects, selected, currentSessionId, language
     return slots[name] ? renderTaskSlot(slots[name], props) : null;
   };
   const queryText = query.trim().toLocaleLowerCase();
-  // DSH keeps workspace registry order; sorting applies only to member sessions.
   const folders = projects;
   return <div className={`${c.root} mc-design-navigator`}>
     <div className={c.sectionHeader}>

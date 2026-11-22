@@ -6,8 +6,6 @@ import { atomicWrite, jsonBytes, readJson, inside } from "./files.js";
 import { encodePreview, previewInfo } from "../shared/preview.js";
 import { panelChanges } from "../shared/parameter-panel.js";
 
-// Process previews are immutable checkpoints, separate from committed revisions.
-// Only one modeling writer runs at a time; readers never import the WASM kernel.
 export class ProcessJournal {
   constructor(directory, modelFile) {
     this.directory = directory;
@@ -54,7 +52,6 @@ export class ProcessJournal {
       inputRevision: run.inputRevision ?? operation?.inputRevision ?? run.baseRevision,
       committedRevision: entry?.revision, ...(changes ? { changes } : {}),
       ...(validation ? { validation } : {}),
-      // Old panel applications retain their raw trace on disk; only their result belongs in the user's revision process.
       steps: purpose === "panel_apply" ? run.steps.slice(-1).map(step => ({ ...step, operation: "panel_apply", label: "" })) : run.steps };
   }
   history(revision) {
@@ -161,7 +158,6 @@ export class ProcessJournal {
     this.save(run);
   }
   preview(runId, sequence) {
-    // The client chooses a recorded UUID, never a filesystem path.
     const folder = typeof runId === "string" && /^[\da-f-]{36}$/i.test(runId) ? this.recordFolder(runId) : null;
     const file = folder && join(folder, "run.json");
     const run = file && fs.existsSync(file) ? this.run(runId) : null;

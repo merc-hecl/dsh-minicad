@@ -17,7 +17,6 @@ export const jsonBytes = (value) =>
 export const fileBytes = (file) =>
   fs.existsSync(file) ? fs.readFileSync(file) : null;
 export const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
-/** Bound the temporary buffer even for large imported STEP/SMB resources. */
 export function hashFile(file) {
   const hash = createHash("sha256");
   let descriptor;
@@ -52,8 +51,6 @@ export function atomicWrite(file, value) {
     } finally {
       fs.closeSync(descriptor);
     }
-    // Windows readers/scanners can briefly deny replacing a process manifest.
-    // Retry only replacement errors; never replay modeling work.
     for (let attempt = 0; ; attempt++) {
       try { fs.renameSync(temporary, file); break; }
       catch (error) {

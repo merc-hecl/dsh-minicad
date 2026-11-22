@@ -1,4 +1,3 @@
-// The diagnostic message is used by logs and tools. The workbench renders a single locale.
 export function localizedError(zh, en, suffix = "") {
   return Object.assign(new Error(`${zh} / ${en}${suffix}`), {
     localized: { zh: zh + suffix, en: en + suffix },
@@ -18,7 +17,6 @@ export function appendErrorDetail(error, zh, en, suffix) {
   error.message += `\n${zh} / ${en}${suffix}`;
 }
 
-// Stable translation keys for error summaries.
 const rules = [
   ["modelAppNotFound", /^未检测到 .+，请安装或配置应用路径/],
   ["modelAppLaunchFailed", /^.+ 启动失败 \/ Could not launch /],

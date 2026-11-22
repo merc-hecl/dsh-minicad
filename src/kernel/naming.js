@@ -1,8 +1,6 @@
 import * as cad from "@classcad/smlibwasm";
 import { localizedError } from "../shared/errors.js";
 
-// A SMLib Part has one body name, even when it contains disconnected solids.
-// Keep independent solid names in revision state rather than overloading face names.
 const names = new WeakMap();
 export function solidNames(shape) {
   return names.has(shape) ? [...names.get(shape)] : (shape.solids().length === 1 ? [shape.name || ""] : shape.solids().map(() => ""));
@@ -29,7 +27,6 @@ export function inheritNames(result, sources) {
   if (origins.length === 1 && solids.length === 1)
     return setSolidNames(result, [origins[0].name]);
   const matches = solids.map(solid => origins.filter(origin => solid.faces().derivedFrom(origin.solid).length));
-  // Split or merged entities require an explicit name; never guess by location.
   return setSolidNames(result, matches.map(found => found.length === 1 &&
     matches.filter(other => other.includes(found[0])).length === 1 ? found[0].name : ""));
 }

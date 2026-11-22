@@ -2,9 +2,6 @@ import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react
 import { WorkbenchDialog } from "./workbench-dialog.jsx";
 import { errorDetail, errorKey } from "../shared/errors.js";
 
-// This is a view of MiniCAD's workspace ownership, not a second DSH registry.
-// DSH workspace membership validates immutable Session-header cwd, whereas a
-// MiniCAD design can move with all of its conversations.
 const designKey = id => `minicad:${id}`;
 const orderKey = "minicad.mainWorkspaceOrder";
 const savedOrder = () => {
@@ -72,7 +69,6 @@ function MainWorkspaces({ NativeBrowser, catalog, request, minicadT, ...props })
     startSession={(id, options) => {
       const design = byKey.get(id);
       if (!design) return props.startSession(id, options);
-      // The native browser owns presentation and opens the real DSH Session.
       modify("new_session", { projectId: design.id }).then(project => props.open(project.activeSessionId))
         .catch(error => setError({ key: error.uiKey || errorKey(error.message), detail: errorDetail(error) }));
     }}
@@ -118,8 +114,6 @@ export function mirrorNativeSlot(ctx, target, source, select = () => true, adapt
 }
 
 export function registerMainWorkspaces(ctx, catalog, request) {
-  // Single slots explicitly support priority shadowing. Keep the installed
-  // browser, its injected actions, view store, dictionaries and child seats.
   ctx.slots.inject("sidebar.workspaces", () => {
     let source, dispose;
     const alias = name => `minicad.main.${name}`;

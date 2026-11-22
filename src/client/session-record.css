@@ -31,7 +31,6 @@
 }
 .mc-session-reader-bar {
   display: flex; flex: none; align-items: center; gap: 12px;
-  /* Match the design header's 2px top offset and 4px lower gap, including the divider. */
   padding: calc(var(--mc-panel-padding) + 2px) calc(var(--mc-panel-padding) + 4px) 3px;
   border-bottom: 1px solid var(--mc-border);
 }
@@ -46,7 +45,6 @@
 .mc-session-reader-mount, .mc-session-reader-mount > .mc-native-session-container { flex: 1; }
 .mc-session-record-views, .mc-session-record-views > div { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
 .mc-session-reader [data-conversation-content] { flex: 1; min-height: 0; --dsh-chat-content-width: 100%; --dsh-composer-side-clearance: 0px; }
-/* Preserve the mounted editor and draft; pending native interactions keep their seat. */
 .mc-session-reader:not([data-waiting]) [data-composer-seat] { display: none; }
 .mc-session-reader-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--mc-muted); font-size: 13px; pointer-events: none; }
 .mc-session-timeline {

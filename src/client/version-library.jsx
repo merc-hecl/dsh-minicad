@@ -30,7 +30,6 @@ export function VersionLibrary({ project, progress, request, language, disabled,
   const [selected, setSelected] = useState(initialRevision ?? project.head);
   const [history, setHistory] = useState({ revision: null, runs: [] }), [historyError, setHistoryError] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(true);
-  // Keep the map camera while browsing version and process previews.
   const mapCamera = useRef(null);
   const { nodes, width, height } = useMemo(() => layoutRevisions(project.revisions), [project.revisions]);
   const entry = nodes.get(selected) || nodes.get(project.head);

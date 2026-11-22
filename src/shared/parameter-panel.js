@@ -43,7 +43,6 @@ export function definePanel(panel) {
   return { ...panel, values: panelValues(panel, Object.fromEntries(panel.fields.map(field => [field.key, field.value]))) };
 }
 
-// Only controls and their current values cross the browser boundary. Recipes stay in the kernel service.
 export function panelView(panel, revision) {
   return panel ? { id: panel.id, revision, title: panel.title,
     fields: panel.fields.map(field => ({ ...field, value: panel.values[field.key] })) } : null;

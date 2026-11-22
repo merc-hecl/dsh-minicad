@@ -1,7 +1,5 @@
 import { localizedError } from "./errors.js";
-// Revision-local preview transport. All blocks are aligned, little-endian,
-// and can be used directly as GPU attributes without flattening JSON arrays.
-const MAGIC = 0x3156434d; // MCV1
+const MAGIC = 0x3156434d;
 const FORMAT = 3;
 const fields = ["positions", "normals", "indices", "edges", "faceIndices", "edgeIndices", "faceColors"];
 const floatFields = ["positions", "normals", "edges"];

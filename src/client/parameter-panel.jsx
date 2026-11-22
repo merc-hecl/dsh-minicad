@@ -21,7 +21,6 @@ export function ParameterPanel({ project, language, disabled, request, previewKe
     field.type === "number" || field.type === "integer" ? draft[field.key] === "" ? null : Number(draft[field.key]) : draft[field.key],
   ]));
   const dirty = panel.fields.some(field => values[field.key] !== initial[field.key]);
-  // step controls the native spinner; it is not an allowed-value grid for modeling.
   const invalidField = panel.fields.find(field => (field.type === "number" || field.type === "integer")
     && !(typeof values[field.key] === "number" && Number.isFinite(values[field.key])
       && (field.type !== "integer" || Number.isInteger(values[field.key]))

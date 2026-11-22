@@ -472,7 +472,6 @@ export function Workbench({
     setViewOpen(next);
     if (next) { setInstrumentOpen(false); closeTimelapse(); setSelecting(false); clearGeometrySelection(); }
   }
-  // Sound the part at the clicked surface point from its mass distribution.
   function toggleInstrument() {
     if (busy) return;
     const next = !instrumentOpen;
@@ -535,7 +534,6 @@ export function Workbench({
     const base = String(project?.title || "minicad").replace(/[\\/:*?"<>|]+/g, "_").trim() || "minicad";
     downloadBlob(new Blob([encodeMidi(instrumentEvents, { tempo: 120 })], { type: "audio/midi" }), `${base}-instrument.mid`);
   }
-  // Fixed-camera playback along the parent chain from the root to the selected version.
   async function openTimelapse(targetRevision) {
     if (!project) return;
     const path = revisionPath(project.revisions, targetRevision ?? project.head);

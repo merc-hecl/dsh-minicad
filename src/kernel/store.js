@@ -68,7 +68,6 @@ function requirePassedChecks(validation) {
 
 function revisionActor(root, entry) {
   if (entry.actor) return entry.actor;
-  // Execution materials are optional; unavailable provenance must not block exact snapshot recovery.
   try {
     const { tool } = readJson(join(inside(root, entry.folder), "operations.json"));
     return tool === "cad_apply_panel" ? "user"
@@ -189,7 +188,7 @@ export class Store {
   workspaces() {
     return this.registered().flatMap(root => {
       try { return [[root, this.readWorkspace(root)]]; }
-      catch { return []; } // One unreadable design must not block the other registered designs.
+      catch { return []; }
     });
   }
   locate(key) {
@@ -630,7 +629,6 @@ export class Store {
     if (isDeepStrictEqual(geometryIds, current)) return { modelFile, head, committed: false, geometryIds };
 
     const { path } = await this.dispatch("preview_file", { projectId: key, modelFile, revision: head });
-    // Preview regeneration may have refreshed the cache metadata.
     const state = this.snapshot(key, head, modelFile).state;
     state.geometryIds = geometryIds;
     const materials = new Map([["operations.json", jsonBytes({ tool: "cad_set_geometry_id_format", inputModel: modelFile, inputRevision: head, geometryIds })]]);
@@ -722,8 +720,6 @@ export class Store {
         throw localizedError("规格文件已存在或重复", "variant file exists or is duplicated", `: ${name}`);
       seen.add(normalized);
     }
-    // Evaluate every specification before publishing any. Commits and optional exports
-    // remain individually durable; errors report which files were already saved.
     const candidates = [];
     for (const variant of args.variants) {
       const result = await this.build(key, { modelFile: variant.modelFile, expectedRevision: 0,
@@ -759,7 +755,6 @@ export class Store {
         kernel: (await this.kernel()).kernelName,
         node: process.versions.node,
       };
-    // Match DSH's workspace registry: activity never changes folder order.
     if (method === "list")
       return this.workspaces()
         .flatMap(([root, data]) =>
@@ -839,7 +834,6 @@ export class Store {
           fs.statSync(path).size === saved.state.preview?.byteLength &&
           hashFile(path) === saved.state.preview.digest;
       } catch {
-        /* Generate the preview from the revision's exact solid. */
       }
       if (!valid) {
         const api = await this.kernel();
@@ -1053,7 +1047,6 @@ export class Store {
         .slice(0, 100);
       if (!title) throw localizedError("请输入设计名称", "Enter a design name");
       const parent = dirname(root), target = availableDirectory(parent, args.directoryName || title, root);
-      // Check the absolute source and destination before moving the workspace.
       const settingsRelative = relative(root, this.root);
       if (parent === root || dirname(target) !== parent || !settingsRelative ||
           (!settingsRelative.startsWith(`..${sep}`) && settingsRelative !== ".." && !isAbsolute(settingsRelative)))

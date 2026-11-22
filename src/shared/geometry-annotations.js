@@ -21,7 +21,6 @@ export function nextGeometryAnnotation(text, from = 0) {
       )
         return { id: "minicad-geometry", start, end: end + close.length, data };
     } catch {
-      /* Leave ordinary text to the host's text renderer. */
     }
     start = text.indexOf(open, end + close.length);
   }

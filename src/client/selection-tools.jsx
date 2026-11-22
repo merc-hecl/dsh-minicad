@@ -10,7 +10,6 @@ function Ruler({ size = 16 }) {
 }
 
 export function SelectionTools({ targets, tool, onToolChange, onClear, onRemove, referenceDisabled, busy, error, project, request, onResult, onReference, t }) {
-  // Preserve the last label during the CSS exit, without retaining active reads.
   const lastTargets = useRef(targets);
   if (targets.length) lastTargets.current = targets;
   const summary = lastTargets.current.length === 1 ? lastTargets.current[0].label : t("selectionCount", { count: lastTargets.current.length });

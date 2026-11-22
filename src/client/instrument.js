@@ -7,8 +7,6 @@ const cache = new WeakMap();
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const clamp01 = value => clamp(value, 0, 1);
 
-// Eigenvalues of a symmetric 3x3 matrix, ascending. The principal moments are
-// the only shape signal the synthesis needs, so eigenvectors are unnecessary.
 function eigenvalues([m00, m01, m02, m11, m12, m22]) {
   const p1 = m01 * m01 + m02 * m02 + m12 * m12;
   const q = (m00 + m11 + m22) / 3;
@@ -38,7 +36,6 @@ function finalizeBody(body, name, index) {
     trace - yy, -yz,
     trace - zz,
   ];
-  // Parallel axis: move the inertia tensor from the origin to the centroid.
   const [cx, cy, cz] = centroid.toArray();
   const c2 = cx * cx + cy * cy + cz * cz;
   const shifted = [
@@ -165,8 +162,6 @@ function quantize(midi) {
   return midi + best - pitchClass;
 }
 
-// Move up the pentatonic scale starting from the body's own note, so every
-// position lands on a note of the same scale instead of shifting the C offsets.
 function pentatonicAbove(base, degree) {
   const baseClass = ((base % 12) + 12) % 12;
   const scale = PENTATONIC.slice().sort((left, right) => left - right);
@@ -186,7 +181,6 @@ export function strike(analysis, hit) {
   const body = analysis.bodies[index] || analysis.bodies[0];
   const [t0, t1, t2] = body.extents;
   const area = Math.max(body.area, 1e-6);
-  // Equivalent plate thickness and largest span drive the base pitch.
   const thickness = Math.max(0.2, (2 * body.volume) / area);
   const span = Math.max(1, t2);
   let midi = 69 + 12 * Math.log2(foldFrequency(800 * (thickness / 1000) / (span / 1000) ** 2) / 440);
@@ -195,7 +189,6 @@ export function strike(analysis, hit) {
   const radius = clamp01(distance / body.maxRadius);
   midi = clamp(pentatonicAbove(midi, Math.round(radius * 8)), 21, 108);
   const frequency = 440 * 2 ** ((midi - 69) / 12);
-  // Continuous shape profile: thin, elongated, hollow, compact.
   const thin = clamp01(1 - t0 / Math.max(t1, 1e-6));
   const long = clamp01((t2 / Math.max(t1, 1e-6) - 1) / 4);
   const boxArea = 2 * (t0 * t1 + t1 * t2 + t0 * t2);
@@ -297,8 +290,6 @@ function variableLength(value) {
   return bytes;
 }
 
-// Standard MIDI file, format 0: one track whose note times come from the
-// performance recorded in the app.
 export function encodeMidi(events, { tempo = 120, ppq = 96 } = {}) {
   const ticksPerMs = (ppq * tempo) / 60000;
   const timeline = [];

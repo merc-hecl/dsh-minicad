@@ -20,7 +20,6 @@ function GeometryReference({ node }) {
   );
 }
 
-// DSH owns chip editing, persistence, serialization and sent-message rendering.
 export function registerGeometryReferences(ctx, request) {
   ctx.effect(
     () =>
@@ -59,8 +58,6 @@ export function registerGeometryReferences(ctx, request) {
 
   return (sessionId, annotations) => {
     const shell = ctx.conversation.input.shell(sessionId);
-    // Each synchronous insertion takes the updated draft revision and caret;
-    // all geometry was validated together before reaching the native composer.
     for (const annotation of annotations) {
       const inserted = shell.insertReference(
         { source: sourceName, ref: JSON.stringify(annotation),

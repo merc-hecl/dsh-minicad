@@ -8,9 +8,6 @@ import solidworksIcon from "./assets/solidworks.svg";
 import inventorIcon from "./assets/inventor.svg";
 import { errorKey } from "../shared/errors.js";
 
-// Directory presentation adapted from DSH 0.2.1-rc.5 OpenInAppAction and
-// OpenTargetButton. The native injected catalog, locale and launch controller
-// remain authoritative; the model actions belong only to this MiniCAD seat.
 const choiceKey = "minicad.openInApp.choice";
 const modelIcons = {
   freecad: freecadIcon,
@@ -44,7 +41,6 @@ export function DirectoryOpenAction(props) {
     if (!anchor) return null;
     const rect = anchor.getBoundingClientRect();
     const toolbar = anchor.closest(".mc-header-actions")?.getBoundingClientRect() ?? rect;
-    // The app menu is outside the toolbar; native Menu adds another 4px gap.
     const top = toolbar.top - 4, bottom = toolbar.bottom + 4;
     return DOMRect.fromRect({ x: rect.left, y: top, width: rect.width, height: bottom - top });
   }, []);

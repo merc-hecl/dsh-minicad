@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 export const apiTopics = ["parts", "shapes", "curves", "sketches", "operations", "surfaces",
   "sheetmetal", "geometry", "exporters", "align", "locations", "profiles", "face_edit", "deformations", "minicad"];
 
-// Locate declarations, not the first mention in an import or a comment.
 export function readApi({ topic, symbol, offset = 0, limit = 6000 }) {
   if (!apiTopics.includes(topic)) throw localizedError("不支持的 API 分类", "unsupported API topic");
   if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 12000)

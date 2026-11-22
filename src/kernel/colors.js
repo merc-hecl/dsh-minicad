@@ -1,6 +1,5 @@
 import { Color } from "three/src/math/Color.js";
 
-// Encode sRGB as packed RGB + 1 so zero means no explicit color.
 export function packedColor(color) {
   if (color == null) return 0;
   if (typeof color === "string") {

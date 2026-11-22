@@ -1,4 +1,3 @@
-// Read-only inspection of the installed Desktop's ASAR; never patches the host.
 import { openSync, readSync, closeSync } from "node:fs";
 const archive = process.env.DSH_ASAR || "E:/DSH/resources/app.asar";
 const fd = openSync(archive, "r");

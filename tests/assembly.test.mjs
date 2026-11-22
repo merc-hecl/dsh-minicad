@@ -61,7 +61,6 @@ test("touching parts retain identity across edit, candidate commit, restore and 
   await worker.call("edit", { ...target, expectedRevision: 1, operations: [{ op: "translate", part: "lid", by: [0, 0, -1] }] });
   const interference = await worker.call("fit", { ...target, expectedRevision: 3, pairs });
   assert.equal(interference.items[0].relation, "interference"); near(interference.items[0].interferenceVolume, 800);
-  // An explicit script edits the current exact lid and preserves the base.
   const rebuilt = await worker.call("build", { ...target, expectedRevision: 3, part: "lid", source: "function build(p,cad){return cad.current.translate(1,0,0);}" });
   assert.equal(rebuilt.design.parts.length, 2); near(rebuilt.design.parts[1].center[2], 5);
 }));
@@ -152,7 +151,6 @@ test("copying a standalone plate creates independent named colored parts with a 
   const saved = await worker.call("commit", { ...candidate, checks });
   assert.equal(saved.head, 2); assert.equal(saved.design.validation.passed, true);
   near(saved.design.metrics.volume, 2 * built.design.metrics.volume);
-  // Every worker geometry request reloads the saved SMP in a fresh process.
   const solids = (await worker.call("query", { ...target, expectedRevision: 2, kind: "solids" })).items;
   assert.deepEqual(solids.map(s => [s.entityName, s.color]), [["孔阵列底板", "#CD7F32"], ["孔阵列底板CP", "#DC143C"]]);
   const original = (await worker.call("query", { ...target, expectedRevision: 2, kind: "faces",

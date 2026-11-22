@@ -12,8 +12,6 @@ function CompactLayout({ input, children }) {
     if (!editor) return;
     const measure = () => {
       if (!element.clientWidth) return;
-      // Measure the compact layout even while expanded, so expansion cannot
-      // change its own threshold. Restore it before the browser paints.
       const expanded = element.hasAttribute("data-multiline");
       element.removeAttribute("data-multiline");
       const style = getComputedStyle(editor);
@@ -34,8 +32,6 @@ function CompactLayout({ input, children }) {
   return <div ref={root} className="mc-compact-composer" data-multiline={multiline || undefined}>{children}</div>;
 }
 
-// Keep the installed editor, submission policy and file intake. Alias its child
-// seats so this scoped presentation never replaces controls in ordinary Chat.
 export function registerCompactComposer(ctx) {
   const alias = name => `minicad.compact.${name}`;
   function mirrorChildren(children) {

@@ -5,7 +5,6 @@ import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import "./build.mjs";
 
-// A real DSH development profile. No simulated model or chat endpoint.
 const root = resolve(".");
 const profile = "minicad-dev";
 const home = process.env.DSH_HOME?.trim() || join(homedir(), ".dsh");

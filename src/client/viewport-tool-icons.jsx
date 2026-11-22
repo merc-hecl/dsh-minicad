@@ -36,7 +36,6 @@ export function SelectGeometryIcon(props) {
   </ViewportIcon>;
 }
 
-// Two plates pulled apart: the exploded-view metaphor for section and explode.
 export function SectionViewIcon(props) {
   return <ViewportIcon {...props}>
     <path d="M12 1.8 18.5 5 12 8.2 5.5 5Z" />
@@ -48,7 +47,6 @@ export function SectionViewIcon(props) {
   </ViewportIcon>;
 }
 
-// Eighth note: the music symbol for the part instrument.
 export function InstrumentIcon(props) {
   return <ViewportIcon {...props}>
     <ellipse cx="8.5" cy="16.9" rx="3.4" ry="2.5" transform="rotate(-22 8.5 16.9)"

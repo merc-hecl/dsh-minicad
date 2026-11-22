@@ -33,7 +33,7 @@ export function ModelThumbnail({ entry, load }) {
           ctx.lineTo(96 + (points[i + 2] - (maxX + minX) / 2) * scale, 56 + (points[i + 3] - (maxY + minY) / 2) * scale);
         }
         ctx.stroke();
-      }).catch(() => {}); // The selected frame reports preview errors in the stage.
+      }).catch(() => {});
     }, { rootMargin: "0px 96px" });
     observer.observe(mount.current);
     return () => { disposed = true; observer.disconnect(); };

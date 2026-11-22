@@ -3,8 +3,6 @@ import * as cad from "@classcad/smlibwasm";
 import { namedShape, solidNames, setSolidNames } from "./naming.js";
 import { colorHex } from "./colors.js";
 
-// An assembly is a collection, never a Boolean union. IDs belong to the design,
-// while face/edge indices remain revision-local like ordinary model references.
 export class Assembly {
   constructor(parts) {
     if (!Array.isArray(parts) || !parts.length || parts.length > 100)
@@ -35,7 +33,6 @@ export class Assembly {
   get area() { return this.parts.reduce((sum, p) => sum + p.shape.area, 0); }
   isValid() { return this.parts.every(p => p.shape.isValid()); }
   dispose() { for (const shape of new Set(this.parts.map(p => p.shape))) shape.dispose(); }
-  // Boolean material comparisons explicitly operate on the occupied volume.
   material() { return this.parts[0].shape.fuse(this.parts.slice(1).map(p => p.shape)); }
   intersect(other) {
     const material = this.material();

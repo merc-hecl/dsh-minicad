@@ -8,7 +8,6 @@ import { Button, pointerModality, Tag, IconTrashOutlineRegular, IconRefreshOutli
 import { defaultIdFormats, geometryLabel, geometryReference } from "../shared/geometry-ids.js";
 import { ViewCube } from "./view-cube.jsx";
 
-// Keep grid intervals and scale labels in readable millimetre increments.
 function scaleStep(value) {
   const power = 10 ** Math.floor(Math.log10(value));
   const fraction = value / power;
@@ -100,8 +99,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     function updateTrackballRadius() {
       const viewportSize = Math.min(el.clientWidth, el.clientHeight);
       if (!viewportSize) return;
-      // Use the same sphere size in screen pixels in the workbench and record.
-      // A smaller preview must not amplify rotation or move drags onto its rim.
       const referenceSize = Math.min(navigationArea.clientWidth, navigationArea.clientHeight);
       controls.setTbRadius(trackballRadiusFactor * referenceSize / viewportSize);
     }
@@ -129,8 +126,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     }
     const grid = new THREE.Group();
     grid.position.z = -0.01;
-    // A separate orthographic background pass prevents the floor grid from
-    // crossing the model camera's near/far planes when zoomed far out.
     const gridScene = new THREE.Scene();
     const gridCamera = camera.clone();
     gridScene.add(grid);
@@ -158,8 +153,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       controls,
       model,
       diffModel,
-      // Local clipping stays enabled; the plane parks far away when unused so
-      // every material keeps a stable clipping array without recompiling.
       clipping: [new THREE.Plane(new THREE.Vector3(0, 0, 1), 1e6)],
       span: 180,
       center: new THREE.Vector3(),
@@ -177,7 +170,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     };
     let turn = null, cubeDrag = null, fitFrame = 0;
     let renderFrame = 0, disposed = false, inView = true;
-    // Pointer-only frames update the readout without redrawing the scene.
     let sceneDirty = false;
     state.active = active;
     const canRender = () => !disposed && inView && state.active && !document.hidden;
@@ -196,8 +188,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       }
       invalidate();
     };
-    // Section plane: the cut is only a view state, so picking skips geometry on
-    // the removed side instead of changing the model or the saved revision.
     state.clipTest = point => !state.sectionActive || state.clipping[0].distanceToPoint(point) >= 0;
     state.applySection = () => {
       const plane = state.clipping[0];
@@ -207,8 +197,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
         const index = section.axis === "x" ? 0 : section.axis === "y" ? 1 : 2;
         const min = state.bounds.min.getComponent(index), max = state.bounds.max.getComponent(index);
         const position = Math.min(1, Math.max(0, Number(section.position) || 0));
-        // Keep the far side first, so the initial three-quarter view looks into
-        // the cut instead of at the removed half's outer surface.
         const sign = (index === 1 ? 1 : -1) * (section.flip ? -1 : 1);
         plane.normal.set(0, 0, 0).setComponent(index, sign);
         plane.constant = -(min + (max - min) * position) * sign;
@@ -227,15 +215,11 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       state.section = section;
       state.applySection();
     };
-    // Exploded view: parts keep their own preview slice and translate along the
-    // vector from the assembly centre to their bounding-box centre.
     state.clearExploded = () => {
       if (!state.explodedGroup) return;
       for (const partGroup of state.explodedGroup.children)
         partGroup.traverse(item => {
           if (!item.geometry) return;
-          // Shared attributes belong to the assembled surface; remove them from
-          // this geometry before disposing so its buffers stay alive.
           if (item.userData.sharedAttributes) {
             item.geometry.deleteAttribute("position");
             item.geometry.deleteAttribute("normal");
@@ -266,8 +250,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
         }
       }
       const center = state.bounds.getCenter(new THREE.Vector3());
-      // Axial mode keeps the order along one axis and adds a uniform gap, so
-      // parts separate even when their bounding-box centres coincide.
       const axial = { x: [], y: [], z: [] };
       for (const [axisIndex, key] of ["x", "y", "z"].entries()) {
         const maxSize = Math.max(1e-6, ...parts.map(part => Math.abs(part.size?.[axisIndex] || 0)));
@@ -544,8 +526,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       panel.dataset.placed = "true";
     };
     const markProjection = new THREE.Vector3();
-    // Instrument strikes are HTML pills over the canvas, projected each frame so
-    // orbiting keeps them on their model positions.
     state.positionMarks = () => {
       const layer = marksLayer.current;
       if (!layer) return;
@@ -594,14 +574,10 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     }
     function stopMotion() {
       turn = null;
-      // Dispose cancels inertia and active input. Never reset/reuse that
-      // controller: its saved projection, pivot and input state may be stale.
       controls.enabled = false;
       controls.dispose();
     }
     function currentTarget() {
-      // Arcball's public target is not updated by orthographic panning. Its
-      // camera-to-pivot distance stays constant through pan, orbit and zoom.
       return camera.getWorldDirection(new THREE.Vector3())
         .multiplyScalar(state.orbitDistance).add(camera.position);
     }
@@ -620,8 +596,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       controls.enableGizmos = false;
       controls.enableFocus = false;
       controls.target.copy(target);
-      // Construction initially looks at the origin; restore the live pose
-      // before binding the actual (possibly panned) viewing center.
       camera.quaternion.copy(rotation);
       controls.setCamera(camera);
       updateTrackballRadius();
@@ -638,7 +612,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       turn = null;
       rebaseControls(target);
     }
-    // Manual navigation ends automatic initial framing and interrupts a snap.
     function beginNavigation() {
       leaveDefaultView();
       finishTurn();
@@ -672,8 +645,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     };
     state.rotateCube = (start, end) => {
       if (!cubeDrag) return;
-      // Same sphere/hyperboloid rotation rule as ArcballControls, in local
-      // camera coordinates. The inverse rotates the camera around the cube.
       const axis = new THREE.Vector3().crossVectors(start, end);
       if (axis.lengthSq() < 1e-12) return;
       const angle = Math.max(start.distanceTo(end), start.angleTo(end)) * controls.rotateSpeed;
@@ -712,13 +683,10 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
         }
         const viewport = el.getBoundingClientRect();
         const area = { left: 24, right: w - 24, top: 24, bottom: h - 24 };
-        // A contained record stage has no workbench chrome inside its viewport.
-        // External workbench rectangles otherwise move the model offscreen.
         const owner = contained ? null : el.closest(".mc-workbench");
         const rect = (selector) => owner?.querySelector(selector)?.getBoundingClientRect();
         const sidebar = owner?.hasAttribute("data-project-panel-collapsed") ? null : rect(".mc-sidebar");
         if (sidebar?.width) area.left = sidebar.right - viewport.left + 24;
-        // The composer overlays the canvas; opening it must not change framing.
         for (const selector of [".mc-header", ".mc-version-diff", ".mc-record-toolbar"]) {
           const box = rect(selector);
           if (box?.height) area.top = Math.max(area.top, box.bottom - viewport.top + 16);
@@ -798,7 +766,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       const mmPerPixel = (camera.top - camera.bottom) / camera.zoom / height;
       if (!Number.isFinite(mmPerPixel) || mmPerPixel <= 0) return;
       const step = scaleStep(mmPerPixel * 50);
-      // Cover the visible plane beyond the screen, including oblique views.
       const divisions = Math.ceil(Math.max(width, height) / 200) * 80;
       if (step !== gridStep || divisions !== gridDivisions) {
         for (const layer of [...grid.children]) {
@@ -816,7 +783,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
         }
       }
       camera.getWorldDirection(direction);
-      // Follow panning while keeping grid lines anchored to world coordinates.
       if (Math.abs(direction.z) > 0.04) {
         gridCenter.copy(camera.position).addScaledVector(direction, -camera.position.z / direction.z);
       } else {
@@ -825,14 +791,10 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       const majorStep = step * 5;
       grid.position.x = Math.round(gridCenter.x / majorStep) * majorStep;
       grid.position.y = Math.round(gridCenter.y / majorStep) * majorStep;
-      // Cross-fade dense, grazing-angle grids into a single line in the XY
-      // plane, perpendicular to the viewing direction. Anchor it below the
-      // live orbit target so panning and camera roll preserve its alignment.
       const fade = THREE.MathUtils.smoothstep(Math.abs(direction.z), 0.04, 0.18);
       gridTheme(fade);
       gridAxes.forEach((axis, index) => {
         axis.visible = fade > 0;
-        // Extend each line along the visible grid while keeping its other coordinate at zero.
         axis.position.setComponent(index, grid.position.getComponent(index));
         axis.scale.setComponent(index, step * divisions / 2);
       });
@@ -843,8 +805,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
         groundLine.rotation.z = Math.atan2(direction.x, -direction.y);
         groundLine.scale.x = Math.hypot(camera.right - camera.left, camera.top - camera.bottom) / camera.zoom / 2;
       }
-      // Moving an orthographic camera along its viewing axis preserves the
-      // projected grid alignment while making room for its full depth range.
       const padding = step * divisions + camera.position.distanceTo(grid.position);
       gridCamera.copy(camera);
       gridCamera.position.addScaledVector(direction, -padding);
@@ -868,7 +828,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       camera.bottom = -camera.top;
       camera.updateProjectionMatrix();
       if (controls.enabled) updateTrackballRadius();
-      // The projection span can change when a different model is fitted.
       scaleHeight = 0;
       if (!contained) updateGrid();
       invalidate();
@@ -876,7 +835,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     state.resize = resize;
     const observer = new ResizeObserver(() => {
       resize();
-      // Keep default framing aligned with actual viewport size changes.
       if (state.defaultView) state.scheduleFit();
     });
     observer.observe(el);
@@ -887,7 +845,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     function theme() {
       state.dark = document.body.hasAttribute("data-ds-dark-theme");
       model.traverse((o) => {
-        // Wide lines are meshes too: handle them before solid surfaces.
         if (o.isLineSegments2) {
           o.material.color.set(state.wire
             ? (state.dark ? 0x8fb8ff : 0x2456a6)
@@ -1144,7 +1101,6 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     if (!s) return;
     s.wire = wire;
     s.model.traverse((o) => {
-      // CAD wireframe uses the kernel's BREP edges, not tessellation diagonals.
       if (o.isLineSegments2) o.visible = true;
       else if (o.isMesh) o.visible = !wire;
     });

@@ -21,8 +21,6 @@ function arrowPath(start, end, direction) {
 }
 
 function trackballPoint(x, y, rect, radiusFactor) {
-  // Adding axes enlarges the widget, not its rotation sensitivity. Keep the
-  // accepted 120px trackball diameter, centered on the cube's projected origin.
   const scale = rect.width / SIZE;
   const radius = 120 * scale * radiusFactor / 2;
   const px = (x - rect.left - CENTER.x * scale) / radius;
@@ -32,7 +30,6 @@ function trackballPoint(x, y, rect, radiusFactor) {
   return new THREE.Vector3(px, py, z);
 }
 
-// Face normals and local lettering share the world's right-handed, Z-up basis.
 const FACES = [
   ["right", "X", [1, 0, 0], [0, 0, 1]],
   ["left", "−X", [-1, 0, 0], [0, 0, 1]],
@@ -50,8 +47,6 @@ const FACES = [
   };
 });
 
-// Use the same projected geometry for face, edge and corner picking. Geometry
-// stays invisible; the cube itself is the complete navigation control.
 function pickDirection(face, event, element, rotation) {
   const rect = element.getBoundingClientRect();
   const pointer = new THREE.Vector2(
@@ -92,9 +87,6 @@ export const ViewCube = forwardRef(function ViewCube({ active, t, onSelect, onDr
       if (lastCamera.current.equals(camera.quaternion)) return;
       lastCamera.current.copy(camera.quaternion);
       rotation.current.copy(camera.quaternion).invert();
-      // Update this tiny SVG in the viewport's own frame, using the exact
-      // world-to-view rotation used to render the model. No CSS 3D conversion,
-      // Euler angles, second camera, or delayed React pose update is involved.
       for (const face of FACES) {
         const node = faceNodes.current.get(face.id);
         if (!node) continue;
@@ -113,8 +105,6 @@ export const ViewCube = forwardRef(function ViewCube({ active, t, onSelect, onDr
         node.querySelector("path").setAttribute("d", `M ${points.join(" L ")} Z`);
         const right = face.right.clone().applyQuaternion(rotation.current);
         const down = face.up.clone().negate().applyQuaternion(rotation.current);
-        // Match the prototype's readable lettering in both oblique and face
-        // views, while retaining planar foreshortening as a face turns away.
         const textScale = 1 / Math.max(Math.hypot(right.x, right.y), Math.hypot(down.x, down.y));
         const center = project(normal);
         node.querySelector("text").setAttribute("transform", `matrix(${right.x * textScale} ${-right.y * textScale} ${down.x * textScale} ${-down.y * textScale} ${center.x} ${center.y})`);
@@ -132,8 +122,6 @@ export const ViewCube = forwardRef(function ViewCube({ active, t, onSelect, onDr
         front.setAttribute("display", visible && facing ? "inline" : "none");
         if (!visible) continue;
         direction.divideScalar(length);
-        // Unit cube faces are at +/-1. The shaft starts at the internal
-        // origin, crosses its +1 face center and ends at +2.65, never a corner.
         const exit = project(normal), end = project(normal.clone().multiplyScalar(2.65));
         back.querySelector("path").setAttribute("d", facing
           ? `M ${CENTER.x} ${CENTER.y} L ${exit.x} ${exit.y}`
@@ -237,7 +225,6 @@ export const ViewCube = forwardRef(function ViewCube({ active, t, onSelect, onDr
                   }
                 }}
                 onClick={(event) => {
-                  // Pointer clicks are handled on release so a drag cannot snap.
                   if (event.detail === 0) onSelect(face.normal.clone());
                 }}
               >
@@ -247,7 +234,6 @@ export const ViewCube = forwardRef(function ViewCube({ active, t, onSelect, onDr
             </Tooltip>
           );
         })}
-        {/* Outward shafts are in front of face lettering; no text mask or gap. */}
         {renderAxes("front")}
       </svg>
     </div>

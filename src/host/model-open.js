@@ -32,7 +32,6 @@ const applications = [
   },
 ];
 
-// The input is data, never interpolated into the PowerShell command.
 const windowsApplications = String.raw`
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $apps = ConvertFrom-Json -InputObject $env:MINICAD_MODEL_APPS
@@ -157,7 +156,6 @@ export function createModelOpener(ctx, config, call) {
 
 function launch(name, executable, file) {
   return new Promise((resolve, reject) => {
-    // Do not forward agent credentials to an external CAD application.
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
       !/KEY|PASSWORD|SECRET|TOKEN/i.test(key) && !key.toUpperCase().startsWith("DSH_")));
     const child = spawn(executable, [file], { detached: true, stdio: "ignore", windowsHide: false, env });

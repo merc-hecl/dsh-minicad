@@ -106,8 +106,6 @@ export async function apply(ctx, config = {}) {
       }),
     )
     .catch((error) => ctx.logger.warn(`MiniCAD: ${error.message}`));
-  // Native main-window forks must inherit the same design ownership as forks
-  // created in the workbench. Session headers identify seeded forks explicitly.
   ctx.on("session/created", (session) => {
     if (!session.header.isSeeded || !session.header.parentSession || session.header.origin === "subagent") return;
     startup.then(async () => {
@@ -118,7 +116,6 @@ export async function apply(ctx, config = {}) {
       await alignDirectory(project, undefined, [session.id]);
     }).catch(error => ctx.logger.warn(`MiniCAD fork binding: ${error.message}`));
   });
-  // Conversation titles belong to DSH; they never rename the design document.
   ctx.on("session/event", (session, event) => {
     if (event.type !== "user/message" || event.data.source.kind !== "user") return;
     startup.then(async () => {
@@ -150,8 +147,6 @@ export async function apply(ctx, config = {}) {
     if (designBusy(before)) throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
     active.set(before.id, new AbortController());
     try {
-      // Resolve cold Sessions while their old workspace still exists. DSH's
-      // durable workingDirectory then survives removal of the original folder.
       for (const sessionId of before.sessions) {
         const found = await ctx.sessionController.resolveAgent(sessionId);
         if (found.error) throw found.error;
@@ -177,7 +172,6 @@ export async function apply(ctx, config = {}) {
       if (method === "cancel_measurement") {
         if (existing) existing.abort();
         else {
-          // The cancel request can reach the host before the original request.
           const canceled = new AbortController();
           canceled.abort();
           measurements.set(measurementId, canceled);
@@ -310,7 +304,6 @@ export async function apply(ctx, config = {}) {
     const { method, params = {} } = JSON.parse(body);
     return json(await rpc(method, params, request.signal));
   });
-  // Same authenticated channel as the workbench. No arbitrary file paths.
   route("/api/minicad/workbench.js", ["GET"], async () => new Response(
     await readFile(new URL("../../lib/workbench.mjs", import.meta.url)),
     { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" } },

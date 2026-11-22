@@ -25,7 +25,6 @@ const idFormat = { ...string, description: "Exactly one numbering placeholder: {
 
 export function apply(ctx) {
   const pendingPanels = new Map(), remindedPanels = new Set();
-  // Verified against installed dsh 0.2.0-rc.2: a stop-boundary steer continues this agent's turn.
   ctx.on("agent/turn-stopping", ({ agent, signal }) => {
     if (signal.aborted) return;
     const pending = [...pendingPanels].filter(([file, head]) => !remindedPanels.has(`${file}:${head}`));
@@ -73,8 +72,6 @@ export function apply(ctx) {
                 validation: error.validation };
               const diagnostic = Object.values(details).some(value => value !== undefined)
                 ? `\n${JSON.stringify(details)}` : "";
-              // Tool errors are returned to the model, which uses English for
-              // diagnostics; the workbench still renders the localized detail.
               if (error?.localized?.en !== undefined)
                 error.message = `${error.localized.en}${diagnostic}`;
               else if (diagnostic)
@@ -135,7 +132,7 @@ export function apply(ctx) {
   );
   register(
     "cad_build",
-    "Evaluate an explicit plain JavaScript function build(parameters,cad) {...}, without import/export. Use cad.Location, cad.Box, etc.; SMLib names are not globals. cad.current is the saved exact model (null for a new model), or the selected assembly part when part is provided. Return the complete valid Part or assembly for that scope. Name a standalone solid with .named('Base plate'); create independent parts with cad.assembly([{id:'base',name:'Base',shape:base},...]) and keep IDs stable. cad.checkpoint(part,label) records intermediate solids. Source, parameters and inputs are archived with this execution and are not replayed by later edits. Declare additional filesystem inputs in inputs; cad.readModel reads and archives exact resources. commit:false evaluates without publishing.",
+    "Evaluate an explicit plain JavaScript function build(parameters,cad) {...}, without import/export. Use cad.Location, cad.Box, etc.; SMLib names are not globals. cad.current is the saved exact model (null for a new model), or the selected assembly part when part is provided. Return the complete valid Part or assembly for that scope. Name a standalone solid with .named('Base plate'); create independent parts with cad.assembly([{id:'base',name:'Base',shape:base},...]) and use unique, nonempty, stable IDs. Assembly members use world coordinates and remain separate when touching. Apply Booleans to member shapes and reassemble with cad.assembly. Assembly.part(id) throws for unknown IDs; Assembly.translate moves every member and Assembly.rotate takes an angle in degrees. cad.edit applies structured operations to an exact model using only the parameters passed to that call. cad.checkpoint(part,label) records intermediate solids. Source, parameters and inputs are archived with this execution and are not replayed by later edits. Declare additional filesystem inputs in inputs; cad.readModel reads and archives exact resources. commit:false evaluates without publishing.",
     schema({ ...target, ...buildOptions, source: string, parameters, part: string, inputs: { type: "array", items: string }, summary }, [
       "modelFile",
       "expectedRevision",

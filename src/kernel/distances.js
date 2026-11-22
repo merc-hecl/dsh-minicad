@@ -2,7 +2,7 @@ import * as cad from "@classcad/smlibwasm";
 
 const vector = p => [p.x, p.y, p.z];
 const separation = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
-const accuracy = 0.001; // mm; independent of the display preview's tessellation.
+const accuracy = 0.001;
 const bounds = points => points.reduce((box, p) => {
   for (let i = 0; i < 3; i++) { box.min[i] = Math.min(box.min[i], p[i]); box.max[i] = Math.max(box.max[i], p[i]); }
   return box;
@@ -14,8 +14,6 @@ function bound(a, b, maximum) {
 }
 const diameter = node => separation(node.box.min, node.box.max);
 
-// Best-first branch and bound. Boxes bound every possible pair; a result is
-// accepted only when no remaining box can improve it by more than accuracy.
 function extreme(a, b, maximum, accuracy) {
   let best = { value: maximum ? -Infinity : Infinity };
   const heap = [];
@@ -83,15 +81,10 @@ function farthestOnArc(edge) {
   return point => {
     const delta = point.sub(center), radial = delta.sub(normal.mul(delta.dot(normal)));
     if (radial.length <= 1e-12) return start;
-    // Maximizing distance to the point is equivalent to finding the nearest
-    // point on the trimmed arc to the opposite radius in the circle's plane.
     return edge.closestPoint(center.sub(radial.normalized().mul(radius)));
   };
 }
 
-// Parallel circular arcs admit analytic extrema: endpoints, aligned radii,
-// and intersections of their in-plane circles. This also handles coaxial arcs
-// whose extrema form a continuous family.
 function circlePair(a, b, maximum) {
   if (!isCircularEdge(a) || !isCircularEdge(b)) return null;
   const normal = a.normal.normalized();
@@ -175,8 +168,6 @@ function pointTree(points) {
     split: () => children ||= [pointTree(points.slice(0, mid)), pointTree(points.slice(mid))] };
 }
 function meshPoints(item) {
-  // Two surfaces contribute their chord tolerances; reserve half the total
-  // accuracy for the extremum search itself.
   const mesh = item.mesh(accuracy / 4, 5);
   try {
     const points = [];
@@ -199,8 +190,6 @@ function arcCylinderMaximum(a, b) {
   const [edge, face] = isCircularEdge(a) ? [a, b] : [b, a];
   if (!isCircularEdge(edge) || !(face instanceof cad.Face) || face.geomType !== "cylinder") return null;
   const farthest = farthestOnArc(edge);
-  // For a fixed arc point the maximum on a mesh triangle is at a vertex.
-  // Solve the other side analytically to avoid subdividing the arc for every vertex.
   let best = { value: -Infinity };
   for (const onFace of meshPoints(face)) {
     const point = new cad.Vector(...onFace), onArc = farthest(point);

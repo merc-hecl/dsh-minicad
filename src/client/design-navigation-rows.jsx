@@ -1,6 +1,3 @@
-// Adapted from DeepSeek Harness 0.2.1-rc.5 ui-workspace/src/client/rows/Rows.js.
-// Copyright DeepSeek. MIT; see docs/licenses/dsh-workspace-MIT.txt.
-// Native row presentation, scoped styles and navigation labels.
 import * as react from "react";
 import * as react_jsx_runtime from "react/jsx-runtime";
 import * as _deepseek_ai_dsh_client_ui_primitives from "@deepseek-ai/dsh-client-ui-primitives";
@@ -126,28 +123,11 @@ export const workspaceLocale = {
     "time.ago": "{t} ago"
   }
 };
-/**
-* Workspace browser tree row components (figma Cell set 14:3080): pure presentational —
-* all data and callbacks arrive via props. Hover swaps (folder->chevron,
-* time->ellipsis, action buttons) are CSS-only, and a session row's clipped
-* title marquees programmatically while the row is hovered. The browser
-* supplies the session menu renderer and the native quick-action slot.
-* Session and workspace hover cards are suppressed while a menu is open.
-*/
-/** Row display title: blank rows show the localized New Session label. */
 function displayTitle(node, t) {
 	return node.blank ? t("session.new") : node.title || t("session.untitled");
 }
 const MIN_TITLE_REVEAL_PX = 8;
 const TITLE_MARQUEE_PX_PER_MS = .03;
-/**
-* Place the title's scroll position and publish the stylesheet's fade-mask
-* hooks: `data-scrolled` while the title has left its start (left fade) and
-* `data-clipped` while text remains beyond the right edge (right fade).
-* @param title - the row's clipping title element.
-* @param left - scroll offset in CSS pixels.
-* @param range - the title's maximum scroll offset in CSS pixels.
-*/
 function placeTitle(title, left, range) {
 	if (typeof title.scrollTo === "function") title.scrollTo({
 		left,
@@ -159,11 +139,6 @@ function placeTitle(title, left, range) {
 	if (left < range) title.dataset.clipped = "";
 	else delete title.dataset.clipped;
 }
-/**
-* Return the title to its resting state: scrolled to the start with both fade
-* masks off, so the resting ellipsis renders at full strength.
-* @param title - the row's clipping title element.
-*/
 function restTitle(title) {
 	if (typeof title.scrollTo === "function") title.scrollTo({
 		left: 0,
@@ -173,18 +148,6 @@ function restTitle(title) {
 	delete title.dataset.scrolled;
 	delete title.dataset.clipped;
 }
-/**
-* Marquee a title wider than its one-line cell while its row is hovered: the
-* title clips its own text, so entering crawls it at a constant speed until the
-* far edge (a fork's incremented title, for example) is in view, then rests
-* there under the pointer. Overflow of at most {@link MIN_TITLE_REVEAL_PX}
-* stays put — a barely-clipped title moving a few pixels reads as jitter, not a
-* reveal. Leaving returns the title to the start in one step, because the
-* resting ellipsis and the narrowed cell would otherwise meet the text while it
-* travelled back. Reduced motion jumps to the far edge instead of crawling.
-* @param title - ref to the row's clipping title element.
-* @returns stable pointer enter/leave handlers for the row.
-*/
 function useTitleMarquee(title) {
 	const frame = (0, react.useRef)(0);
 	(0, react.useEffect)(() => () => {
@@ -192,7 +155,6 @@ function useTitleMarquee(title) {
 	}, []);
 	return (0, react.useMemo)(() => ({
 		enter: () => {
-			/* v8 ignore next -- defensive: the title span renders unconditionally. */
 			if (title.current === null) return;
 			const element = title.current;
 			const range = element.scrollWidth - element.clientWidth;
@@ -214,27 +176,19 @@ function useTitleMarquee(title) {
 		},
 		leave: () => {
 			cancelAnimationFrame(frame.current);
-			/* v8 ignore next -- defensive: the title span renders unconditionally. */
 			if (title.current === null) return;
 			restTitle(title.current);
 		}
 	}), [title]);
 }
-/** Localized compact relative time ("刚刚"/"5分钟" in zh, "now"/"5min" in en). */
 function timeLabel(updatedAt, now, t) {
 	const { unit, n } = (0, _deepseek_ai_dsh_client_ui_primitives.relativeTime)(updatedAt, now);
 	return unit === "now" ? t("time.now") : t(`time.${unit}`, { n });
 }
-/** Hover-card variant: distances wrap in the ago template; the now bucket stays bare (no "now ago"). */
 function hoverTimeLabel(updatedAt, now, t) {
 	const { unit, n } = (0, _deepseek_ai_dsh_client_ui_primitives.relativeTime)(updatedAt, now);
 	return unit === "now" ? t("time.now") : t("time.ago", { t: t(`time.${unit}`, { n }) });
 }
-/**
-* Absolute creation time through the dictionary's date template (the message
-* clock pattern): `toLocaleString` would follow the browser language, not the
-* app locale, and produce mixed-language text after a switch.
-*/
 function createdLabel(createdAt, t) {
 	const d = new Date(createdAt);
 	const pad2 = (v) => String(v).padStart(2, "0");
@@ -244,7 +198,6 @@ function createdLabel(createdAt, t) {
 		d: d.getDate()
 	})} ${pad2(d.getHours())}:${pad2(d.getMinutes())}` });
 }
-/** Hover-card body: workspace title, display directory path, absolute creation time. */
 function WorkspaceHoverContent({ label, cwd, createdAt, t }) {
 	return (0, react_jsx_runtime.jsxs)("div", {
 		className: Rows_module_css_default.hoverContent,
@@ -264,17 +217,6 @@ function WorkspaceHoverContent({ label, cwd, createdAt, t }) {
 		]
 	});
 }
-/**
-* Project (workspace) header row: folder + title;
-* hover reveals the chevron and create button, and dwelling on a real
-* Workspace shows its hover card (the ungrouped bucket has none).
-* `containsCurrent` arrives on the node (derivation fact, no renderer scan).
-* @param props.group - derived group node.
-* @param props.onToggle - expand/collapse the group.
-* @param props.onCreate - start a frontend Session inside this Workspace.
-* @param props.t - the browser root's locale seat.
-* @returns the row element.
-*/
 function ProjectRowItem({ group, onToggle, onCreate, actions, t }) {
 	const row = group;
 	const label = row.workspaceId === void 0 ? t("group.ungrouped") : row.label;
@@ -376,14 +318,9 @@ function ProjectRowItem({ group, onToggle, onCreate, actions, t }) {
 		copiedLabel: t("hover.copied")
 	});
 }
-/* v8 ignore next 3 -- closed-union backstop; only reached if the status is forged */
 function assertNever(value) {
 	throw new Error(`unknown pending interaction: ${String(value)}`);
 }
-/**
-* Session status presentation; pending interaction is primary and live activity
-* outranks completion reminders.
-*/
 function sessionStatuses(node, t) {
 	const subagents = node.runningSubagentCount === 0 ? void 0 : {
 		state: "ongoing",
@@ -413,7 +350,6 @@ function sessionStatuses(node, t) {
 			};
 			break;
 		case void 0: break;
-		/* v8 ignore next -- closed PendingInteractionStatus union */
 		default: return assertNever(node.pendingInteraction);
 	}
 	if (pending !== void 0) return subagents === void 0 ? [pending] : [pending, subagents];
@@ -434,14 +370,12 @@ function sessionStatuses(node, t) {
 		label: t("status.idle")
 	}];
 }
-/** Primary status dot plus every status's screen-reader label, shared by the search and session rows. */
 function SessionStatusDots({ statuses }) {
 	return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: statuses[0].state }), statuses.map((status) => (0, react_jsx_runtime.jsx)("span", {
 		className: Rows_module_css_default.visuallyHidden,
 		children: status.label
 	}, status.label))] });
 }
-/** Non-interactive pinned-row marker; the enclosing row remains the only action. */
 function PinnedIndicator({ t }) {
 	const label = t("row.pinned");
 	return (0, react_jsx_runtime.jsx)("span", {
@@ -452,11 +386,6 @@ function PinnedIndicator({ t }) {
 		children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPinFillRegular, { size: 14 })
 	});
 }
-/**
-* Hover-card body: full title, relative time, the Session's own scheduled-task
-* section, and every relevant live status. The task section sits above the
-* status lines so they stay the card's trailing status line.
-*/
 function SessionHoverContent({ node, now, renderSlot, t }) {
 	const statuses = sessionStatuses(node, t).filter((status) => !(node.archived && (status.state === "done" || status.state === "idle")));
 	return (0, react_jsx_runtime.jsxs)("div", {
@@ -482,24 +411,6 @@ function SessionHoverContent({ node, now, renderSlot, t }) {
 		]
 	});
 }
-/**
-* One top-level 32px session row: leading 16px cell (status dot, or the
-* leading seat while the row's primary state is idle), title, relative time or
-* compact pending label, and the row actions menu. A row that owns a state dot
-* keeps that cell and renders no seat, so an ambient automation mark never
-* appears beside the row's own state dot. An archived row keeps the cell blank:
-* neither marker renders there, and its live status stays on the hover card.
-* @param props.node - derived session node.
-* @param props.currentId - selected session id (row highlight).
-* @param props.now - epoch ms for relative-time formatting.
-* @param props.onOpen - open a session by id.
-* @param props.onRenameRequest - open the rename dialog from a title double-click (id + current title).
-* @param props.renderMenu - session action menu renderer.
-* @param props.renderSlot - renderer for quick actions, the leading decoration,
-* and the hover-card section.
-* @param props.t - the browser root's locale seat.
-* @returns the session row.
-*/
 function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest, renderSlot, renderMenu, t }) {
 	const row = node;
 	const title = displayTitle(node, t);

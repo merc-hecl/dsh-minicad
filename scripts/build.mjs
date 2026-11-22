@@ -7,9 +7,6 @@ const external = [
   "react/jsx-runtime",
   "@deepseek-ai/dsh-client-ui-primitives",
 ];
-// A real second network module. DSH supplies its existing require function so
-// the lazy module shares the host's React and UI primitives, without globals,
-// eval, duplicate React runtimes or depending on private ModuleLoader methods.
 const lazy = await build({
   entryPoints: ["src/client/workbench.jsx"],
   bundle: true,

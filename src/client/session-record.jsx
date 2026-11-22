@@ -44,7 +44,6 @@ export function SessionRecord({ open, title, turns, session, empty, waiting, onC
     if (!open || !active) return;
     const element = reader.current;
     const navigate = () => {
-      // Navigate the existing native transcript without filtering or rebuilding it.
       const row = [...element.querySelectorAll(`[data-chat-turn="${active.turn}"]`)]
         .find(item => !item.closest("[hidden]"));
       if (!row) return false;

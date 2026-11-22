@@ -13,7 +13,6 @@ const nearPoint = (actual, expected) => actual.forEach((value, i) => near(value,
 const pointKey = point => point.map(value => Math.round(value * 1e6)).join(",");
 
 test("vertices and edge endpoints use actual world geometry and support scoped ID queries", () => cad.scope(() => {
-  // A rotated box has bounding-box corners that are not its vertices.
   const part = cad.Box(10, 20, 6).rotate(new cad.Axis([0, 0, 0], [0, 0, 1]), 30).translate(4, 5, 6);
   const vertices = queryShape(part, 1, "vertices", {}, scope);
   assert.equal(vertices.length, 8);
