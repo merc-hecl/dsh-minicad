@@ -49,13 +49,26 @@ export function apply(ctx) {
   ctx.effect(() => () => controller.abort(), "minicad: requests");
   const request = async (method, params, signal) => {
     const combined = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
-    if (method === "preview" || method === "checkpoint") {
-      const response = await fetch(`/api/minicad/${method}?` + new URLSearchParams(params), { signal: combined });
+    if (method === "render_result") {
+      const body = new FormData();
+      if (params.error) body.set("error", params.error);
+      params.images?.forEach((image, index) => body.set(params.views[index], image, `${params.views[index]}.png`));
+      const response = await fetch(`/api/minicad/render?` + new URLSearchParams({ id: params.id }), {
+        method: "POST", body, signal: combined,
+      });
+      if (!response.ok && response.status !== 404) throw new Error(response.statusText);
+      return;
+    }
+    if (method === "preview" || method === "checkpoint" || method === "render_preview") {
+      const path = method === "render_preview" ? "render" : method;
+      const response = await fetch(`/api/minicad/${path}?` + new URLSearchParams(params), { signal: combined });
+      if (method === "render_preview" && response.status === 404) return;
       if (!response.ok) {
         const data = await response.json();
         throw Object.assign(new Error(data.error || response.statusText), { uiKey: data.code, localized: data.localized });
       }
-      return decodePreview(await response.arrayBuffer());
+      const buffer = await response.arrayBuffer();
+      return method === "render_preview" ? buffer : decodePreview(buffer);
     }
     const response = await fetch("/api/minicad/rpc", {
       method: "POST",

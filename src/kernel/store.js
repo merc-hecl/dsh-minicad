@@ -824,7 +824,15 @@ export class Store {
       }
     }
     if (method === "preview_file") {
-      const saved = this.snapshot(key, args.revision, modelFile);
+      if (args.expectedRevision !== undefined) this.expect(row.head, args);
+      if (args.runId !== undefined) {
+        const { run, folder } = new ProcessJournal(directory, modelFile).pendingCandidate(args.runId);
+        this.expect(run.baseRevision, args);
+        const path = join(folder, "preview.bin");
+        return { path, byteLength: fs.statSync(path).size, modelFile, revision: run.candidateRevision, runId: run.id };
+      }
+      const revision = args.revision ?? row.head;
+      const saved = this.snapshot(key, revision, modelFile);
       if (!saved) throw localizedError("请先完成建模", "build a model first");
       const path = join(saved.folder, "preview.bin");
       let valid = false;
@@ -859,7 +867,7 @@ export class Store {
         path,
         byteLength: fs.statSync(path).size,
         modelFile,
-        revision: args.revision ?? row.head,
+        revision,
       };
     }
     if (method === "select_model") {

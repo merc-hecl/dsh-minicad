@@ -70,6 +70,8 @@ For a Desktop npm installation, uninstall through **Plugins** and reinstall by p
 
 Double-click the canvas to open the composer. Reading PDF drawings depends on available PDF tools and an image-capable model in DSH.
 
+With the design open in the MiniCAD workbench and an image-capable model selected, ask the agent to photograph the saved model or a candidate. A request defaults to a single isometric view. It can include any combination of isometric, front, top, and right views, with a separate image per view. You can keep using the workbench while the images are captured. The kernel measures dimensions and checks tolerances.
+
 **Adjust parameters** becomes available in the toolbar once the agent provides controls for a saved model. Change a parameter and select **Preview** to see the temporary result on the canvas. Editing a parameter again, resetting the values, or closing the panel brings back the saved model. **Apply** saves a new version once the checks pass.
 
 ## Open in an external CAD application

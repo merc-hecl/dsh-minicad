@@ -41,6 +41,7 @@ import { ParameterPanel } from "./parameter-panel.jsx";
 import { InstrumentPanel } from "./instrument-panel.jsx";
 import { analyze, strike, playVoice, noteName, encodeMidi } from "./instrument.js";
 import { downloadBlob } from "./download.js";
+import { renderPhotos } from "./render-photos.js";
 
 const Btn = ({ children, icon: Icon, label, className = "", ...props }) => {
   const button = (
@@ -356,6 +357,20 @@ export function Workbench({
     if (!selected) return;
     let disposed = false,
       timer;
+    const render = async ({ id, views, timeoutMs }) => {
+      if (timeoutMs <= 0) return;
+      const signal = AbortSignal.any([loadController.current.signal, AbortSignal.timeout(timeoutMs)]);
+      const current = () => !disposed && !signal.aborted && selection.current === selected;
+      let result;
+      try {
+        const buffer = await request("render_preview", { id }, signal);
+        if (!buffer || !current()) return;
+        result = { images: await renderPhotos(buffer, views, signal) };
+      } catch (error) {
+        result = { error: error.message };
+      }
+      if (current()) await request("render_result", { id, views, ...result }, signal);
+    };
     const poll = async () => {
       try {
         const state = await api("status", { projectId: selected });
@@ -391,6 +406,8 @@ export function Workbench({
         } else if (!state.running || state.progress?.phase === "done") {
           processKey.current = ""; setProcessDesign(null);
         }
+        if (state.renderRequest) await render(state.renderRequest).catch(() => {});
+        if (disposed) return;
         timer = setTimeout(poll, state.running ? 500 : 3500);
       } catch (e) {
         if (!disposed) {

@@ -22,6 +22,12 @@ const target = { modelFile, expectedRevision: integer };
 const readTarget = { ...target, runId: string };
 const buildOptions = { commit: { type: "boolean", default: true }, checks: checksSchema };
 const idFormat = { ...string, description: "Exactly one numbering placeholder: {n}, or {n:1} to {n:9} for a minimum zero-padded width. Example: Face-{n:3} gives Face-001." };
+const renderView = { type: "string", enum: ["isometric", "front", "top", "right"] };
+const resultSchema = { type: "object", additionalProperties: true };
+const textOutput = {
+  schema: resultSchema,
+  render: (_args, value) => [{ type: "text", text: JSON.stringify(value) }],
+};
 
 export function apply(ctx) {
   const pendingPanels = new Map(), remindedPanels = new Set();
@@ -40,19 +46,14 @@ export function apply(ctx) {
     interpolate: false,
     text: modelingPrompt,
   });
-  const register = (name, description, parameters, execute) => {
+  const register = (name, description, parameters, execute, output = textOutput) => {
     ctx.effect(
       () =>
         ctx.tools.register({
           name,
           description,
           parameters: toDshSchema(parameters),
-          output: {
-            schema: { type: "object", additionalProperties: true },
-            render: (_args, value) => [
-              { type: "text", text: JSON.stringify(value) },
-            ],
-          },
+          output,
           presentCall: () => ({
             card: "generic",
             title: name,
@@ -65,6 +66,7 @@ export function apply(ctx) {
                 await ctx.minicad.projectForSession(exec.agent.id),
                 args,
                 exec.signal,
+                exec,
               );
             } catch (error) {
               const details = { phase: error.phase, code: error.code, operationIndex: error.operationIndex,
@@ -188,6 +190,49 @@ export function apply(ctx) {
     "Check measured dimensions against targets and tolerances or bounds.",
     schema({ ...readTarget, checks: checksSchema }, ["modelFile", "expectedRevision", "checks"]),
     call("check"),
+  );
+  register(
+    "cad_render",
+    "Take separate PNGs of an exact model for visual inspection. Use views for several distinct views in the desired order, or view for one. If omitted, take one isometric view. Requires an image-capable model route and the design open in the MiniCAD workbench. Use modelFile and expectedRevision from cad_read_project. For an unpublished candidate, add its runId and use its base revision as expectedRevision. Use cad_query, cad_measure and cad_check for exact verification.",
+    schema({ ...readTarget, view: renderView, views: { type: "array", items: renderView, minItems: 1, maxItems: renderView.enum.length } }, ["modelFile", "expectedRevision"]),
+    async (project, { view, views, ...target }, signal, { agent }) => {
+      if (view !== undefined && views !== undefined)
+        throw new Error("Specify view or views for a model photo.");
+      const requestedViews = views ?? [view ?? "isometric"];
+      if (new Set(requestedViews).size !== requestedViews.length)
+        throw new Error("Each requested view must be distinct.");
+      const attachments = ctx.get("attachments");
+      const llm = ctx.get("llm");
+      const route = agent.session.requestHeader()?.config;
+      const provider = route?.provider ?? agent.options.provider;
+      const model = route?.model ?? agent.options.model;
+      if (!attachments || !llm || !provider || !model)
+        throw new Error("Taking a model photo requires a DSH attachment service and an active model route.");
+      const { inputModalities = [] } = await llm.resolveModelInfo(provider, model, signal);
+      if (!inputModalities.includes("image"))
+        throw new Error(`Model "${model}" does not declare image input. Use an image-capable model to inspect photos.`);
+      const limits = attachments.imageLimits;
+      if (requestedViews.length > limits.maxImagesPerMessage)
+        throw new Error(`DSH allows up to ${limits.maxImagesPerMessage} images per result. Request fewer views.`);
+      const { photos, ...modelVersion } = await ctx.minicad.render(project.id, { ...target, views: requestedViews }, limits, signal);
+      signal?.throwIfAborted();
+      const stem = `${modelVersion.modelFile.split("/").at(-1).slice(0, -4)}-${modelVersion.revision}`;
+      const refs = await attachments.saveImages(photos.map(({ view, data }) => ({
+        data, mediaType: "image/png", name: `${stem}-${view}.png`,
+      })));
+      const images = photos.map(({ view }, index) => ({ view, attachment: refs[index] }));
+      return images.length === 1 ? { ...modelVersion, ...images[0] } : { ...modelVersion, images };
+    },
+    {
+      schema: resultSchema,
+      render: (_args, { attachment, images, ...modelVersion }) => [
+        { type: "text", text: JSON.stringify(modelVersion) },
+        ...(images ? images.flatMap(({ view, attachment }) => [
+          { type: "text", text: `View: ${view}` },
+          { type: "image", attachment },
+        ]) : [{ type: "image", attachment }]),
+      ],
+    },
   );
   register(
     "cad_inspect_sheet_metal",

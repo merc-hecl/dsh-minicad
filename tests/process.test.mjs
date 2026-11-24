@@ -91,8 +91,17 @@ test("agent trials bind to the published run across conflicts, branches, failure
     assert.equal(rejected.phase, "preview");
     assert.equal(rejected.publicationValidation.passed, false);
     assert.ok(rejected.publicationError);
+    for (const [runId, minimumX] of [[undefined, -5], [trials[0].runId, -4], [trials[1].runId, -3]]) {
+      const preview = await worker.call("preview_file", { ...target, expectedRevision: 1, runId });
+      const { positions } = decodePreview(await readFile(preview.path));
+      const actualMinimumX = positions.reduce((min, coordinate, index) => index % 3 === 0 ? Math.min(min, coordinate) : min, Infinity);
+      assert.ok(Math.abs(actualMinimumX - minimumX) < 1e-6, `preview X minimum: expected ${minimumX}, got ${actualMinimumX}`);
+      assert.equal(preview.revision, runId ? 2 : 1);
+    }
     const saved = await worker.call("commit", { ...target, expectedRevision: 1, runId: trials[1].runId, summary: "采用第二个方案" });
     assert.equal(saved.head, 2);
+    await assert.rejects(worker.call("preview_file", { ...target, expectedRevision: 1, runId: trials[0].runId }), { status: 409 });
+    await assert.rejects(worker.call("preview_file", { ...target, expectedRevision: 2, runId: trials[0].runId }), { status: 409 });
     const atTwo = await worker.call("process_history", { ...target, revision: 2 });
     assert.deepEqual(atTwo.map(run => run.id), [trials[1].runId]);
     assert.equal(atTwo[0].summary, "采用第二个方案");

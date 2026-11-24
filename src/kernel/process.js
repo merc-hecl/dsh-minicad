@@ -112,10 +112,14 @@ export class ProcessJournal {
     }));
     this.finish(run, "preview", { validation: state.validation });
   }
-  candidate(runId) {
+  pendingCandidate(runId) {
     const run = this.run(runId), folder = join(this.root, run.id, "candidate");
     if (run.phase !== "preview")
       throw Object.assign(localizedError("此试算已不再是待保存版本", "This trial is no longer pending publication"), { status: 409 });
+    return { run, folder };
+  }
+  candidate(runId) {
+    const { run, folder } = this.pendingCandidate(runId);
     const state = readJson(join(folder, "state.json"));
     const { inputs } = readJson(join(folder, "transaction.json"));
     return { run, state, folder,

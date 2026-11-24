@@ -1,6 +1,7 @@
 import z from "@deepseek-ai/schemastery";
 import { createWorker } from "./worker.js";
 import { errorKey, localizedError } from "../shared/errors.js";
+import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
@@ -56,6 +57,8 @@ export async function apply(ctx, config = {}) {
     building = new Map(),
     measurements = new Map();
   let disposed = false;
+  const renderRequests = new Map();
+  const renderLifetime = new AbortController();
   const call = async (method, args, signal) => {
     if (!["build", "import", "edit", "restore", "commit", "variants", "set_geometry_id_format", "publish_panel", "apply_panel"].includes(method)) return worker.call(method, args, signal);
     if (active.has(args.projectId))
@@ -91,10 +94,33 @@ export async function apply(ctx, config = {}) {
   }
   const sessionRunning = project => project.sessions.some(id => ctx.agents.get(id)?.status === "running");
   const designBusy = project => active.has(project.id) || sessionRunning(project);
-  ctx.provide("minicad", { call, projectForSession });
+  async function render(projectId, { views, ...target }, limits, signal) {
+    const preview = await call("preview_file", { ...target, projectId }, signal);
+    const timeoutMs = 12000;
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const pending = AbortSignal.any([renderLifetime.signal, timeout, ...(signal ? [signal] : [])]);
+    pending.throwIfAborted();
+    const id = randomUUID();
+    const { promise, resolve, reject } = Promise.withResolvers();
+    const abort = () => reject(timeout.aborted
+      ? localizedError("拍照超时，请保持此设计的 MiniCAD 工作台打开后重试", "Taking photos timed out. Keep this design's MiniCAD workbench open and try again")
+      : localizedError("操作已取消", "Operation cancelled"));
+    renderRequests.set(id, { projectId, views, preview, limits, resolve, reject, pending, deadline: Date.now() + timeoutMs });
+    pending.addEventListener("abort", abort, { once: true });
+    try {
+      const photos = await promise;
+      const { modelFile, revision, runId } = preview;
+      return { photos, modelFile, revision, runId };
+    } finally {
+      pending.removeEventListener("abort", abort);
+      renderRequests.delete(id);
+    }
+  }
+  ctx.provide("minicad", { call, projectForSession, render });
   ctx.effect(
     () => () => {
       disposed = true;
+      renderLifetime.abort();
       return worker.dispose();
     },
     "minicad: worker",
@@ -235,6 +261,7 @@ export async function apply(ctx, config = {}) {
       });
       if (!inFlight) await alignDirectory(p, signal);
       const error = lastError.get(p.activeSessionId);
+      const render = renderRequests.entries().find(([, job]) => job.projectId === p.id);
       return {
         head: p.head,
         models: p.models,
@@ -245,6 +272,7 @@ export async function apply(ctx, config = {}) {
         modelFile: p.modelFile,
         title: p.title,
         activeSessionId: p.activeSessionId,
+        renderRequest: render && { id: render[0], views: render[1].views, timeoutMs: Math.max(0, render[1].deadline - Date.now()) },
         progress: inFlight ? worker.processState({ projectId: p.id, modelFile: p.modelFile })
           : await call("process_state", { projectId: p.id, modelFile: p.modelFile }),
         projects: inFlight ? undefined : (await call("list")).map((project) => ({
@@ -308,12 +336,42 @@ export async function apply(ctx, config = {}) {
     await readFile(new URL("../../lib/workbench.mjs", import.meta.url)),
     { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" } },
   ));
+  route("/api/minicad/render-worker.js", ["GET"], async () => new Response(
+    await readFile(new URL("../../lib/render-worker.js", import.meta.url)),
+    { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" } },
+  ));
   route("/api/minicad/preview", ["GET"], async (request) => {
-    const params = Object.fromEntries(new URL(request.url).searchParams);
-    const preview = await call("preview_file", { ...params, revision: Number(params.revision) }, request.signal);
+    const { projectId, modelFile, revision } = Object.fromEntries(new URL(request.url).searchParams);
+    const preview = await call("preview_file", { projectId, modelFile, revision: Number(revision) }, request.signal);
     return new Response(Readable.toWeb(createReadStream(preview.path, { signal: request.signal })), { headers: {
       "content-type": "application/octet-stream", "content-length": String(preview.byteLength), "cache-control": "no-store",
     } });
+  });
+  route("/api/minicad/render", ["GET", "POST"], async request => {
+    const id = new URL(request.url).searchParams.get("id");
+    const job = renderRequests.get(id);
+    if (!job || job.pending.aborted) return new Response(null, { status: 404 });
+    if (request.method === "GET") {
+      const { path, byteLength } = job.preview;
+      const signal = AbortSignal.any([request.signal, job.pending]);
+      return new Response(Readable.toWeb(createReadStream(path, { signal })), { headers: {
+        "content-type": "application/octet-stream", "content-length": String(byteLength), "cache-control": "no-store",
+      } });
+    }
+    const mediaType = request.headers.get("content-type");
+    const form = mediaType?.startsWith("multipart/form-data;") ? await request.formData() : null;
+    const error = form?.get("error");
+    const files = job.views.map(view => form?.get(view));
+    if (files.some(file => !(file instanceof Blob) || file.type !== "image/png" || !file.size))
+      job.reject(localizedError("工作台拍照失败", "The workbench could not capture the model", typeof error === "string" ? ` (${error})` : ""));
+    else if (files.some(file => file.size > job.limits.maxImageBytes)
+      || files.reduce((sum, file) => sum + file.size, 0) > job.limits.maxMessageImageBytes)
+      job.reject(localizedError("照片超过 DSH 图片大小限制", "The photos exceed the DSH image size limit"));
+    else
+      job.resolve(await Promise.all(files.map(async (file, index) => ({
+        view: job.views[index], data: new Uint8Array(await file.arrayBuffer()),
+      }))));
+    return new Response(null, { status: 204 });
   });
   route("/api/minicad/checkpoint", ["GET"], async (request) => {
     const params = Object.fromEntries(new URL(request.url).searchParams);
