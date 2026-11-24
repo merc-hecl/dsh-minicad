@@ -33,6 +33,7 @@ const retryableReads = new Set([
   "query",
   "measure",
   "check",
+  "inspect_sheet_metal",
 ]);
 const allocationFailure =
   /VirtualAlloc failed|low_level_alloc|out of memory|cannot allocate memory|could not allocate memory|not enough memory/i;

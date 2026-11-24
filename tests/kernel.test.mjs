@@ -82,6 +82,58 @@ async function setup(fn, options = {}) {
   }
 }
 
+test("sheet metal inspection unfolds a perforated U bracket before and after publication", { timeout: 90000 }, () =>
+  setup(async worker => {
+    const project = await worker.call("create");
+    const target = { projectId: project.id, modelFile: "model.smp", expectedRevision: 0 };
+    const trial = await worker.call("build", {
+      ...target,
+      source: `function build(p, cad) {
+        let sheet = cad.Box(80, 40, 2, { align: [cad.Align.CENTER, cad.Align.CENTER, cad.Align.MIN] });
+        for (const side of ["front", "back"])
+          sheet = cad.flange(sheet, sheet.edges().filterBy(cad.X)[side]().top(), 20, { radius: 2, kFactor: 0.4 });
+        for (const x of [-20, 20])
+          sheet = sheet.cut(cad.Cylinder(3, 4).translate([x, 0, 1]));
+        return sheet.named("U bracket");
+      }`,
+      summary: "Build a perforated U bracket",
+      commit: false,
+    });
+    const candidate = { ...target, runId: trial.runId };
+    const unfolded = await worker.call("inspect_sheet_metal", candidate);
+    const allowance = Math.PI / 2 * (2 + 0.4 * 2);
+    near(unfolded.blank.length, 48 + 2 * 20 - 2 * (2 * (2 + 2) - allowance));
+    near(unfolded.blank.width, 80);
+    near(unfolded.blank.thickness, 2);
+    assert.equal(unfolded.blank.cutoutCount, 2);
+    assert.equal(unfolded.bends.length, 2);
+    for (const bend of unfolded.bends) {
+      near(bend.angle, 90);
+      near(bend.radius, 2);
+      near(bend.length, 80);
+      near(bend.kFactor, 0.4);
+      near(bend.allowance, allowance);
+      near(bend.line.start[2], 0);
+      near(bend.line.end[2], 0);
+      assert.equal(bend.direction, "up");
+    }
+    assert.equal((await worker.call("get", target)).head, 0);
+    const checks = ["x", "y", "z"].map((axis, index) => ({
+      name: `Finished size ${axis}`, measurement: { kind: "size", axis },
+      expected: [80, 48, 20][index], tolerance: 1e-5,
+    }));
+    checks.push({ name: "Two through bores", measurement: {
+      kind: "count", entityKind: "holes", selector: { radius: 3, through: true },
+    }, expected: 2 });
+    const saved = await worker.call("commit", { ...candidate, checks, summary: "Save the checked U bracket" });
+    assert.equal(saved.design.validation.passed, true);
+    const after = await worker.call("inspect_sheet_metal", { ...target, expectedRevision: saved.head });
+    near(after.blank.length, unfolded.blank.length);
+    assert.equal(after.blank.cutoutCount, 2);
+    assert.deepEqual(after.bends.map(bend => bend.kFactor), [0.4, 0.4]);
+    assert.equal((await worker.call("get", target)).head, saved.head);
+  }));
+
 test(
   "SMLib: real parametric geometry, exports and immutable restore",
   { timeout: 90000 },

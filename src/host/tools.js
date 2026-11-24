@@ -190,6 +190,16 @@ export function apply(ctx) {
     call("check"),
   );
   register(
+    "cad_inspect_sheet_metal",
+    "Unfold one exact sheet metal solid read-only. Returns flat blank length, width, thickness and internal cutout count, plus each bend's angle, inside radius, length, K-factor, allowance, direction and bend line in flat XY coordinates. Dimensions use mm and angles use degrees. Supply the member ID for an assembly. Supports candidate runId; omit kFactor to use the model's bend data or the installed SMLib default.",
+    schema({
+      ...readTarget,
+      part: { ...string, description: "Assembly member ID from cad_query with kind:parts." },
+      kFactor: { type: "number", minimum: 0, maximum: 1, description: "Optional common K-factor for computing the flat pattern." },
+    }, ["modelFile", "expectedRevision"]),
+    call("inspect_sheet_metal"),
+  );
+  register(
     "cad_api",
     "Read installed SMLib JavaScript API declarations. Use topic:minicad for MiniCAD's build context and helpers: assembly, Assembly.part, current, edit, checkpoint, readModel and log. These helpers are not SMLib parts/operations exports.",
     schema(

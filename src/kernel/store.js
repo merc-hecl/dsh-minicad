@@ -885,7 +885,7 @@ export class Store {
       try { return { modelFile, revision: row.head, items: api.inspectFit(shape, args.pairs, args.tolerance) }; }
       finally { shape.dispose(); }
     }
-    if (["query", "measure", "check", "geometry_annotation"].includes(method)) {
+    if (["query", "measure", "check", "geometry_annotation", "inspect_sheet_metal"].includes(method)) {
       this.expect(row.head, args);
       const candidate = args.runId ? new ProcessJournal(directory, modelFile).candidate(args.runId) : null;
       if (candidate) this.expect(candidate.run.baseRevision, args);
@@ -899,6 +899,10 @@ export class Store {
         scope = api.modelScope(key, candidate ? `${modelFile}@${args.runId}` : modelFile);
       const revision = candidate ? candidate.run.candidateRevision : row.head;
       const result = { modelFile, revision, ...(candidate ? { runId: args.runId, committed: false } : {}) };
+      if (method === "inspect_sheet_metal") {
+        try { return { ...result, ...api.inspectSheetMetal(shape, args) }; }
+        finally { shape.dispose(); }
+      }
       if (method === "query" && args.kind === "parts")
         return { ...result, kind: "parts", items: api.partInfo(shape) || [] };
       if (method === "geometry_annotation") {

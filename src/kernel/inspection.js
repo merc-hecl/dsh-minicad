@@ -20,6 +20,37 @@ import {
 import { nearestPair, farthestPair } from "./distances.js";
 
 const vector = (v) => [v.x, v.y, v.z];
+
+export function inspectSheetMetal(shape, { part, kFactor }) {
+  if (shape instanceof Assembly) {
+    if (!part) throw localizedError("请选择要展开的装配零件", "select the assembly part to unfold");
+    shape = shape.part(part).shape;
+  } else if (part !== undefined) {
+    throw localizedError("零件 ID 仅用于装配模型", "part ID is only used for assemblies");
+  }
+  return cad.scope(() => {
+    if (shape.solids().length !== 1)
+      throw localizedError("展开需要单个钣金实体", "unfolding requires a single sheet metal solid");
+    const pattern = cad.flatPattern(shape, { kFactor });
+    const [length, width] = vector(pattern.size);
+    return {
+      unit: "mm",
+      angleUnit: "deg",
+      blank: { length, width, thickness: pattern.thickness,
+        cutoutCount: pattern.outline.faces().reduce((count, face) => count + face.innerWires().length, 0) },
+      bends: pattern.bends.map(bend => ({
+        angle: bend.angle,
+        radius: bend.radius,
+        length: bend.length,
+        kFactor: bend.kFactor,
+        allowance: bend.allowance,
+        direction: bend.direction,
+        line: bend.line && { start: vector(bend.line.pointAt(0)), end: vector(bend.line.pointAt(1)) },
+      })),
+    };
+  });
+}
+
 export function topologyItems(shape, kind) {
   if (shape instanceof Assembly) return new cad.ShapeList(...shape.parts.flatMap(p => [...topologyItems(p.shape, kind)]));
   const items = shape[kind]();

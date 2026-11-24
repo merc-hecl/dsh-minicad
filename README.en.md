@@ -14,7 +14,7 @@ Give the DSH agent dimensions or a reference drawing. It builds, revises and exp
 
 ## What you can do
 
-- **Model through conversation** — Create and revise exact solids from natural language or reference drawings, including independent parts and part or face colors.
+- **Model through conversation** — Create and revise exact solids from natural language or reference drawings, including sheet metal bends and flat pattern checks, independent parts, and part or face colors.
 - **Adjust parameters** — The agent provides numeric, choice and toggle controls for the model and requirements. Apply changes and dimensional checks directly; success saves a revision, and failure preserves the saved model.
 - **Inspect and measure** — Solid, wireframe and transparent display, part visibility, sections and exploded views. Measure faces, edges and distances, reference selected geometry in requests, and check part clearance or interference.
 - **Review revisions and processes** — Branch, switch and restore in the version tree, review modeling steps and geometry differences, and export design replays as WebM or GIF.

@@ -20,6 +20,7 @@ import {
 } from "./inspection.js";
 export {
   queryShape,
+  inspectSheetMetal,
   modelScope,
   measureShape,
   checkShape,
