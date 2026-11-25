@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as cad from "@classcad/smlibwasm";
-import { editShape } from "../src/kernel/model.js";
+import { editShape, modelScope, normalizeOperations, queryShape } from "../src/kernel/model.js";
 import { createWorker } from "../src/host/worker.js";
 import { decodePreview } from "../src/shared/preview.js";
 import {
@@ -53,6 +53,29 @@ test("local face and edge operations heal exact solids", () => {
     for (const shape of shapes) shape.dispose();
   }
 });
+
+test("a later operation can distinguish a split face from a removed reference", () => cad.scope(() => {
+  const box = cad.Box(10, 10, 10), scope = modelScope("project", "model.smp");
+  const reference = queryShape(box, 1, "faces", { position: "top", one: true }, scope)[0].id;
+  const editAfterCut = tool => editShape(box, normalizeOperations([
+    { op: "cut", tool },
+    { op: "move_faces", faces: reference, by: [0, 0, 1] },
+  ], box, 1, scope));
+  assert.throws(() => editAfterCut({ shape: "box", size: [2, 14, 14] }), error => {
+    assert.equal(error.code, "GEOMETRY_REFERENCE_SPLIT");
+    assert.equal(error.operationIndex, 1);
+    assert.equal(error.details.reference, reference);
+    assert.equal(error.details.matchCount, 2);
+    const centers = error.details.candidates.map(item => item.center[0]).sort((a, b) => a - b);
+    near(centers[0], -3);
+    near(centers[1], 3);
+    return true;
+  });
+  assert.throws(() => editAfterCut({ shape: "box", size: [14, 14, 4], center: [0, 0, 5] }), {
+    code: "GEOMETRY_REFERENCE_REMOVED", operationIndex: 1, details: { reference, kind: "faces" },
+  });
+  near(box.volume, 1000);
+}));
 
 test(
   "geometry annotations round trip and identify the exact face for an agent edit",

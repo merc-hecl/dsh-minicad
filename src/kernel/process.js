@@ -115,16 +115,20 @@ export class ProcessJournal {
   pendingCandidate(runId) {
     const run = this.run(runId), folder = join(this.root, run.id, "candidate");
     if (run.phase !== "preview")
-      throw Object.assign(localizedError("此试算已不再是待保存版本", "This trial is no longer pending publication"), { status: 409 });
+      throw Object.assign(localizedError("此试算已不再是待保存版本", "This trial is no longer pending publication; read the saved revision or evaluate a new candidate"),
+        { status: 409, code: "CANDIDATE_NOT_PENDING", details: { runId, phase: run.phase } });
     return { run, folder };
   }
-  candidate(runId) {
+  candidateSnapshot(runId) {
     const { run, folder } = this.pendingCandidate(runId);
-    const state = readJson(join(folder, "state.json"));
-    const { inputs } = readJson(join(folder, "transaction.json"));
-    return { run, state, folder,
+    return { run, folder, state: readJson(join(folder, "state.json")) };
+  }
+  candidate(runId) {
+    const snapshot = this.candidateSnapshot(runId);
+    const { inputs } = readJson(join(snapshot.folder, "transaction.json"));
+    return { ...snapshot,
       inputs: new Map(inputs.map(([path, bytes]) => [inside(this.directory, path), bytes === null ? null : Buffer.from(bytes, "base64")])),
-      materials: this.materials(run),
+      materials: this.materials(snapshot.run),
     };
   }
   save(run) { atomicWrite(this.manifest(run.id), jsonBytes(run)); }

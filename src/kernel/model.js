@@ -14,6 +14,7 @@ import { solidNames, setSolidNames, validName, inheritNames, entityInfo, restore
 export { requireNames } from "./naming.js";
 import {
   select,
+  selectOne,
   bindReference,
   direction,
   topologyItems,
@@ -387,13 +388,13 @@ export function editShape(part, operations, parameters = {}, context = {}) {
         const name = validName(op.name), solids = topologyItems(part, "solids"), values = solidNames(part);
         if (op.target === undefined && solids.length !== 1)
           throw localizedError("多个独立实体需用 target 指定待命名实体", "Use target to name one solid in a multi-solid Part");
-        const selected = op.target === undefined ? solids[0] : select(part, "solids", op.target, base, solids).one();
+        const selected = op.target === undefined ? solids[0] : selectOne(part, "solids", op.target, base, solids);
         values[solids.indexOf(selected)] = name;
         part = setSolidNames(solids.length === 1 ? part.named(name) : part, values);
       } else if (op.target !== undefined) {
         if (!part) throw localizedError("请先创建实体", "create a solid first");
         const solids = topologyItems(part, "solids");
-        const selected = select(part, "solids", op.target, base, solids).one();
+        const selected = selectOne(part, "solids", op.target, base, solids);
         const values = solidNames(part);
         solids.forEach((solid, i) => setSolidNames(solid, [values[i]]));
         const rest = solids.filter((item) => item !== selected);
@@ -412,7 +413,7 @@ export function editShape(part, operations, parameters = {}, context = {}) {
           `第 ${index + 1} 个操作 (${raw.op}) 失败：${cause.localized?.zh ?? cause.message}`,
           `Operation ${index + 1} (${raw.op}) failed: ${cause.localized?.en ?? cause.message}`,
         ),
-        { cause, operationIndex: index, operation: raw.op },
+        { cause, code: cause.code, details: cause.details, operationIndex: index, operation: raw.op },
       );
     }
   }
@@ -450,7 +451,7 @@ export function normalizeOperations(operations, shape, revision, scope) {
           `第 ${index + 1} 个操作失败：${cause.localized?.zh ?? cause.message}`,
           `Operation ${index + 1} failed: ${cause.localized?.en ?? cause.message}`,
         ),
-        { cause, operationIndex: index, operation: input?.op },
+        { cause, code: cause.code, details: cause.details, operationIndex: index, operation: input?.op },
       );
     }
   });
@@ -493,26 +494,52 @@ export function describeShape(shape) {
   };
 }
 
+function materialDiff(base, target, describe, includeUnchanged = false) {
+  return cad.scope(() => {
+    const before = base instanceof Assembly ? base.material() : base;
+    const after = target instanceof Assembly ? target.material() : target;
+    const region = operation => {
+      const shape = operation();
+      try { return shape.solids().length ? describe(shape) : null; }
+      finally { shape.dispose(); }
+    };
+    return {
+      added: region(() => after.cut(before)),
+      removed: region(() => before.cut(after)),
+      ...(includeUnchanged ? { unchanged: region(() => before.intersect(after)) } : {}),
+    };
+  });
+}
+
 export function compareShapes(base, target) {
-  if (base instanceof Assembly || target instanceof Assembly) {
-    const a = base instanceof Assembly ? base.material() : base;
-    const b = target instanceof Assembly ? target.material() : target;
-    try { return compareShapes(a, b); }
-    finally { if (a !== base) a.dispose(); if (b !== target) b.dispose(); }
-  }
-  const describe = operation => {
-    const part = operation();
-    try {
-      return part.solids().length ? describeShape(part) : null;
-    } finally {
-      part.dispose();
+  return materialDiff(target, base, describeShape, true);
+}
+
+function describeRegion(shape) {
+  const box = shape.bbox();
+  return { volume: shape.volume, bounds: { min: vector(box.min), max: vector(box.max) } };
+}
+
+export function compareGeometry(base, target) {
+  const result = { lengthUnit: "mm", volumeUnit: "mm3", ...materialDiff(base, target, describeRegion) };
+  if (!(base instanceof Assembly) || !(target instanceof Assembly)) return result;
+
+  const previous = new Map(base.parts.map(part => [part.id, part]));
+  const changedParts = [];
+  for (const part of target.parts) {
+    const before = previous.get(part.id);
+    previous.delete(part.id);
+    if (!before) {
+      changedParts.push({ id: part.id, name: part.name, change: "added", added: describeRegion(part.shape), removed: null });
+      continue;
     }
-  };
-  return {
-    added: describe(() => base.cut(target)),
-    removed: describe(() => target.cut(base)),
-    unchanged: describe(() => base.intersect(target)),
-  };
+    const diff = materialDiff(before.shape, part.shape, describeRegion);
+    if (diff.added || diff.removed)
+      changedParts.push({ id: part.id, name: part.name, change: "modified", ...diff });
+  }
+  for (const part of previous.values())
+    changedParts.push({ id: part.id, name: part.name, change: "removed", added: null, removed: describeRegion(part.shape) });
+  return { ...result, changedParts };
 }
 
 export function previewShape(shape) {

@@ -31,6 +31,7 @@ try {
       operationIndex: error.operationIndex,
       operation: error.operation,
       code: error.code,
+      details: error.details,
       phase: error.phase,
       runId: error.runId,
       validation: error.validation,

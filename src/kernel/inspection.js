@@ -103,19 +103,46 @@ function parseReference(id, kind, scope, revision) {
     Number(match[2]) !== revision ||
     (kind && match[3] !== kind)
   )
-    throw localizedError(
-      "几何引用已过期或属于其他模型，请重新查询", "stale or foreign geometry reference",
-    );
+    throw referenceError(id, kind, "STALE_GEOMETRY_REFERENCE",
+      "几何引用已过期或属于其他模型，或几何类型不符，请重新查询",
+      "stale or foreign geometry reference, or mismatched geometry kind; query again");
   return { kind: match[3], index: Number(match[4]) };
+}
+function referenceError(reference, kind, code, zh, en, details = {}) {
+  return Object.assign(localizedError(zh, en), { code, details: { reference, kind, ...details } });
 }
 export function bindReference(id, kind, shape, scope, revision) {
   const parsed = parseReference(id, kind, scope, revision);
   if (!shape || !topologyItems(shape, parsed.kind)[parsed.index])
-    throw localizedError(
-      "几何引用不存在，请重新查询", "geometry reference does not exist",
-    );
-  return { $ref: { ...parsed, topology: topology(shape) } };
+    throw referenceError(id, parsed.kind, "GEOMETRY_REFERENCE_MISSING",
+      "几何引用不存在，请重新查询", "geometry reference does not exist; query again");
+  return { $ref: { ...parsed, id, topology: topology(shape) } };
 }
+
+function selectionCandidates(shape, kind, matches) {
+  const all = shape instanceof Assembly ? topologyItems(shape, kind) : null;
+  return matches.slice(0, 8).map(item => {
+    const owner = all && owningPart(shape, kind, all.findIndex(candidate => candidate.equals(item)));
+    return { ...describeGeometry(item, kind), ...(owner ? { part: owner.id, partName: owner.name } : {}) };
+  });
+}
+
+function requireSingleSelection(shape, kind, selector, matches) {
+  if (matches.length === 1) return;
+  if (!matches.length)
+    throw Object.assign(localizedError("没有找到匹配的几何，请重新查询", "no matching geometry; query with a broader selector"),
+      { code: "GEOMETRY_SELECTION_EMPTY", details: { kind, selector, matchCount: 0 } });
+  throw Object.assign(localizedError("几何选择不唯一，请缩小查询范围", "ambiguous geometry selection; narrow the selector or query for exact IDs"),
+    { code: "GEOMETRY_SELECTION_AMBIGUOUS", details: { kind, selector, matchCount: matches.length,
+      candidates: selectionCandidates(shape, kind, matches) } });
+}
+
+export function selectOne(shape, kind, selector, base, items) {
+  const matches = select(shape, kind, selector, base, items);
+  requireSingleSelection(shape, kind, selector, matches);
+  return matches[0];
+}
+
 export function select(part, kind, selector = {}, base = part, items, allowEmpty = false) {
   let list = items || topologyItems(part, kind);
   if (Array.isArray(selector)) {
@@ -131,14 +158,14 @@ export function select(part, kind, selector = {}, base = part, items, allowEmpty
   if (selector.$ref) {
     const ref = selector.$ref;
     if (!base || kind !== ref.kind || topology(base) !== ref.topology)
-      throw localizedError(
-        "模型拓扑已变化，请重新查询", "model topology changed; query again",
-      );
+      throw referenceError(ref.id, kind, "STALE_GEOMETRY_REFERENCE",
+        "模型拓扑已变化，请重新查询", "model topology changed; query again");
     if ((kind === "solids" || kind === "vertices") && part === base)
       return new cad.ShapeList(list[ref.index]);
     const original = topologyItems(base, kind)[ref.index];
     if (!original)
-      throw localizedError("几何引用不存在", "geometry reference does not exist");
+      throw referenceError(ref.id, kind, "GEOMETRY_REFERENCE_MISSING",
+        "几何引用不存在，请重新查询", "geometry reference does not exist; query again");
     list =
       kind === "solids"
         ? list.filter(
@@ -149,10 +176,13 @@ export function select(part, kind, selector = {}, base = part, items, allowEmpty
         : list
             .filter((item) => item.equals(original))
             .union(list.derivedFrom(original));
-    if (list.length !== 1)
-      throw localizedError(
-        "几何引用已被移除或拆分，请重新查询", "reference removed or split; query again",
-      );
+    if (!list.length)
+      throw referenceError(ref.id, kind, "GEOMETRY_REFERENCE_REMOVED",
+        "几何引用已被移除，请重新查询", "geometry reference removed by an earlier operation; review the batch");
+    if (list.length > 1)
+      throw referenceError(ref.id, kind, "GEOMETRY_REFERENCE_SPLIT",
+        "几何引用已被拆分，请缩小选择范围", "geometry reference split by an earlier operation; review the batch or narrow the selector",
+        { matchCount: list.length, candidates: selectionCandidates(part, kind, list) });
     return list;
   }
   if (selector.part) {
@@ -200,12 +230,7 @@ export function select(part, kind, selector = {}, base = part, items, allowEmpty
         ),
       1e-7,
     );
-  if (!list.length && !allowEmpty)
-    throw localizedError("没有找到匹配的几何，请重新查询", "no matching geometry");
-  if (selector.one && list.length !== 1)
-    throw localizedError(
-      "几何选择不唯一，请缩小查询范围", "ambiguous geometry selection",
-    );
+  if (selector.one || (!list.length && !allowEmpty)) requireSingleSelection(part, kind, selector, list);
   return list;
 }
 export function queryShape(
@@ -280,12 +305,17 @@ export function describeReference(
   };
 }
 function describeItem(item, index, kind, scope, revision, idFormats) {
-  const box = item.bbox();
-  const result = {
+  return {
     id: geometryReference(scope, revision, kind, index),
     ...(kind !== "solids"
       ? { displayId: kind === "vertices" ? `V-${index + 1}` : geometryLabel(kind, index, idFormats) }
       : {}),
+    ...describeGeometry(item, kind),
+  };
+}
+function describeGeometry(item, kind) {
+  const box = item.bbox();
+  const result = {
     type: kind === "vertices" ? "vertex" : item.geomType || "solid",
     name: item.name || null,
     center: vector(item.center()),
@@ -381,7 +411,7 @@ function entity(shape, input, scope, revision) {
     typeof spec.selector === "string"
       ? bindReference(spec.selector, spec.kind, shape, scope, revision)
       : spec.selector;
-  return select(shape, spec.kind, selector).one();
+  return selectOne(shape, spec.kind, selector);
 }
 function solid(shape, target, scope, revision) {
   return target === undefined

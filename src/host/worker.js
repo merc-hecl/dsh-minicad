@@ -33,6 +33,7 @@ const retryableReads = new Set([
   "query",
   "measure",
   "check",
+  "compare_geometry",
   "inspect_sheet_metal",
 ]);
 const allocationFailure =
@@ -156,6 +157,7 @@ export function createWorker({
                 operationIndex: response.operationIndex,
                 operation: response.operation,
                 code: response.code,
+                details: response.details,
                 phase: response.phase,
                 runId: response.runId,
                 validation: response.validation,

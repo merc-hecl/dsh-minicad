@@ -48,6 +48,7 @@ const selector = object(
   },
   [],
 );
+selector.description = "Filter by part, geometry type, orientation, location or size. Use part for the stable assembly member ID when selecting across the assembly. nearest uses world-space geometry centers and can tie. Set one:true to require exactly one result.";
 export const reference = { anyOf: [text, selector] };
 export const edgeParameters = array({ type: "number", minimum: 0, maximum: 1 });
 const references = { anyOf: [text, selector, array(text)] };
@@ -201,6 +202,7 @@ const operationDescriptions = {
 };
 const operationGroups = [
   {
+    id: "assembly",
     description: 'Manage independent parts without merging their geometry. Create an assembly with add_part or copy an existing standalone Part using {"op":"copy_part","part":"base","id":"copy","name":"Base copy","center":[0,25,0]}. part assigns the original its stable ID when first converting it to an assembly.',
     operations: [
       object({ op: { const: "add_part" }, id: text, name: text, tool: primitiveSchema }),
@@ -209,6 +211,7 @@ const operationGroups = [
     ],
   },
   {
+    id: "solids",
     description: 'Create and combine solids. Use a wire profile for a closed outline made of lines and circular arcs. For a round hole, use {"op":"cut","tool":{"shape":"cylinder","radius":2.5,"height":12}}.',
     operations: [
       ...Object.entries(primitives).map(([op, fields]) =>
@@ -222,6 +225,7 @@ const operationGroups = [
     ],
   },
   {
+    id: "face_edge_editing",
     description: 'Edit local geometry using face or edge IDs from cad_query, or use a geometric selector. To bevel the top straight edges, use {"op":"chamfer","edges":{"position":"top","geomType":"line"},"distance":1}.',
     operations: [
       operation("fillet", { edges: references, radius: positive }),
@@ -236,6 +240,7 @@ const operationGroups = [
     ],
   },
   {
+    id: "transforms_patterns",
     description: 'Transform or repeat geometry. Pattern count includes the first copy. For a row of holes, use {"op":"linear_pattern","step":[12,0,0],"count":4,"tool":{"shape":"cylinder","radius":2,"height":10},"mode":"cut"}.',
     operations: [
       operation("translate", { by: vector }),
@@ -266,6 +271,7 @@ const operationGroups = [
     ],
   },
   {
+    id: "appearance_naming",
     description: 'Name solids and change appearance. Every final solid must have a meaningful name. Use {"op":"rename","name":"Base plate"} after creating a solid. Use {"op":"color","color":"#CD7F32"} for the whole part or supply faces for a face override. Use null to clear the selected color.',
     operations: [
       operation("rename", { name: text }),
@@ -277,6 +283,27 @@ export const operationSchema = {
   anyOf: operationGroups.flatMap(group => group.operations),
 };
 export const operationsSchema = array(operationSchema);
+export const editOperationGroups = operationGroups.map(({ id }) => id);
+
+export function readEditOperations({ group, op }) {
+  const groups = group === undefined ? operationGroups : operationGroups.filter(item => item.id === group);
+  const units = { length: "mm", angle: "deg" };
+  if (op === undefined) return { units, groups: groups.map(item => ({
+    id: item.id,
+    ...(group === undefined ? {} : { guidance: item.description }),
+    operations: item.operations.map(({ properties }) => group === undefined ? properties.op.const : {
+      op: properties.op.const, description: operationDescriptions[properties.op.const],
+    }),
+  })) };
+  for (const item of groups) {
+    const inputSchema = item.operations.find(option => option.properties.op.const === op);
+    if (inputSchema) return { op, group: item.id, units, description: operationDescriptions[op],
+      guidance: item.description, inputSchema };
+  }
+  throw Object.assign(localizedError("未找到该建模操作，请查询操作目录", "unknown edit operation; list operations or check the group"),
+    { code: "UNKNOWN_EDIT_OPERATION", details: { op, group } });
+}
+
 const entity = object({
   kind: choices(["faces", "edges", "solids"]),
   selector: reference,
@@ -365,7 +392,7 @@ export function toDshSchema(rule) {
       items: { type: "number" },
       description: "Exactly [x,y,z]. Direction vectors must be nonzero.",
     };
-    rule = object(
+    rule = { ...object(
       {
         part: text,
         geomType: { type: "string" },
@@ -382,7 +409,7 @@ export function toDshSchema(rule) {
         one: { type: "boolean" },
       },
       [],
-    );
+    ), description: rule.description };
   } else if (rule === profile) {
     rule = {
       ...object(

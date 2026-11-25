@@ -287,7 +287,9 @@ export class Store {
     return result;
   }
   expect(head, args) {
-    if (args.expectedRevision !== head) throw new Conflict();
+    if (args.expectedRevision !== head)
+      throw Object.assign(new Conflict(), { code: "REVISION_CONFLICT",
+        details: { expectedRevision: args.expectedRevision, actualRevision: head } });
   }
   async shape(saved) {
     return (await this.kernel()).readShape(
@@ -803,17 +805,33 @@ export class Store {
     if (method === "publish_panel") return this.publishPanel(key, { ...args, modelFile });
     if (method === "apply_panel" || method === "preview_panel")
       return this.adjustPanel(key, { ...args, modelFile }, method === "preview_panel");
-    if (method === "compare") {
+    if (method === "compare" || method === "compare_geometry") {
+      const summary = method === "compare_geometry";
+      let candidate;
+      if (summary) {
+        if ((args.runId === undefined) === (args.targetRevision === undefined))
+          throw localizedError("请指定目标版本或候选记录之一", "specify exactly one of targetRevision and runId");
+        if (args.runId !== undefined) {
+          candidate = new ProcessJournal(directory, modelFile).candidateSnapshot(args.runId);
+          this.expect(row.head, { expectedRevision: candidate.run.baseRevision });
+        }
+      }
       const base = this.snapshot(key, args.baseRevision, modelFile);
-      const target = this.snapshot(key, args.targetRevision, modelFile);
+      const target = candidate ?? this.snapshot(key, args.targetRevision, modelFile);
       if (!base || !target) throw localizedError("版本不存在", "Version not found");
       const api = await this.kernel(), shapes = [];
       try {
         shapes.push(await this.shape(base));
         shapes.push(await this.shape(target));
+        const revisions = { projectId: key, modelFile, baseRevision: base.state.revision,
+          targetRevision: candidate?.run.candidateRevision ?? target.state.revision };
+        if (summary) return { ...revisions,
+          ...(candidate ? { runId: candidate.run.id, candidateBaseRevision: candidate.run.baseRevision, committed: false } : { committed: true }),
+          ...api.compareGeometry(...shapes),
+        };
         const regions = api.compareShapes(...shapes);
         return {
-          projectId: key, modelFile, baseRevision: base.state.revision, targetRevision: target.state.revision,
+          ...revisions,
           ...Object.fromEntries(Object.entries(regions).map(([name, region]) => [name, region ? {
             volume: region.metrics.volume,
             preview: Buffer.from(encodePreview(region.preview)).toString("base64"),

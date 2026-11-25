@@ -6,6 +6,8 @@ import {
   reference,
   edgeParameters,
   operationsSchema,
+  editOperationGroups,
+  readEditOperations,
   measurementsSchema,
   checksSchema,
   toDshSchema,
@@ -20,6 +22,7 @@ const parameters = { type: "object", additionalProperties: true };
 const summary = { ...string, description: "A concise, meaningful title for this modeling change in the user's language. Visible for trials and saved changes. Describe the change, such as 'Create the plate outline and hole pattern'; keep full dimensions in source, parameters and checks. Avoid placeholder names such as probe, probe2, test or debug." };
 const target = { modelFile, expectedRevision: integer };
 const readTarget = { ...target, runId: string };
+const savedRevision = { type: "integer", minimum: 1 };
 const buildOptions = { commit: { type: "boolean", default: true }, checks: checksSchema };
 const idFormat = { ...string, description: "Exactly one numbering placeholder: {n}, or {n:1} to {n:9} for a minimum zero-padded width. Example: Face-{n:3} gives Face-001." };
 const renderView = { type: "string", enum: ["isometric", "front", "top", "right"] };
@@ -71,7 +74,7 @@ export function apply(ctx) {
             } catch (error) {
               const details = { phase: error.phase, code: error.code, operationIndex: error.operationIndex,
                 operation: error.operation, runId: error.runId, diagnostics: error.diagnostics,
-                validation: error.validation };
+                validation: error.validation, details: error.details };
               const diagnostic = Object.values(details).some(value => value !== undefined)
                 ? `\n${JSON.stringify(details)}` : "";
               if (error?.localized?.en !== undefined)
@@ -166,12 +169,18 @@ export function apply(ctx) {
   );
   register(
     "cad_edit",
-    "Apply one ordered operation batch to the saved exact model or create a new model. Combine solids, booleans, closed wire profiles, holes, face edits, transforms, patterns, naming and colors. Set name when creating a final solid or include rename before publishing. Use part for a stable assembly member ID. add_part, copy_part and remove_part manage independent components; when copying a standalone Part, part assigns its first ID and center translates only the copy. Parameters resolve this batch only; existing geometry is never rebuilt from source. commit:false evaluates without publishing.",
+    "Apply one ordered operation batch to the saved exact model or create a new model. Use cad_edit_operations for an unfamiliar op or its exact fields. Combine solids, booleans, closed wire profiles, holes, face edits, transforms, patterns, naming and colors. Set name when creating a final solid or include rename before publishing. Use part for a stable assembly member ID. add_part, copy_part and remove_part manage independent components; when copying a standalone Part, part assigns its first ID and center translates only the copy. Parameters resolve this batch only; existing geometry is never rebuilt from source. commit:false evaluates without publishing.",
     schema(
       { ...target, ...buildOptions, operations: operationsSchema, parameters, summary },
       ["modelFile", "expectedRevision", "operations", "summary"],
     ),
     call("edit"),
+  );
+  register(
+    "cad_edit_operations",
+    "Discover cad_edit operations without changing the model. With no arguments, list groups and op names. Use group for descriptions in one group, or op for one operation's exact JSON Schema, units and selection guidance. Use cad_api for cad_build's JavaScript API.",
+    schema({ group: { type: "string", enum: editOperationGroups }, op: string }, []),
+    (_project, args) => readEditOperations(args),
   );
   register(
     "cad_commit",
@@ -190,6 +199,12 @@ export function apply(ctx) {
     "Check measured dimensions against targets and tolerances or bounds.",
     schema({ ...readTarget, checks: checksSchema }, ["modelFile", "expectedRevision", "checks"]),
     call("check"),
+  );
+  register(
+    "cad_compare",
+    "Compare a saved base revision to a saved targetRevision or an unpublished candidate runId for the same model. Supply exactly one of targetRevision and runId. Read-only. Reports the volume (mm3) and world-space bounds (mm) of material added to and removed from the base to reach the target, or null for an empty region. For two assemblies it also reports geometrically changed members by stable ID, including changes masked by overlapping parts. Use cad_check for dimensions and requirements.",
+    schema({ modelFile, baseRevision: savedRevision, targetRevision: savedRevision, runId: string }, ["modelFile", "baseRevision"]),
+    call("compare_geometry"),
   );
   register(
     "cad_render",
@@ -273,7 +288,7 @@ export function apply(ctx) {
     schema({
       modelFile,
       part: string,
-      revision: { type: "integer", minimum: 1 },
+      revision: savedRevision,
       format: {
         type: "string",
         enum: ["step", "stl", "smp", "smb", "zip"],
