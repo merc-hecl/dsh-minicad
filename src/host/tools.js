@@ -15,6 +15,7 @@ import {
 } from "../shared/cad-schema.js";
 import { apiTopics } from "../kernel/api.js";
 import { parameterPanelSchema } from "../shared/parameter-panel.js";
+import { relationshipKinds, relationshipOperationsSchema } from "../shared/relationships.js";
 import { randomUUID } from "node:crypto";
 import { modelingPrompt } from "./prompts.js";
 export const inject = ["tools", "minicad", "systemPrompt"];
@@ -117,18 +118,21 @@ export function apply(ctx) {
       },
       signal,
     );
-    if (["build", "import", "edit", "commit", "set_geometry_id_format"].includes(method) && result.committed)
+    const publishesModel = ["build", "import", "edit", "edit_relationships", "commit"].includes(method);
+    if ((publishesModel || method === "set_geometry_id_format") && result.committed)
       pendingPanels.set(result.modelFile, result.head);
     if (method === "publish_panel" && pendingPanels.get(result.modelFile) === result.head)
       pendingPanels.delete(result.modelFile);
     if (method === "variants") for (const item of result.items) pendingPanels.set(item.modelFile, item.revision);
-    if (!["build", "import", "edit", "commit"].includes(method) || !result.committed) return result;
+    if (!publishesModel || !result.committed) return result;
     return { modelFile: result.modelFile, head: result.head, committed: true,
       metrics: result.design.metrics, validation: result.design.validation,
       ...(result.design.parts === undefined ? {} : { parts: result.design.parts }),
+      ...(result.design.relationships !== undefined || method === "edit_relationships" ? { relationships: result.design.relationships ?? [] } : {}),
       diagnostics: result.diagnostics,
       note: "Only the listed checks are verified; valid geometry does not establish full drawing compliance." };
   };
+  const readRelationships = call("relationships");
   register(
     "cad_publish_panel",
     "Publish a parameter panel for modelFile at expectedRevision; fields:[] clears/omits the panel. Supply title and fields with unique key, type, label and initial value. Types: number, integer, choice (with options), toggle (boolean). Use zh/en titles and labels, including groups and options; keep user-provided parameter names unchanged and omit explanatory UI copy. Numeric fields may set min/max/step/unit; fields may set group. Measure initial values and justify ranges from geometry or requirements. Supply exactly one recipe: operations using {parameter:'key'} OR self-contained source defining build(parameters,cad). part scopes source to one assembly member. cad.current is the publication baseline; calculate absolute-control deltas from it. Defaults must preserve current geometry and pass checks. Include dimensional checks for adjusted dimensions and fixed requirements; preserve parts, names, colors and unrelated edits.",
@@ -187,6 +191,18 @@ export function apply(ctx) {
     "Publish an evaluated candidate as one revision; retain the saved model on failure.",
     schema({ ...target, runId: string, checks: checksSchema, summary }, ["modelFile", "expectedRevision", "runId", "summary"]),
     call("commit"),
+  );
+  register(
+    "cad_relationships",
+    "Read the model's typed relationships and available kind contracts. Omit revision and runId for the saved head. Use revision for history or runId for a pending candidate. An issue identifies a relationship requiring rebind. For assembly joints use the part IDs returned by cad_query with kind:parts.",
+    schema({ modelFile, revision: savedRevision, runId: string }, ["modelFile"]),
+    async (project, args, signal) => ({ ...await readRelationships(project, args, signal), kinds: relationshipKinds }),
+  );
+  register(
+    "cad_edit_relationships",
+    "Evaluate ordered relationship operations on a saved model. Use cad_relationships to see kind contracts. define binds or replaces a relationship at the current pose; update sets its adjustable values; remove detaches it. Operations can move attached geometry through their kind handler. Fixed and revolute assembly joints use parent and child endpoints with entity:{kind:'part',id}. Use commit:false to inspect a candidate; then publish with cad_commit. A direct geometry edit of an endpoint can require rebind; inspect the affected parts and define the repaired relationship with the same ID.",
+    schema({ ...target, ...buildOptions, operations: relationshipOperationsSchema, summary }, ["modelFile", "expectedRevision", "operations", "summary"]),
+    call("edit_relationships"),
   );
   register(
     "cad_measure",
@@ -312,8 +328,8 @@ export function apply(ctx) {
   );
   register(
     "cad_fit",
-    "Measure clearance and interference between named assembly parts. Reports minimum distance (mm), overlap volume (mm3), and contact/separated/interference. Does not modify geometry.",
-    schema({ ...target, pairs: { type: "array", minItems: 1, maxItems: 100,
+    "Measure clearance and interference between assembly part IDs. Reports minimum distance (mm), overlap volume (mm3), and contact/separated/interference. Read-only. Supply runId to check an unpublished candidate.",
+    schema({ ...readTarget, pairs: { type: "array", minItems: 1, maxItems: 100,
       items: schema({ from: string, to: string }) }, tolerance: { type: "number", minimum: 0 } },
       ["modelFile", "expectedRevision", "pairs"]), call("fit"),
   );

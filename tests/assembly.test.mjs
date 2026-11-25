@@ -65,6 +65,78 @@ test("touching parts retain identity across edit, candidate commit, restore and 
   assert.equal(rebuilt.design.parts.length, 2); near(rebuilt.design.parts[1].center[2], 5);
 }));
 
+test("typed relationships follow assembly poses and publish, invalidate and restore with their geometry", { timeout: 90000 }, () => workspace(async (worker, project) => {
+  const model = { projectId: project.id, modelFile: "model.smp" };
+  const component = (id, center, size) => ({ op: "add_part", id, name: id, tool: { shape: "box", size, center } });
+  await worker.call("edit", { ...model, expectedRevision: 0, operations: [
+    component("base", [-3, -3, -4], [4, 4, 2]),
+    component("upper", [4, 0, 0], [6, 2, 2]),
+    component("lower", [11, 0, 0], [6, 2, 2]),
+    component("tool", [16, 0, 0], [2, 2, 2]),
+    component("spare", [0, 20, 0], [2, 2, 2]),
+  ] });
+  assert.deepEqual((await worker.call("relationships", model)).relationships, []);
+  const bind = (id, kind, parent, child, parameters = {}) => ({ op: "define", relationship: {
+    id, kind, endpoints: [{ role: "parent", entity: { kind: "part", id: parent } },
+      { role: "child", entity: { kind: "part", id: child } }], parameters,
+  } });
+  const shoulder = bind("shoulder", "assembly.revolute", "base", "upper",
+    { origin: [1, 0, 0], axis: [0, 0, 1], angle: 0, limits: { min: -90, max: 90 } });
+  const elbow = bind("elbow", "assembly.revolute", "upper", "lower", { origin: [8, 0, 0], axis: [0, 1, 0], angle: 0 });
+  const tool = bind("tool-mount", "assembly.fixed", "lower", "tool");
+  const modify = (expectedRevision, operations, extra = {}) => worker.call("edit_relationships", { ...model, expectedRevision, operations, ...extra });
+  const update = (id, angle) => ({ op: "update", id, values: { angle } });
+  await assert.rejects(modify(1, [shoulder, elbow, tool, bind("return", "assembly.fixed", "tool", "base")]), { code: "JOINT_CYCLE" });
+  assert.deepEqual((await worker.call("relationships", model)).relationships, []);
+  await modify(1, [shoulder, elbow, tool]);
+  await assert.rejects(modify(2, [update("shoulder", 91)]), { code: "JOINT_LIMIT" });
+
+  const draft = await modify(2, [update("shoulder", 90), update("elbow", 90)], { commit: false });
+  const candidate = { ...model, expectedRevision: 2, runId: draft.runId };
+  const preview = await worker.call("relationships", { ...model, runId: draft.runId });
+  assert.equal(preview.committed, false);
+  assert.equal(preview.relationships.find(item => item.id === "elbow").parameters.angle, 90);
+  const assertPosition = (parts, id, expected) => {
+    parts.find(part => part.id === id).center.forEach((value, index) => near(value, expected[index]));
+  };
+  const { items: posed } = await worker.call("query", { ...candidate, kind: "parts" });
+  assertPosition(posed, "upper", [1, 3, 0]);
+  assertPosition(posed, "lower", [1, 7, -3]);
+  assertPosition(posed, "tool", [1, 7, -8]);
+  assertPosition(posed, "spare", [0, 20, 0]);
+  const fit = await worker.call("fit", { ...candidate, pairs: [{ from: "lower", to: "tool" }] });
+  assert.equal(fit.runId, draft.runId);
+  near(fit.items[0].distance, 1);
+  const before = await worker.call("get", model);
+  assert.equal(before.head, 2);
+  assertPosition(before.design.parts, "tool", [16, 0, 0]);
+
+  await worker.call("commit", candidate);
+  const saved = await worker.call("get", model);
+  assert.equal(saved.head, 3);
+  assert.deepEqual(saved.design.relationships, preview.relationships);
+  const renamed = await worker.call("edit", { ...model, expectedRevision: 3, operations: [{ op: "rename", part: "lower", name: "Forearm" }] });
+  assert.deepEqual(renamed.design.relationships, preview.relationships);
+  const edited = await worker.call("edit", { ...model, expectedRevision: 4, operations: [{ op: "translate", part: "lower", by: [0, 0, 1] }] });
+  assert.deepEqual(edited.design.relationships.filter(item => item.issue).map(item => item.id), ["elbow", "tool-mount"]);
+  await assert.rejects(modify(5, [update("shoulder", 0)]), { code: "RELATIONSHIP_REBIND_REQUIRED" });
+  const rebound = await modify(5, [
+    bind("elbow", "assembly.revolute", "upper", "lower", { origin: [1, 7, 1], axis: [-1, 0, 0], angle: 90 }), tool,
+  ]);
+  assert.equal(rebound.design.relationships.some(item => item.issue), false);
+
+  await worker.call("restore", { ...model, expectedRevision: 6, revision: 2 });
+  const restored = await worker.call("get", model);
+  assertPosition(restored.design.parts, "tool", [16, 0, 0]);
+  assert.equal(restored.design.relationships.find(item => item.id === "elbow").parameters.angle, 0);
+  const branch = await modify(2, [{ op: "remove", id: "tool-mount" }, update("shoulder", -90)]);
+  assert.equal(branch.revisions.find(item => item.revision === branch.head).parent, 2);
+  assertPosition(branch.design.parts, "tool", [16, 0, 0]);
+  const backAtZero = await modify(branch.head, [update("shoulder", 0)]);
+  assertPosition(backAtZero.design.parts, "lower", [11, 0, 0]);
+  assert.deepEqual((await worker.call("relationships", { ...model, revision: 3 })).relationships, preview.relationships);
+}));
+
 test("SMP operation variants generate independent checked files and exports without changing the original", { timeout: 90000 }, () => workspace(async (worker, project) => {
   const target = { projectId: project.id, modelFile: "model.smp" };
   await worker.call("build", { ...target, expectedRevision: 0, source, parameters: { length: 40 } });

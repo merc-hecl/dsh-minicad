@@ -74,6 +74,8 @@ With the design open in the MiniCAD workbench and an image-capable model selecte
 
 When revising an existing part, ask the agent to compare the candidate with its base revision before saving. For example, ask to enlarge two mounting holes to Ø6 and preserve their spacing and the plate thickness. The agent can inspect the volume and location of material changes and the affected assembly members, then check the hole diameters, spacing, and plate thickness.
 
+Once an assembly is saved, ask the agent to define fixed or revolute joints. For example, ask it to join an upper arm to its base about the axis on the drawing and preview a 30° shoulder angle. Downstream parts move with the joint. Each saved revision holds the relationships with its geometry, and restoring a revision restores both. After a direct edit to connected geometry, the agent can inspect relationships that require review and rebind them.
+
 **Adjust parameters** becomes available in the toolbar once the agent provides controls for a saved model. Change a parameter and select **Preview** to see the temporary result on the canvas. Editing a parameter again, resetting the values, or closing the panel brings back the saved model. **Apply** saves a new version once the checks pass.
 
 ## Open in an external CAD application

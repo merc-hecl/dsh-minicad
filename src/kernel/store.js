@@ -27,6 +27,7 @@ import { readApi } from "./api.js";
 import { format, isDeepStrictEqual } from "node:util";
 import { definePanel, panelValues, panelView, panelChanges, panelChangeSummary } from "../shared/parameter-panel.js";
 const kernel = () => import("./model.js");
+const relationshipKernel = () => import("./relationships.js");
 const now = () => Date.now() / 1000;
 const id = () => randomUUID().replaceAll("-", "");
 const portable = (path) => path.split(sep).join("/");
@@ -71,7 +72,7 @@ function revisionActor(root, entry) {
   try {
     const { tool } = readJson(join(inside(root, entry.folder), "operations.json"));
     return tool === "cad_apply_panel" ? "user"
-      : ["cad_build", "cad_edit", "cad_import", "cad_set_geometry_id_format"].includes(tool) ? "agent" : null;
+      : ["cad_build", "cad_edit", "cad_import", "cad_set_geometry_id_format", "cad_edit_relationships"].includes(tool) ? "agent" : null;
   } catch { return null; }
 }
 export class KernelRequired extends Error {
@@ -500,19 +501,22 @@ export class Store {
     jsonBytes(parameters);
     const recipe = { ...args, parameters };
     const base = panelExecution?.base || (args.baseModelFile ? this.snapshot(key, args.baseRevision, args.baseModelFile) : saved);
+    const relationshipEdit = args.relationshipOperations !== undefined;
     const materials = new Map(panelExecution?.materials);
-    const operation = { tool: panelExecution?.panelId ? "cad_apply_panel" : args.file ? "cad_import" : edit ? "cad_edit" : "cad_build", kernel: api.kernelName,
+    const operation = { tool: relationshipEdit ? "cad_edit_relationships" : panelExecution?.panelId ? "cad_apply_panel"
+      : args.file ? "cad_import" : edit ? "cad_edit" : "cad_build", kernel: api.kernelName,
       inputModel: args.baseModelFile || modelFile, inputRevision: base?.state.revision || 0,
       ...(panelExecution?.panelId ? { panelId: panelExecution.panelId, parameters, changes: panelExecution.changes } : {}),
       ...(args.part ? { part: args.part } : {}),
       ...(edit ? { operations: args.operations, ...(args.parameters !== undefined ? { parameters } : {}) } : {}),
+      ...(relationshipEdit ? { operations: args.relationshipOperations } : {}),
       ...(args.file ? { file: args.file, ...(args.metadataFile ? { metadataFile: args.metadataFile } : {}) } : {}),
       ...(args.checks ? { checks: api.values(args.checks, parameters) } : {}) };
     run.inputModel = operation.inputModel;
     run.inputRevision = operation.inputRevision;
     journal.save(run);
     materials.set("operations.json", jsonBytes(operation));
-    if (!edit && !args.file) {
+    if (!edit && !args.file && !relationshipEdit) {
       if (typeof args.source !== "string" || !args.source.trim() || args.source.length > 2 * 1024 * 1024)
         throw localizedError("请提供定义 build(parameters, cad) 的建模源码", "Provide source defining build(parameters, cad)");
       materials.set("build/source.js", Buffer.from(args.source));
@@ -537,11 +541,14 @@ export class Store {
       journal.capture(run, api.describeShape(visible), label, operation);
       return part;
     } : undefined;
-    let shape = base ? await this.shape(base) : null;
-    if (args.file) {
+    const baseShape = base ? await this.shape(base) : null;
+    let shape = baseShape, relationships = base?.state.relationships ?? [], metadata;
+    if (relationshipEdit) {
+      const { editRelationships } = await relationshipKernel();
+      ({ shape, relationships } = editRelationships(baseShape, relationships, args.relationshipOperations));
+    } else if (args.file) {
       const bytes = fs.readFileSync(inside(directory, args.file));
       resourceRead(args.file, bytes);
-      let metadata;
       if (args.metadataFile) {
         const bytes = fs.readFileSync(inside(directory, args.metadataFile));
         resourceRead(args.metadataFile, bytes);
@@ -556,7 +563,15 @@ export class Store {
         resourceRead, checkpoint, log: (...args) => journal.log(run, format(...args)),
       });
     }
-    const state = { ...api.describeShape(shape), formatVersion: 2, unit: "mm", geometryIds: run.geometryIds };
+    if (metadata?.relationships !== undefined) {
+      const { importRelationships } = await relationshipKernel();
+      relationships = importRelationships(shape, metadata.relationships);
+    } else if (!relationshipEdit && relationships.length) {
+      const { reconcileRelationships } = await relationshipKernel();
+      relationships = reconcileRelationships(baseShape, shape, relationships);
+    }
+    const state = { ...api.describeShape(shape), formatVersion: 2, unit: "mm", geometryIds: run.geometryIds,
+      ...(relationships.length ? { relationships } : {}) };
     if (args.commit !== false) api.requireNames(shape);
     journal.capture(run, state, "", run.purpose === "panel_apply" ? "panel_apply" : "result");
     journal.finish(run, "validating");
@@ -566,7 +581,8 @@ export class Store {
     const diagnostics = { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean) };
     if (args.commit === false) {
       journal.saveCandidate(run, state, api.saveShape(shape), inputs);
-      return { modelFile, head, committed: false, runId: run.id, metrics: state.metrics, validation: state.validation, diagnostics };
+      return { modelFile, head, committed: false, runId: run.id, metrics: state.metrics, validation: state.validation, diagnostics,
+        ...(relationshipEdit || relationships.length ? { relationships } : {}) };
     }
     requirePassedChecks(state.validation);
     const finishedRun = { ...run, phase: "done", committedRevision: run.candidateRevision, updated: now() };
@@ -802,6 +818,16 @@ export class Store {
       if (!saved) throw localizedError("版本不存在", "Version not found");
       return { ...saved.state, geometryScope: createHash("sha256").update(`${key}\0${modelFile}`).digest("hex").slice(0, 24) };
     }
+    if (method === "relationships") {
+      if (args.runId !== undefined && args.revision !== undefined)
+        throw localizedError("请选择已保存版本或候选记录之一", "specify a saved revision or a candidate runId");
+      const candidate = args.runId === undefined ? null : new ProcessJournal(directory, modelFile).candidateSnapshot(args.runId);
+      if (candidate) this.expect(row.head, { expectedRevision: candidate.run.baseRevision });
+      const saved = candidate ?? this.snapshot(key, args.revision, modelFile);
+      return { modelFile, revision: candidate?.run.candidateRevision ?? saved?.state.revision ?? 0,
+        ...(candidate ? { runId: candidate.run.id, baseRevision: candidate.run.baseRevision, committed: false } : {}),
+        relationships: saved?.state.relationships ?? [] };
+    }
     if (method === "publish_panel") return this.publishPanel(key, { ...args, modelFile });
     if (method === "apply_panel" || method === "preview_panel")
       return this.adjustPanel(key, { ...args, modelFile }, method === "preview_panel");
@@ -895,6 +921,8 @@ export class Store {
       this.saveWorkspace(root, data);
       return this.project(key);
     }
+    if (method === "edit_relationships")
+      return this.build(key, { ...args, modelFile, relationshipOperations: args.operations });
     if (method === "build" || method === "edit" || method === "import")
       return this.build(key, args, method === "edit");
     if (method === "commit") {
@@ -903,17 +931,9 @@ export class Store {
     }
     if (method === "set_geometry_id_format")
       return this.setGeometryIdFormat(key, modelFile, row.head, args);
-    if (method === "fit") {
+    if (["query", "measure", "check", "geometry_annotation", "inspect_sheet_metal", "fit"].includes(method)) {
       this.expect(row.head, args);
-      const saved = this.snapshot(key, undefined, modelFile);
-      if (!saved) throw localizedError("请先完成建模", "build a model first");
-      const api = await this.kernel(), shape = await this.shape(saved);
-      try { return { modelFile, revision: row.head, items: api.inspectFit(shape, args.pairs, args.tolerance) }; }
-      finally { shape.dispose(); }
-    }
-    if (["query", "measure", "check", "geometry_annotation", "inspect_sheet_metal"].includes(method)) {
-      this.expect(row.head, args);
-      const candidate = args.runId ? new ProcessJournal(directory, modelFile).candidate(args.runId) : null;
+      const candidate = args.runId ? new ProcessJournal(directory, modelFile).candidateSnapshot(args.runId) : null;
       if (candidate) this.expect(candidate.run.baseRevision, args);
       const saved = candidate ? { folder: candidate.folder, state: candidate.state } : this.snapshot(key, undefined, modelFile);
       if (!saved) {
@@ -925,6 +945,10 @@ export class Store {
         scope = api.modelScope(key, candidate ? `${modelFile}@${args.runId}` : modelFile);
       const revision = candidate ? candidate.run.candidateRevision : row.head;
       const result = { modelFile, revision, ...(candidate ? { runId: args.runId, committed: false } : {}) };
+      if (method === "fit") {
+        try { return { ...result, items: api.inspectFit(shape, args.pairs, args.tolerance) }; }
+        finally { shape.dispose(); }
+      }
       if (method === "inspect_sheet_metal") {
         try { return { ...result, ...api.inspectSheetMetal(shape, args) }; }
         finally { shape.dispose(); }
