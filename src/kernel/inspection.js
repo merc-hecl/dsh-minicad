@@ -486,7 +486,7 @@ export function measureShape(shape, requests, scope, revision) {
     }
     return pairs.get(key);
   }
-  return requests.map((request) => {
+  function measure(request) {
     let value, unit;
     switch (request.kind) {
       case "count": {
@@ -513,10 +513,14 @@ export function measureShape(shape, requests, scope, revision) {
         unit = "mm";
         break;
       }
-      case "coordinate":
-        value = naturalCenter(entity(shape, request.entity, scope, revision))[["x", "y", "z"].indexOf(request.axis)];
+      case "coordinate": {
+        const item = entity(shape, request.entity, scope, revision);
+        if (request.at === "min" || request.at === "max")
+          return { kind: request.kind, axis: request.axis, at: request.at, value: item.bbox()[request.at][request.axis], unit: "mm" };
+        value = naturalCenter(item)[["x", "y", "z"].indexOf(request.axis)];
         unit = "mm";
         break;
+      }
       case "span":
         value = vector(entity(shape, request.entity, scope, revision).bbox().size)[["x", "y", "z"].indexOf(request.axis)];
         unit = "mm";
@@ -585,6 +589,14 @@ export function measureShape(shape, requests, scope, revision) {
         "当前几何不支持此测量", "unsupported measurement", `: ${request.kind}`,
       );
     return { kind: request.kind, value, unit };
+  }
+  return requests.map((request, measurementIndex) => {
+    try {
+      return measure(request);
+    } catch (error) {
+      error.details = { ...error.details, measurementIndex, measurementKind: request.kind };
+      throw error;
+    }
   });
 }
 export function checkShape(shape, checks, scope, revision) {

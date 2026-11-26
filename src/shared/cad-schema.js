@@ -311,33 +311,34 @@ const entity = object({
 entity.description = "Select exactly one face, edge or solid. For the distance between whole parts, use kind:solids with selector:{part:'id',one:true}; selecting all faces of a part is ambiguous.";
 const endpoint = { anyOf: [text, entity, object({ point: vector })] };
 const orientation = { anyOf: [text, entity, object({ direction: vector })] };
-const measure = (kind, fields = {}, optional = {}) =>
-  object({ kind: { const: kind }, ...fields, ...optional }, [
-    "kind",
-    ...Object.keys(fields),
-  ]);
+const worldAxis = choices(["x", "y", "z"]);
+const solidTarget = { ...reference, description: "A solid ID or a selector resolving to one solid. For a single-solid assembly member, use {part:'id',one:true}." };
+const measure = (kind, description, fields = {}, optional = {}) => ({
+  ...object({ kind: { const: kind }, ...fields, ...optional }, ["kind", ...Object.keys(fields)]), description,
+});
 const measurementSchema = {
   anyOf: [
-    measure("distance", { from: endpoint, to: endpoint }),
-    measure("max_distance", { from: endpoint, to: endpoint }),
-    measure("projected_distance", { from: endpoint, to: endpoint, axis: choices(["x", "y", "z"]) }),
-    measure("center_distance", { from: endpoint, to: endpoint }),
-    measure("axis_distance", { from: { anyOf: [text, entity] }, to: { anyOf: [text, entity] } }),
-    measure("coordinate", { entity, axis: choices(["x", "y", "z"]) }),
-    measure("span", { entity, axis: choices(["x", "y", "z"]) }),
-    measure("count", { entityKind: choices(["faces", "edges", "solids", "holes"]) }, { selector }),
-    measure("angle", { from: orientation, to: orientation }),
+    measure("distance", "Minimum 3D distance between bounded geometry or explicit points in mm. Returns the nearest-point pair and its absolute X/Y/Z components.", { from: endpoint, to: endpoint }),
+    measure("max_distance", "Maximum 3D distance between bounded geometry or explicit points in mm. Curved geometry may use numerical approximation; see method and accuracy.", { from: endpoint, to: endpoint }),
+    measure("projected_distance", "Absolute component of the minimum-distance point pair along a world axis, in mm. A batch shares the pair with distance for the same endpoints. Nonunique pairs may give different components. Use coordinate for a signed elevation.", { from: endpoint, to: endpoint, axis: worldAxis }),
+    measure("center_distance", "3D distance in mm between geometric centers of circular edges, spherical or cylindrical faces, or explicit points. Use axis_distance for the spacing between parallel bores at different heights.", { from: endpoint, to: endpoint }),
+    measure("axis_distance", "Shortest distance in mm between infinite axes of supported geometry, such as cylindrical faces, circular edges or straight edges. Coaxial holes have zero axis distance even at different heights.", { from: { anyOf: [text, entity] }, to: { anyOf: [text, entity] } }),
+    measure("coordinate", "Signed position in mm along a world axis. Use at:min or at:max for an entity's bounds, such as the Z elevation of an XY-parallel face. The default center uses the geometric center of a circular edge, spherical face or cylindrical face.", { entity, axis: worldAxis }, { at: choices(["center", "min", "max"]) }),
+    measure("span", "Size in mm of one entity's world-aligned bounding box along an axis. Use size without a target for the whole model or assembly.", { entity, axis: worldAxis }),
+    measure("count", "Count faces, edges, solids or cylindrical bore segments that match an optional selector.", { entityKind: choices(["faces", "edges", "solids", "holes"]) }, { selector }),
+    measure("angle", "Angle in degrees, from 0 to 180, between directions, plane normals or supported geometry axes.", { from: orientation, to: orientation }),
     measure(
       "thickness",
+      "Local material thickness in mm through a world-space point inside or on the solid. Supply point and direction as bare [x,y,z] arrays. For an assembly, target is required and must select one solid.",
       { point: vector, direction: vector },
-      { target: reference },
+      { target: solidTarget },
     ),
-    measure("size", { axis: choices(["x", "y", "z"]) }, { target: reference }),
-    measure("volume", {}, { target: reference }),
-    measure("area", {}, { entity }),
-    ...["length", "radius", "diameter"].map((kind) =>
-      measure(kind, { entity }),
-    ),
+    measure("size", "Size in mm of the whole model's world-aligned bounding box along an axis, or the box of one selected solid.", { axis: worldAxis }, { target: solidTarget }),
+    measure("volume", "Volume in mm3 of the whole model or one selected solid. Assembly volume is the sum of member volumes.", {}, { target: solidTarget }),
+    measure("area", "Area in mm2 of a face, solid or the whole model when entity is omitted.", {}, { entity }),
+    measure("length", "Length in mm of a selected edge, measured along the curve.", { entity }),
+    measure("radius", "Radius in mm of geometry that exposes a radius. Select a circular edge or cylindrical face for a bore.", { entity }),
+    measure("diameter", "Twice the radius in mm of geometry that exposes a radius. Select a circular edge or cylindrical face for a bore.", { entity }),
   ],
 };
 export const measurementsSchema = array(measurementSchema);
@@ -358,6 +359,30 @@ export const checksSchema = array({
     object({ measurement: measurementSchema, max: scalar, ...checkNotes }, ["measurement", "max"]),
   ],
 });
+
+const faceOf = (part, selection) => ({ kind: "faces", selector: { part, ...selection, one: true } });
+const measurementExamples = {
+  distance: { from: faceOf("base", { position: "top" }), to: faceOf("arm", { position: "bottom" }) },
+  projected_distance: { from: { point: [0, 0, 0] }, to: { point: [3, 4, 12] }, axis: "z" },
+  center_distance: { from: { point: [0, 0, 0] }, to: faceOf("arm", { geomType: "cylinder", radius: 3 }) },
+  axis_distance: { from: faceOf("base", { geomType: "cylinder", radius: 3 }), to: faceOf("arm", { geomType: "cylinder", radius: 3 }) },
+  coordinate: { entity: faceOf("base", { position: "bottom" }), axis: "z", at: "min" },
+  thickness: { point: [0, 0, 2], direction: [0, 0, 1], target: { part: "base", one: true } },
+  size: { axis: "z" },
+};
+const checkGuidance = "Use a measurement with expected and optional tolerance (default 1e-6), or use min and/or max. Targets and tolerances use the measurement's unit.";
+const measurementDefinitions = new Map(measurementSchema.anyOf.map(rule => [rule.properties.kind.const, rule]));
+
+export function readMeasurementTypes({ kind }) {
+  if (kind === undefined) return {
+    kinds: [...measurementDefinitions].map(([kind, { description }]) => ({ kind, description })),
+  };
+  const inputSchema = measurementDefinitions.get(kind);
+  if (!inputSchema) throw Object.assign(localizedError("未找到该测量类型，请查询测量目录", "unknown measurement kind; list measurement types"),
+    { code: "UNKNOWN_MEASUREMENT_KIND", details: { kind } });
+  const example = measurementExamples[kind];
+  return { kind, inputSchema, checkGuidance, ...(example ? { example: { kind, ...example } } : {}) };
+}
 
 export function toDshSchema(rule) {
   if (rule === operationSchema) {
@@ -384,7 +409,7 @@ export function toDshSchema(rule) {
     properties.kind = choices(rule.anyOf.map(option => option.properties.kind.const));
     properties.from = properties.to = { anyOf: [text, entity, object({ point: vector }), object({ direction: vector })] };
     rule = { ...object(properties, ["kind"]),
-      description: `Required fields by kind (kernel enforced): ${rule.anyOf.map(option => `${option.properties.kind.const}(${option.required.filter(key => key !== "kind").join(",")})`).join("; ")}. distance means minimum surface gap and returns point, otherPoint and projections:{x,y,z} for one shared nearest-point pair; max_distance is the farthest pair on the bounded geometry (curved geometry uses numerical approximation, see result method/accuracy); projected_distance is the absolute world-axis component of one minimum-distance pair (nonunique pairs can give different components; a batch shares the same pair as distance); Numerical accuracy is in mm and differs from check acceptance tolerance; center_distance uses geometric centers; axis_distance uses infinite axes. count counts matching items, including cylindrical bore segments for holes.`,
+      description: `Use cad_measurement_types for the precise contract and examples. Required fields by kind: ${rule.anyOf.map(option => `${option.properties.kind.const}(${option.required.filter(key => key !== "kind").join(",")})`).join("; ")}. Use coordinate with at:min or at:max for signed elevations, size for whole-model extents, distance for minimum 3D gap, and axis_distance for parallel bore spacing. For thickness, supply bare point and direction vectors plus target when measuring an assembly.`,
     };
   } else if (rule === selector) {
     const coordinates = {
@@ -454,8 +479,7 @@ export function toDshSchema(rule) {
         },
         ["measurement"],
       ),
-      description:
-        "Provide expected with optional tolerance (default 1e-6), OR min and/or max. Do not mix the forms; enforced by the kernel.",
+      description: checkGuidance,
     };
   }
   const result = {};

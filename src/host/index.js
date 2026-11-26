@@ -110,7 +110,7 @@ export async function apply(ctx, config = {}) {
     try {
       const photos = await promise;
       const { modelFile, revision, runId } = preview;
-      return { photos, modelFile, revision, runId };
+      return { photos, modelFile, revision, ...(runId === undefined ? {} : { runId }) };
     } finally {
       pending.removeEventListener("abort", abort);
       renderRequests.delete(id);

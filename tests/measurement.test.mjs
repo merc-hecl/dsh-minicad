@@ -7,6 +7,8 @@ import * as cad from "@classcad/smlibwasm";
 import { queryShape, measureShape, checkShape, modelScope } from "../src/kernel/inspection.js";
 import { nearestPair, farthestPair } from "../src/kernel/distances.js";
 import { createWorker } from "../src/host/worker.js";
+import { assembly } from "../src/kernel/assembly.js";
+import { readMeasurementTypes } from "../src/shared/cad-schema.js";
 
 const near = (actual, expected, tolerance = 1e-6) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} != ${expected}`);
 const scope = modelScope("measurement", "model.smp");
@@ -66,6 +68,32 @@ test("numerical measurement accuracy and dimensional acceptance tolerance remain
   assert.equal(checked.results[0].approximate, true);
   assert.equal(checked.results[0].accuracy, .001);
   assert.equal(checked.results[0].tolerance, .01);
+}));
+
+test("signed face elevations and local thickness use the selected solid in an offset assembly", () => cad.scope(() => {
+  const shape = assembly([
+    { id: "base", name: "Base", shape: cad.Box(20, 10, 4).translate(80, 0, -6) },
+    { id: "arm", name: "Arm", shape: cad.Box(20, 10, 4).translate(80, 0, 12) },
+  ]);
+  const bottom = readMeasurementTypes({ kind: "coordinate" }).example;
+  const top = { ...bottom, at: "max", entity: { ...bottom.entity, selector: { ...bottom.entity.selector, position: "top" } } };
+  const thickness = { ...readMeasurementTypes({ kind: "thickness" }).example, point: [80, 0, -6] };
+  const distance = { kind: "distance", from: { point: [0, 0, 0] }, to: bottom.entity };
+  const checks = [bottom, top, thickness, distance].map((measurement, index) => ({
+    measurement, expected: [-8, -4, 4, Math.hypot(70, 8)][index],
+  }));
+  const result = checkShape(shape, checks, scope, 1);
+  assert.equal(result.passed, true);
+  near(result.results[0].value, -8);
+  near(result.results[1].value, -4);
+  near(result.results[2].value, 4);
+  near(result.results[3].value, Math.hypot(70, 8));
+
+  const { target, ...untargeted } = thickness;
+  assert.throws(() => measureShape(shape, [bottom, untargeted], scope, 1), {
+    message: /thickness requires a target solid/,
+    details: { measurementIndex: 1, measurementKind: "thickness" },
+  });
 }));
 
 test("straight skew segments use their interior closest points", () => cad.scope(() => {

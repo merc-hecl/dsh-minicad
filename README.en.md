@@ -72,6 +72,8 @@ Double-click the canvas to open the composer. Reading PDF drawings depends on av
 
 With the design open in the MiniCAD workbench and an image-capable model selected, ask the agent to photograph the saved model or a candidate. A request defaults to a single isometric view. It can include any combination of isometric, front, top, and right views, with a separate image per view. You can keep using the workbench while the images are captured. The kernel measures dimensions and checks tolerances.
 
+When checking drawing dimensions, specify the quantity you want, such as the Z elevation of a mounting face or the axis distance between two parallel bores. The agent can look up the measurement and its inputs, then check the relevant geometry.
+
 When revising an existing part, ask the agent to compare the candidate with its base revision before saving. For example, ask to enlarge two mounting holes to Ø6 and preserve their spacing and the plate thickness. The agent can inspect the volume and location of material changes and the affected assembly members, then check the hole diameters, spacing, and plate thickness.
 
 Once an assembly is saved, ask the agent to define fixed or revolute joints. For example, ask it to join an upper arm to its base about the axis on the drawing and preview a 30° shoulder angle. Downstream parts move with the joint. Each saved revision holds the relationships with its geometry, and restoring a revision restores both. After a direct edit to connected geometry, the agent can inspect relationships that require review and rebind them.

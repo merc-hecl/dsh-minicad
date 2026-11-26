@@ -8,6 +8,7 @@ import {
   operationsSchema,
   editOperationGroups,
   readEditOperations,
+  readMeasurementTypes,
   measurementsSchema,
   checksSchema,
   toDshSchema,
@@ -205,14 +206,20 @@ export function apply(ctx) {
     call("edit_relationships"),
   );
   register(
+    "cad_measurement_types",
+    "Discover measurements used by cad_measure and cad_check. Omit kind to list their meanings, or specify kind to get its exact JSON Schema, selection rules and any example.",
+    schema({ kind: string }, []),
+    (_project, args) => readMeasurementTypes(args),
+  );
+  register(
     "cad_measure",
-    "Use the workbench kernel to measure minimum/maximum distances, XYZ projections, angles, local thickness and dimensions without mutation. Each from/to/entity selector must resolve to exactly one shape. For whole-part distances use kind:solids and selector:{part:'id',one:true}, not a selection of all faces.",
+    "Measure exact model geometry without mutation. Use cad_measurement_types for an unfamiliar kind. Use coordinate with at:min or at:max for signed world coordinates of bounds, size for overall extents, and distance for minimum 3D gaps. Each from/to/entity selector must resolve to one shape.",
     schema({ ...readTarget, measurements: measurementsSchema }, ["modelFile", "expectedRevision", "measurements"]),
     call("measure"),
   );
   register(
     "cad_check",
-    "Check measured dimensions against targets and tolerances or bounds.",
+    "Check measurements against targets and tolerances or bounds. Uses the same measurement kinds as cad_measure. Use cad_measurement_types to look up required fields and selector examples.",
     schema({ ...readTarget, checks: checksSchema }, ["modelFile", "expectedRevision", "checks"]),
     call("check"),
   );
