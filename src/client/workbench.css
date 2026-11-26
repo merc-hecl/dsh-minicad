@@ -276,7 +276,8 @@ body[data-ds-dark-theme] .mc-instrument-anchor { box-shadow: 0 0 0 1.5px #15181d
   gap: 4px;
 }
 .mc-cursor-coordinates [data-coordinate] {
-  min-width: 6ch;
+  flex: none;
+  inline-size: 10ch;
   text-align: right;
 }
 .mc-scale-bar {

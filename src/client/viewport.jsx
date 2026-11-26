@@ -312,7 +312,8 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     function showCoordinates(point) {
       cursorValues?.forEach((element, axis) => {
         const value = point?.getComponent(axis);
-        const label = value === undefined ? "—" : (Math.abs(value) < 0.005 ? 0 : value).toFixed(2);
+        const decimal = value === undefined ? "—" : (Math.abs(value) < 0.005 ? 0 : value).toFixed(2);
+        const label = decimal.length > 10 ? value.toExponential(2) : decimal;
         if (element.textContent !== label) element.textContent = label;
       });
     }
