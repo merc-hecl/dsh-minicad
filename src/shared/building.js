@@ -25,4 +25,7 @@ const operations = items => ({
   items: { anyOf: items },
 });
 export const buildingOperationsSchema = operations([...buildingWrites(rule => rule), object({ op: { const: "remove" }, id: elementId })]);
-export const buildingPanelOperationsSchema = operations(buildingWrites(rule => ({ anyOf: [rule, parameter], description: rule.description })));
+export const buildingPanelOperationsSchema = operations(buildingWrites(rule => ({
+  anyOf: [rule, parameter],
+  ...(rule.description === undefined ? {} : { description: rule.description }),
+})));
