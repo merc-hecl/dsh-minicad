@@ -13,6 +13,7 @@ const localMethods = new Set([
   "get",
   "revision_state",
   "relationships",
+  "read_building",
   "preview_file",
   "create",
   "by_session",
@@ -237,7 +238,7 @@ export function createWorker({
           if (!(error instanceof KernelRequired)) throw error;
         }
       }
-      const constructs = ["build", "import", "edit", "edit_relationships", "commit", "publish_panel", "apply_panel"].includes(method);
+      const constructs = ["build", "import", "edit", "edit_relationships", "edit_building", "commit", "publish_panel", "apply_panel"].includes(method);
       const location = params.projectId ? await new Store(dataDir, { allowKernel: false }).dispatch("process_location", params) : null;
       if (constructs) {
         modeling = { projectId: params.projectId, modelFile: location.modelFile,

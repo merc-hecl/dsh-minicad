@@ -60,7 +60,7 @@ export async function apply(ctx, config = {}) {
   const renderRequests = new Map();
   const renderLifetime = new AbortController();
   const call = async (method, args, signal) => {
-    if (!["build", "import", "edit", "restore", "commit", "variants", "set_geometry_id_format", "publish_panel", "apply_panel"].includes(method)) return worker.call(method, args, signal);
+    if (!["build", "import", "edit", "edit_building", "restore", "commit", "variants", "set_geometry_id_format", "publish_panel", "apply_panel"].includes(method)) return worker.call(method, args, signal);
     if (active.has(args.projectId))
       throw localizedError("当前设计正在构建，请稍后重试", "This design is being built. Try again when it finishes.");
     const controller = new AbortController();

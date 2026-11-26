@@ -78,7 +78,11 @@ When revising an existing part, ask the agent to compare the candidate with its 
 
 Once an assembly is saved, ask the agent to define fixed or revolute joints. For example, ask it to join an upper arm to its base about the axis on the drawing and preview a 30° shoulder angle. Downstream parts move with the joint. Each saved revision holds the relationships with its geometry, and restoring a revision restores both. After a direct edit to connected geometry, the agent can inspect relationships that require review and rebind them.
 
+To model an editable single-story building, attach a dimensioned floor plan in an empty design. Ask the agent to verify the scale and dimensions, then build the level, straight walls, slab, and wall-hosted openings. Supply missing wall heights and sill elevations or set provisional values for review. Doors and windows use simplified solids, and wall ends follow the supplied centerline endpoints to form butt joints. Ask the agent to move an opening or adjust a wall by ID to rebuild the affected geometry. Restoring a revision restores the earlier building parameters too.
+
 **Adjust parameters** becomes available in the toolbar once the agent provides controls for a saved model. You can ask the agent to add angle controls for bound revolute joints. Enable **Preview**, which is off by default, to see temporary results as parameters change. Numeric fields with an adjustable range offer a slider and a numeric input that share the same bounds. Tick marks make common values easier to select, and sliders for continuous values move freely between marks. Release the slider for a more detailed preview. Turning off the preview, resetting values, or closing the panel brings back the saved model. **Apply** runs the full checks and saves a new version when they pass.
+
+For a saved building revision, ask the agent for controls such as wall height, sill height, or opening position. Preview recalculates the affected walls and openings. Apply saves the element parameters with the solids in a new revision when the checks pass.
 
 ## Open in an external CAD application
 

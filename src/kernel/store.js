@@ -25,7 +25,7 @@ import { encodePreview, decodePreview, previewInfo, PREVIEW_VERSION } from "../s
 import { ProcessJournal } from "./process.js";
 import { readApi } from "./api.js";
 import { format, isDeepStrictEqual } from "node:util";
-import { definePanel, panelValues, panelView, panelChanges, panelChangeSummary } from "../shared/parameter-panel.js";
+import { definePanel, panelRecipeKind, supportedPanelRecipes, panelValues, panelView, panelChanges, panelChangeSummary } from "../shared/parameter-panel.js";
 const kernel = () => import("./model.js");
 const relationshipKernel = () => import("./relationships.js");
 const now = () => Date.now() / 1000;
@@ -42,10 +42,14 @@ const cleanName = (name) =>
 const equalBytes = (a, b) =>
   a === null ? b === null : b !== null && a.equals(b);
 
-async function evaluateRecipe(api, args, { directory, shape, relationships, edit, revision, scope, resourceRead = () => {}, checkpoint, log }) {
+async function evaluateRecipe(api, args, { directory, shape, relationships, building, edit, revision, scope, resourceRead = () => {}, checkpoint, log }) {
   if (args.relationshipOperations !== undefined) {
     const { editRelationships } = await relationshipKernel();
     return editRelationships(shape, relationships, api.values(args.relationshipOperations, args.parameters));
+  }
+  if (args.buildingOperations !== undefined) {
+    const { editBuilding } = await import("./building.js");
+    return { ...editBuilding(shape, building, api.values(args.buildingOperations, args.parameters)), relationships };
   }
   const resources = {};
   if (edit) {
@@ -77,7 +81,7 @@ function revisionActor(root, entry) {
   try {
     const { tool } = readJson(join(inside(root, entry.folder), "operations.json"));
     return tool === "cad_apply_panel" ? "user"
-      : ["cad_build", "cad_edit", "cad_import", "cad_set_geometry_id_format", "cad_edit_relationships"].includes(tool) ? "agent" : null;
+      : ["cad_build", "cad_edit", "cad_import", "cad_set_geometry_id_format", "cad_edit_relationships", "cad_edit_building"].includes(tool) ? "agent" : null;
   } catch { return null; }
 }
 export class KernelRequired extends Error {
@@ -277,6 +281,7 @@ export class Store {
     result.design = state;
     const panelFile = saved && join(saved.folder, "panel.json");
     result.parameterPanel = panelFile && fs.existsSync(panelFile) ? panelView(readJson(panelFile), result.head) : null;
+    result.parameterPanelRecipes = supportedPanelRecipes(state);
     result.revisions = [
       ...(task.models[task.modelFile]?.revisions || []),
     ].map(entry => ({ ...entry, actor: revisionActor(directory, entry) })).sort((a, b) => b.revision - a.revision);
@@ -396,6 +401,12 @@ export class Store {
       this.commit(new Map(names.map(name => [join(saved.folder, name), null])));
       return { modelFile: project.modelFile, head: project.head, parameterPanel: null };
     }
+    const recipeKind = panelRecipeKind(definition);
+    if (!project.parameterPanelRecipes.includes(recipeKind))
+      throw Object.assign(localizedError(`当前模型支持的参数面板配方为 ${project.parameterPanelRecipes.join(", ")}`,
+        `This model supports these parameter panel recipes: ${project.parameterPanelRecipes.join(", ")}`), {
+        code: "PANEL_RECIPE_UNSUPPORTED", details: { requestedRecipe: recipeKind, parameterPanelRecipes: project.parameterPanelRecipes },
+      });
     const panel = { ...definition, id: id(), baseRevision: project.head,
       baseScope: (await this.kernel()).modelScope(key, project.modelFile) };
     const materials = new Map([
@@ -418,9 +429,10 @@ export class Store {
         const tolerance = Math.max(1, saved.state.metrics.volume) * 1e-8;
         const relationshipsChanged = panel.relationshipOperations &&
           !isDeepStrictEqual(saved.state.relationships ?? [], candidate.state.relationships ?? []);
-        if (trial.validation.passed === false || relationshipsChanged ||
+        const buildingChanged = panel.buildingOperations && !isDeepStrictEqual(saved.state.building, candidate.state.building);
+        if (trial.validation.passed === false || relationshipsChanged || buildingChanged ||
             [difference.added, difference.removed].some(region => region && region.metrics.volume > tolerance))
-          throw Object.assign(localizedError("面板初始值未保持当前模型或尺寸检查失败", "Panel defaults must preserve the current model and its relationship values and pass dimensional checks"), { validation: trial.validation });
+          throw Object.assign(localizedError("面板初始值未保持当前模型或尺寸检查失败", "Panel defaults must preserve the current geometry and model parameters and pass dimensional checks"), { validation: trial.validation });
       } finally { original.dispose(); result.dispose(); }
       const current = this.project(key, project.modelFile);
       this.expect(current.head, args);
@@ -436,7 +448,7 @@ export class Store {
     }
   }
   panelRecipe(panel) {
-    return { operations: panel.operations, relationshipOperations: panel.relationshipOperations,
+    return { operations: panel.operations, relationshipOperations: panel.relationshipOperations, buildingOperations: panel.buildingOperations,
       source: panel.source, part: panel.part, checks: panel.checks };
   }
   async adjustPanel(key, args, preview) {
@@ -455,7 +467,7 @@ export class Store {
     if (preview) {
       const api = await this.kernel(), scope = api.modelScope(key, project.modelFile);
       const { shape } = await evaluateRecipe(api, recipe, { directory: project.directory, shape: await this.shape(base),
-        relationships: base.state.relationships ?? [],
+        relationships: base.state.relationships ?? [], building: base.state.building,
         edit, revision: base.state.revision, scope: panel.baseScope || scope });
       api.requireSolidShape(shape);
       const parts = api.partInfo(shape);
@@ -512,21 +524,25 @@ export class Store {
     const recipe = { ...args, parameters };
     const base = panelExecution?.base || (args.baseModelFile ? this.snapshot(key, args.baseRevision, args.baseModelFile) : saved);
     const relationshipEdit = args.relationshipOperations !== undefined;
+    const buildingEdit = args.buildingOperations !== undefined;
+    if (base?.state.building && !buildingEdit && !args.file)
+      throw localizedError("请通过 cad_edit_building 修改建筑构件", "Use cad_edit_building to edit building elements");
     const materials = new Map(panelExecution?.materials);
     const operation = { tool: panelExecution?.panelId ? "cad_apply_panel" : relationshipEdit ? "cad_edit_relationships"
-      : args.file ? "cad_import" : edit ? "cad_edit" : "cad_build", kernel: api.kernelName,
+      : buildingEdit ? "cad_edit_building" : args.file ? "cad_import" : edit ? "cad_edit" : "cad_build", kernel: api.kernelName,
       inputModel: args.baseModelFile || modelFile, inputRevision: base?.state.revision || 0,
       ...(panelExecution?.panelId ? { panelId: panelExecution.panelId, parameters, changes: panelExecution.changes } : {}),
       ...(args.part ? { part: args.part } : {}),
       ...(edit ? { operations: args.operations, ...(args.parameters !== undefined ? { parameters } : {}) } : {}),
       ...(relationshipEdit ? { operations: args.relationshipOperations } : {}),
+      ...(buildingEdit ? { operations: args.buildingOperations } : {}),
       ...(args.file ? { file: args.file, ...(args.metadataFile ? { metadataFile: args.metadataFile } : {}) } : {}),
       ...(args.checks ? { checks: api.values(args.checks, parameters) } : {}) };
     run.inputModel = operation.inputModel;
     run.inputRevision = operation.inputRevision;
     journal.save(run);
     materials.set("operations.json", jsonBytes(operation));
-    if (!edit && !args.file && !relationshipEdit) {
+    if (!edit && !args.file && !relationshipEdit && !buildingEdit) {
       if (typeof args.source !== "string" || !args.source.trim() || args.source.length > 2 * 1024 * 1024)
         throw localizedError("请提供定义 build(parameters, cad) 的建模源码", "Provide source defining build(parameters, cad)");
       materials.set("build/source.js", Buffer.from(args.source));
@@ -552,7 +568,7 @@ export class Store {
       return part;
     } : undefined;
     const baseShape = base ? await this.shape(base) : null;
-    let shape = baseShape, relationships = base?.state.relationships ?? [], metadata;
+    let shape = baseShape, relationships = base?.state.relationships ?? [], metadata, building, buildingChanges;
     if (args.file) {
       const bytes = fs.readFileSync(inside(directory, args.file));
       resourceRead(args.file, bytes);
@@ -564,8 +580,8 @@ export class Store {
       shape = api.readShape(bytes, args.file, metadata?.parts, metadata?.entities);
       if (metadata?.geometryIds) run.geometryIds = metadata.geometryIds;
     } else {
-      ({ shape, relationships } = await evaluateRecipe(api, recipe, {
-        directory, shape, relationships, edit, revision: base?.state.revision || 0,
+      ({ shape, relationships, building, changes: buildingChanges } = await evaluateRecipe(api, recipe, {
+        directory, shape, relationships, building: base?.state.building, edit, revision: base?.state.revision || 0,
         scope: panelExecution?.scope || api.modelScope(key, args.baseModelFile || modelFile),
         resourceRead, checkpoint, log: (...args) => journal.log(run, format(...args)),
       }));
@@ -578,14 +594,15 @@ export class Store {
       relationships = reconcileRelationships(baseShape, shape, relationships);
     }
     const state = { ...api.describeShape(shape), formatVersion: 2, unit: "mm", geometryIds: run.geometryIds,
-      ...(relationships.length ? { relationships } : {}) };
+      ...(relationships.length ? { relationships } : {}), ...(building ? { building } : {}) };
     if (args.commit !== false) api.requireNames(shape);
     journal.capture(run, state, "", run.purpose === "panel_apply" ? "panel_apply" : "result");
     journal.finish(run, "validating");
     const scope = api.modelScope(key, args.commit === false ? `${modelFile}@${run.id}` : modelFile);
     state.validation = buildValidation(api, shape, recipe, scope, run.candidateRevision);
     run.validation = state.validation;
-    const diagnostics = { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean) };
+    const diagnostics = { logs: run.logs || [], checkpoints: run.steps.map(step => step.label).filter(Boolean),
+      ...(buildingChanges ? { buildingChanges } : {}) };
     if (args.commit === false) {
       journal.saveCandidate(run, state, api.saveShape(shape), inputs);
       return { modelFile, head, committed: false, runId: run.id, metrics: state.metrics, validation: state.validation, diagnostics,
@@ -825,15 +842,18 @@ export class Store {
       if (!saved) throw localizedError("版本不存在", "Version not found");
       return { ...saved.state, geometryScope: createHash("sha256").update(`${key}\0${modelFile}`).digest("hex").slice(0, 24) };
     }
-    if (method === "relationships") {
+    if (method === "relationships" || method === "read_building") {
       if (args.runId !== undefined && args.revision !== undefined)
         throw localizedError("请选择已保存版本或候选记录之一", "specify a saved revision or a candidate runId");
       const candidate = args.runId === undefined ? null : new ProcessJournal(directory, modelFile).candidateSnapshot(args.runId);
       if (candidate) this.expect(row.head, { expectedRevision: candidate.run.baseRevision });
       const saved = candidate ?? this.snapshot(key, args.revision, modelFile);
-      return { modelFile, revision: candidate?.run.candidateRevision ?? saved?.state.revision ?? 0,
-        ...(candidate ? { runId: candidate.run.id, baseRevision: candidate.run.baseRevision, committed: false } : {}),
-        relationships: saved?.state.relationships ?? [] };
+      const target = { modelFile, revision: candidate?.run.candidateRevision ?? saved?.state.revision ?? 0,
+        ...(candidate ? { runId: candidate.run.id, baseRevision: candidate.run.baseRevision, committed: false } : {}) };
+      if (method === "relationships") return { ...target, relationships: saved?.state.relationships ?? [] };
+      const building = saved?.state.building;
+      return { ...target, unit: "mm", building: building ? { ...building, elements: building.elements.filter(element =>
+        (args.elementId === undefined || args.elementId === element.id) && (args.kind === undefined || args.kind === element.kind)) } : null };
     }
     if (method === "publish_panel") return this.publishPanel(key, { ...args, modelFile });
     if (method === "apply_panel" || method === "preview_panel")
@@ -930,6 +950,8 @@ export class Store {
     }
     if (method === "edit_relationships")
       return this.build(key, { ...args, modelFile, relationshipOperations: args.operations });
+    if (method === "edit_building")
+      return this.build(key, { ...args, modelFile, buildingOperations: args.operations });
     if (method === "build" || method === "edit" || method === "import")
       return this.build(key, args, method === "edit");
     if (method === "commit") {

@@ -17,6 +17,7 @@ import {
 import { apiTopics } from "../kernel/api.js";
 import { parameterPanelSchema } from "../shared/parameter-panel.js";
 import { relationshipKinds, relationshipOperationsSchema } from "../shared/relationships.js";
+import { buildingElementKinds, buildingOperationsSchema } from "../shared/building.js";
 import { randomUUID } from "node:crypto";
 import { modelingPrompt } from "./prompts.js";
 export const inject = ["tools", "minicad", "systemPrompt"];
@@ -41,7 +42,7 @@ export function apply(ctx) {
     const pending = [...pendingPanels].filter(([file, head]) => !remindedPanels.has(`${file}:${head}`));
     if (!pending.length) return;
     pending.forEach(([file, head]) => remindedPanels.add(`${file}:${head}`));
-    const text = `Pending parameter panels: ${JSON.stringify(pending)}. Call cad_publish_panel for these saved versions before finishing.`;
+    const text = `Pending parameter panels: ${JSON.stringify(pending)}. Use parameterPanelRecipes from cad_read_project for each saved version. Call cad_publish_panel with a supported recipe, or with panel.fields:[] when no useful adjustment is available.`;
     agent.steer({ id: randomUUID(), role: "user", source: { kind: "minicad", form: "snapshot", sections: [{ name: "minicad", text }] },
       content: [{ type: "text", text }] });
   });
@@ -92,7 +93,7 @@ export function apply(ctx) {
   };
   register(
     "cad_read_project",
-    "Read the saved SMP model metadata, revisions and model list without changing selection. Use cad_query and cad_measure to inspect exact geometry.",
+    "Read the saved SMP model metadata, revisions and model list without changing selection. parameterPanelRecipes lists the supported cad_publish_panel recipe keys for this model. Use cad_query and cad_measure to inspect exact geometry.",
     schema({ modelFile }, []),
     async (project, args, signal) => {
       const selected =
@@ -119,24 +120,25 @@ export function apply(ctx) {
       },
       signal,
     );
-    const publishesModel = ["build", "import", "edit", "edit_relationships", "commit"].includes(method);
+    const publishesModel = ["build", "import", "edit", "edit_relationships", "edit_building", "commit"].includes(method);
     if ((publishesModel || method === "set_geometry_id_format") && result.committed)
       pendingPanels.set(result.modelFile, result.head);
     if (method === "publish_panel" && pendingPanels.get(result.modelFile) === result.head)
       pendingPanels.delete(result.modelFile);
     if (method === "variants") for (const item of result.items) pendingPanels.set(item.modelFile, item.revision);
     if (!publishesModel || !result.committed) return result;
-    return { modelFile: result.modelFile, head: result.head, committed: true,
+    return { modelFile: result.modelFile, head: result.head, committed: true, parameterPanelRecipes: result.parameterPanelRecipes,
       metrics: result.design.metrics, validation: result.design.validation,
       ...(result.design.parts === undefined ? {} : { parts: result.design.parts }),
       ...(result.design.relationships !== undefined || method === "edit_relationships" ? { relationships: result.design.relationships ?? [] } : {}),
+      ...(result.design.building ? { building: result.design.building } : {}),
       diagnostics: result.diagnostics,
       note: "Only the listed checks are verified; valid geometry does not establish full drawing compliance." };
   };
   const readRelationships = call("relationships");
   register(
     "cad_publish_panel",
-    "Publish a parameter panel for modelFile at expectedRevision; fields:[] clears/omits the panel. Supply title and fields with unique key, type, label and initial value. Types: number, integer, choice (with options), toggle (boolean). Use zh/en titles and labels, including groups and options; keep user-provided parameter names unchanged. For a numeric adjustment with a meaningful range, set finite min and max on one number or integer field. The slider and numeric input share those bounds. Use min < max with at least two valid integer values for integer fields. Derive bounds from the model or requirements and use numeric entry with any known bounds when the range is incomplete. The optional step sets the numeric input increment. Number sliders move continuously, and integer sliders step by one. Numeric fields may set unit; fields may set group. Use choice for discrete options such as part colors. Supply exactly one recipe: operations, relationshipOperations, or self-contained source defining build(parameters,cad). Bind structured values with {parameter:'key'}. For joint angles, look up the saved relationship's ID, angle and limits with cad_relationships and use relationshipOperations:[{op:'update',id:'joint-id',values:{angle:{parameter:'angle'}}}]. The angle is absolute, in degrees. For source, part scopes to one assembly member and cad.current is the pinned baseline. Defaults must preserve current geometry and relationship values. Include checks appropriate across the adjustment range and preserve fixed requirements.",
+    "Publish a panel for modelFile at expectedRevision. Put title, fields, checks and exactly one recipe inside panel. Use a key listed in cad_read_project.parameterPanelRecipes. An empty fields array clears or omits the panel. Give each field a unique key, type, label and saved initial value. Use zh/en titles and labels, including groups and options, and preserve user-provided names. Field types are number, integer, choice (with options) and toggle. Supply defensible min/max for a slider with the same bounds as numeric entry. Integer sliders use whole numbers and need two valid values. The optional step sets the numeric input increment. Bind supported structured values with {parameter:'key'}. For buildingOperations, query cad_read_building and copy the current level or element, replacing adjustable numbers with parameter bindings, for example {op:'set_level',level:{elevation:0,height:{parameter:'wallHeight'}}} for a level at zero. An inherited wall height is adjusted through the level. For relationshipOperations, use an update with the saved relationship ID and limits from cad_relationships. Joint angles are absolute degrees. For source, define build(parameters,cad); part scopes to one member and cad.current is the pinned baseline. Defaults must preserve current geometry and model parameters. Include checks that apply across the adjustment range.",
     schema({ ...target, panel: parameterPanelSchema }, ["modelFile", "expectedRevision", "panel"]),
     call("publish_panel"),
   );
@@ -204,6 +206,18 @@ export function apply(ctx) {
     "Evaluate ordered relationship operations on a saved model. Use cad_relationships to see kind contracts. define binds or replaces a relationship at the current pose; update sets its adjustable values; remove detaches it. Operations can move attached geometry through their kind handler. Fixed and revolute assembly joints use parent and child endpoints with entity:{kind:'part',id}. Use commit:false to inspect a candidate; then publish with cad_commit. A direct geometry edit of an endpoint can require rebind; inspect the affected parts and define the repaired relationship with the same ID.",
     schema({ ...target, ...buildOptions, operations: relationshipOperationsSchema, summary }, ["modelFile", "expectedRevision", "operations", "summary"]),
     call("edit_relationships"),
+  );
+  register(
+    "cad_read_building",
+    "Read the level and building element parameters in millimeters. Filter by kind or stable elementId. Read the saved head by default or supply either revision for history or runId for a candidate. Match solid elements to cad_query parts by the same ID. An opening with filling:none cuts its wall and has no separate solid.",
+    schema({ modelFile, revision: savedRevision, runId: string, elementId: string, kind: { type: "string", enum: buildingElementKinds } }, ["modelFile"]),
+    call("read_building"),
+  );
+  register(
+    "cad_edit_building",
+    "Build or revise a single-story building in an empty or already architectural SMP model. Use millimeters in the XY plan with Z up. Start with {op:'set_level',level:{elevation,height}}. Use upsert with a complete element and stable ID, or remove by ID. A wall is a straight prism between its centerline endpoints, with no automatic corner joins. Plan butt joints explicitly. A slab is a simple polygon with its top at the level elevation. An opening's offset is measured from the wall start to the near jamb. It cuts the host wall and can hold a simplified door or window solid. Apply related edits in one batch. Use commit:false to inspect the candidate before cad_commit; invalid openings retain the saved version.",
+    schema({ ...target, ...buildOptions, operations: buildingOperationsSchema, summary }, ["modelFile", "expectedRevision", "operations", "summary"]),
+    call("edit_building"),
   );
   register(
     "cad_measurement_types",

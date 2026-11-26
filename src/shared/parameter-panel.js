@@ -1,8 +1,10 @@
 import { object, text, operationsSchema, checksSchema, validate } from "./cad-schema.js";
 import { localizedError } from "./errors.js";
-import { relationshipUpdatesSchema } from "./relationships.js";
+import { relationshipKinds, relationshipUpdatesSchema } from "./relationships.js";
+import { buildingPanelOperationsSchema } from "./building.js";
 
 const label = object({ zh: text, en: text });
+const recipes = ["operations", "relationshipOperations", "buildingOperations", "source"];
 const keyLabel = { key: text, label, group: label };
 const numeric = type => object({ ...keyLabel, type: { const: type }, value: { type },
   min: { type: "number" }, max: { type: "number" }, step: { type: "number", exclusiveMinimum: 0 }, unit: text }, ["key", "label", "type", "value"]);
@@ -18,10 +20,21 @@ export const parameterPanelSchema = object({
   operations: operationsSchema,
   relationshipOperations: { ...relationshipUpdatesSchema,
     description: "Ordered updates of existing relationships on the pinned baseline. Bind adjustable values with {parameter:'key'}, e.g. [{op:'update',id:'joint-id',values:{angle:{parameter:'angle'}}}]." },
+  buildingOperations: { ...buildingPanelOperationsSchema,
+    description: "Set the level or upsert existing building elements. Use {parameter:'key'} in numeric fields and keep all other fields from cad_read_building." },
   source: { ...text, description: "Self-contained build(parameters,cad) function; cad.current is the pinned baseline." },
   part: { ...text, description: "For source only: stable assembly part ID. For operations, put part on each operation." },
   checks: checksSchema,
 }, ["title", "fields"]);
+
+export function supportedPanelRecipes(state) {
+  if (!state) return [];
+  if (state.building) return ["buildingOperations"];
+  const adjustable = state.relationships?.some(item => !item.issue && relationshipKinds[item.kind]?.values);
+  return adjustable ? ["operations", "relationshipOperations", "source"] : ["operations", "source"];
+}
+
+export const panelRecipeKind = panel => recipes.find(key => panel[key] !== undefined);
 
 export function panelValues(panel, values) {
   validate(values, object(Object.fromEntries(panel.fields.map(field => [field.key,
@@ -37,7 +50,7 @@ export function definePanel(panel) {
   if (!panel.fields.length) return null;
   if (new Set(panel.fields.map(field => field.key)).size !== panel.fields.length)
     throw localizedError("调整项名称重复", "Duplicate adjustment keys");
-  if ([panel.operations, panel.relationshipOperations, panel.source].filter(Boolean).length !== 1 || !panel.checks?.length)
+  if (recipes.filter(key => panel[key] !== undefined).length !== 1 || !panel.checks?.length)
     throw localizedError("参数面板需要一种执行方式和尺寸检查", "A parameter panel needs exactly one execution recipe and dimensional checks");
   for (const field of panel.fields) {
     if (field.type === "choice" && new Set(field.options.map(option => option.value)).size !== field.options.length)
