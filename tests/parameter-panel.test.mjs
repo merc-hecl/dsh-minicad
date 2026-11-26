@@ -116,17 +116,19 @@ test("direct panel adjustments preview without saving, use a fixed baseline, ret
     const entries = (await readdir(project.directory, { recursive: true })).sort();
     const history = await worker.call("process_history", target);
     const panelTarget = { ...target, expectedRevision: 3, panelId };
+    const belowMinimum = await worker.call("preview_panel", { ...panelTarget, values: { thickness: 4 } });
+    near(previewHeight(belowMinimum.preview), 4);
+    await assert.rejects(worker.call("preview_panel", { ...panelTarget, expectedRevision: 2, values: { thickness: 8 } }), error => error.status === 409);
     const previewed = await worker.call("preview_panel", { ...panelTarget, values: { thickness: 7.5 } });
     near(previewHeight(previewed.preview), 7.5);
-    await assert.rejects(worker.call("preview_panel", { ...panelTarget, values: { thickness: 4 } }), error => error.validation?.passed === false);
-    await assert.rejects(worker.call("preview_panel", { ...panelTarget, expectedRevision: 2, values: { thickness: 8 } }), error => error.status === 409);
     const afterPreview = await worker.call("get", target);
     assert.deepEqual(afterPreview.revisions, second.revisions);
     assert.deepEqual(afterPreview.parameterPanel, second.parameterPanel);
     assert.deepEqual(await worker.call("process_history", target), history);
     assert.deepEqual((await readdir(project.directory, { recursive: true })).sort(), entries);
     for (let i = 0; i < files.length; i++) assert.deepEqual(await readFile(join(project.directory, files[i])), before[i]);
-    for (const values of [{ thickness: 4 }, { thickness: 20 }, { thickness: 8, extra: 1 }])
+    await assert.rejects(worker.call("apply_panel", { ...panelTarget, values: { thickness: 4 } }), error => error.validation?.passed === false);
+    for (const values of [{ thickness: 20 }, { thickness: 8, extra: 1 }])
       await assert.rejects(worker.call("apply_panel", { ...target, expectedRevision: 3, panelId, values }));
     await assert.rejects(worker.call("apply_panel", { ...target, expectedRevision: 1, panelId, values: { thickness: 7 } }), error => error.status === 409);
     const unchanged = await worker.call("apply_panel", { ...target, expectedRevision: 3, panelId, values: { thickness: 9 } });

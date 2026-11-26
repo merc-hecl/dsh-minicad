@@ -778,7 +778,7 @@ export function Workbench({
         section={section.axis ? section : null}
         explode={explode}
         explodeAxis={explodeAxis}
-        followPreview={!timelapseOpen}
+        followPreview={!timelapseOpen && !parameterPreviewDesign}
         fitBounds={timelapseOpen ? timelapseBounds : null}
         striking={instrumentOpen}
         onStrike={handleStrike}

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button, Input, Switch, SegmentedControl, StateDot, Toast, IconWarningOutlineRegular, IconCloseOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
 import { ErrorDetails } from "./workbench-dialog.jsx";
 import { errorDetail, errorKey } from "../shared/errors.js";
@@ -6,29 +6,72 @@ import { errorDetail, errorKey } from "../shared/errors.js";
 export function ParameterPanel({ project, language, disabled, request, previewKey, previewActive, onPreview, onApplied, onOperation, onClose, t }) {
   const panel = project.parameterPanel;
   const label = value => value[language === "zh" ? "zh" : "en"];
-  const initial = Object.fromEntries(panel.fields.map(field => [field.key, field.value]));
-  const [draft, setDraft] = useState(initial), [pending, setPending] = useState(null), [error, setError] = useState(null);
+  const initial = useMemo(() => Object.fromEntries(panel.fields.map(field => [field.key, field.value])), [panel.fields]);
+  const [draft, setDraft] = useState(initial), [error, setError] = useState(null);
+  const [autoPreview, setAutoPreview] = useState(false), [previewing, setPreviewing] = useState(false), [applying, setApplying] = useState(false);
   const [notice, setNotice] = useState(null);
   const panelElement = useRef(null), inputElements = useRef(new Map());
-  const submitting = useRef(false), previewRequest = useRef(null);
-  useEffect(() => () => {
-    previewRequest.current?.abort();
-    onPreview(null);
-  }, [onPreview]);
-  const busy = pending !== null, previewing = pending === "preview_panel", applying = pending === "apply_panel";
-  const locked = disabled || busy;
-  const values = Object.fromEntries(panel.fields.map(field => [field.key,
+  const submitting = useRef(false), previewJob = useRef({ values: null, started: null, timer: null, controller: null });
+  const locked = disabled || applying;
+  const values = useMemo(() => Object.fromEntries(panel.fields.map(field => [field.key,
     field.type === "number" || field.type === "integer" ? draft[field.key] === "" ? null : Number(draft[field.key]) : draft[field.key],
-  ]));
+  ])), [draft, panel.fields]);
   const dirty = panel.fields.some(field => values[field.key] !== initial[field.key]);
   const invalidField = panel.fields.find(field => (field.type === "number" || field.type === "integer")
     && !(typeof values[field.key] === "number" && Number.isFinite(values[field.key])
       && (field.type !== "integer" || Number.isInteger(values[field.key]))
       && (field.min === undefined || values[field.key] >= field.min) && (field.max === undefined || values[field.key] <= field.max)));
+  const { id: projectId, modelFile, head: expectedRevision } = project;
+  const panelId = panel.id;
+  const stopPreview = useCallback(() => {
+    const job = previewJob.current;
+    job.values = null;
+    clearTimeout(job.timer);
+    job.timer = null;
+    job.controller?.abort();
+    onPreview(null);
+  }, [onPreview]);
+  const schedulePreview = useCallback(function schedule() {
+    const job = previewJob.current;
+    if (job.timer !== null || job.controller || !job.values || job.values === job.started) return;
+    job.timer = setTimeout(async () => {
+      job.timer = null;
+      const values = job.values;
+      if (!values || values === job.started) return;
+      const controller = new AbortController();
+      job.controller = controller;
+      job.started = values;
+      setPreviewing(true);
+      try {
+        const design = await request("preview_panel", { projectId, modelFile, expectedRevision, panelId, values }, controller.signal);
+        if (!controller.signal.aborted && job.values) onPreview({ key: previewKey, design });
+      } catch (error) {
+        if (!controller.signal.aborted && job.values === values) {
+          onPreview(null);
+          setError({ key: error.uiKey || errorKey(error.message), detail: errorDetail(error) });
+        }
+      } finally {
+        job.controller = null;
+        if (panelElement.current) {
+          setPreviewing(false);
+          schedule();
+        }
+      }
+    }, 80);
+  }, [request, projectId, modelFile, expectedRevision, panelId, previewKey, onPreview]);
+  useLayoutEffect(() => stopPreview, [stopPreview]);
+  useLayoutEffect(() => {
+    if (!autoPreview || locked || !dirty) {
+      stopPreview();
+      return;
+    }
+    previewJob.current.values = invalidField ? null : values;
+    schedulePreview();
+  }, [autoPreview, locked, dirty, invalidField, values, schedulePreview, stopPreview]);
   const change = (key, value) => {
-    setDraft(current => ({ ...current, [key]: value })); onPreview(null); setError(null); setNotice(null);
+    setDraft(current => ({ ...current, [key]: value })); setError(null); setNotice(null);
   };
-  const submit = async method => {
+  const apply = async () => {
     if (locked || !dirty || submitting.current) return;
     if (invalidField) {
       const value = values[invalidField.key];
@@ -39,43 +82,44 @@ export function ParameterPanel({ project, language, disabled, request, previewKe
       inputElements.current.get(invalidField.key)?.focus();
       return;
     }
-    const preview = method === "preview_panel";
-    const controller = preview ? new AbortController() : null;
-    previewRequest.current = controller;
-    submitting.current = true; setPending(method); setError(null);
-    if (!preview) onOperation({ phase: "working" });
+    previewJob.current.started = values;
+    stopPreview();
+    submitting.current = true; setApplying(true); setError(null);
+    onOperation({ phase: "working" });
     let saved = false;
     try {
-      const result = await request(method, { projectId: project.id, modelFile: project.modelFile,
-        expectedRevision: project.head, panelId: panel.id, values, language }, controller?.signal);
-      if (preview) {
-        if (!controller.signal.aborted) onPreview({ key: previewKey, design: result });
-        return;
-      }
+      const result = await request("apply_panel", { projectId, modelFile, expectedRevision, panelId, values, language });
       saved = true;
       onOperation({ phase: "done", revision: result.head });
       await onApplied(project);
     } catch (error) {
-      if (controller?.signal.aborted) return;
-      if (!preview && !saved) onOperation({ phase: "error", error: errorDetail(error) });
-      onPreview(null);
+      if (!saved) onOperation({ phase: "error", error: errorDetail(error) });
       setError({ key: error.uiKey || errorKey(error.message), detail: errorDetail(error) });
     } finally {
-      previewRequest.current = null;
       submitting.current = false;
-      if (!controller?.signal.aborted) setPending(null);
+      setApplying(false);
     }
   };
-  return <section ref={panelElement} id="mc-parameter-panel" className="mc-parameter-panel mc-panel" aria-label={t("parameterPanel")} aria-busy={busy}>
+  return <section ref={panelElement} id="mc-parameter-panel" className="mc-parameter-panel mc-panel" aria-label={t("parameterPanel")} aria-busy={applying}>
     <header className="mc-view-header">
-      <strong>{label(panel.title)}</strong><span className="mc-parameter-version" aria-live="polite">v{project.head}{previewActive && ` · ${t("previewParameters")}`}</span>
+      <strong>{label(panel.title)}</strong><span className="mc-parameter-version" aria-live="polite">v{project.head}{autoPreview && (previewing ? ` · ${t("previewingParameters")}` : previewActive ? ` · ${t("previewParameters")}` : "")}</span>
       <Button variant="ghost" size="sm" icon={<IconCloseOutlineRegular size={14} />} disabled={applying} aria-label={t("close")} onClick={onClose} />
     </header>
-    <div className="mc-panel-scroll"><form noValidate onSubmit={event => { event.preventDefault(); submit("apply_panel"); }}>
+    <div className="mc-panel-scroll"><form noValidate onSubmit={event => { event.preventDefault(); apply(); }}>
       <fieldset disabled={locked}>
         {panel.fields.map((field, index) => {
           const id = `mc-parameter-${index}`, title = label(field.label);
           const group = field.group && label(field.group);
+          const integer = field.type === "integer";
+          const min = integer && field.min !== undefined ? Math.ceil(field.min) : field.min;
+          const max = integer && field.max !== undefined ? Math.floor(field.max) : field.max;
+          const slider = Number.isFinite(min) && Number.isFinite(max) && min < max;
+          const inputStep = field.step ?? (integer ? 1 : "any");
+          const requestedStep = integer ? Math.max(1, Math.round(inputStep)) : field.step;
+          const steps = (max - min) / requestedStep;
+          const intervals = Math.round(steps);
+          const reachesBothBounds = intervals >= 1 && Math.abs(steps - intervals) <= 4 * Number.EPSILON * steps;
+          const sliderStep = reachesBothBounds ? requestedStep : integer ? 1 : "any";
           const previousGroup = panel.fields[index - 1]?.group;
           return <React.Fragment key={field.key}>
             {group && group !== (previousGroup && label(previousGroup)) && <strong className="mc-parameter-group">{group}</strong>}
@@ -86,21 +130,29 @@ export function ParameterPanel({ project, language, disabled, request, previewKe
                   value={String(field.options.findIndex(option => option.value === draft[field.key]))}
                   options={field.options.map((option, i) => ({ value: String(i), label: label(option.label) }))}
                   onChange={value => change(field.key, field.options[Number(value)].value)} /></div>
-                  : <div className="mc-parameter-number"><Input id={id} type="number" required min={field.min} max={field.max}
+                  : <div className="mc-parameter-number"><Input id={id} type="number" required min={min} max={max}
                     ref={element => { if (element) inputElements.current.set(field.key, element); else inputElements.current.delete(field.key); }}
                     aria-invalid={invalidField?.key === field.key || undefined}
-                    step={field.step ?? (field.type === "integer" ? 1 : "any")} value={draft[field.key]} aria-label={title}
+                    step={inputStep} value={draft[field.key]} aria-label={title}
                     onChange={event => change(field.key, event.target.value)} />{field.unit && <span>{field.unit}</span>}</div>}
+              {slider && <input className="mc-view-slider mc-parameter-slider" type="range" min={min} max={max}
+                step={sliderStep}
+                value={values[field.key] ?? field.value} aria-label={title}
+                onChange={event => change(field.key, event.target.value)} />}
             </div>
           </React.Fragment>;
         })}
       </fieldset>
       <div className="mc-parameter-actions">
-        <Button type="button" variant="ghost" size="sm" disabled={locked || !dirty} onClick={() => { setDraft(initial); onPreview(null); setError(null); setNotice(null); }}>{t("resetParameters")}</Button>
-        <Button type="button" variant="outline" size="sm" disabled={locked || !dirty || previewActive}
-          onClick={() => submit("preview_panel")} icon={previewing ? <StateDot state="ongoing" /> : undefined}>
-          {t(previewing ? "previewingParameters" : "previewParameters")}
-        </Button>
+        <div className="mc-parameter-auto-preview">
+          <Switch checked={autoPreview} disabled={locked} label={t("previewParameters")} onChange={enabled => {
+            previewJob.current.started = null;
+            setAutoPreview(enabled);
+            setError(null);
+          }} />
+          <span>{t("previewParameters")}</span>
+        </div>
+        <Button type="button" variant="ghost" size="sm" disabled={locked || !dirty} onClick={() => { setDraft(initial); setError(null); setNotice(null); }}>{t("resetParameters")}</Button>
         <Button type="submit" variant="primary" size="sm" disabled={locked || !dirty}
           icon={applying ? <StateDot state="ongoing" /> : undefined}>{t(applying ? "applyingParameters" : "applyParameters")}</Button>
       </div>

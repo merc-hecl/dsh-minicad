@@ -457,10 +457,8 @@ export class Store {
       const { shape } = await evaluateRecipe(api, recipe, { directory: project.directory, shape: await this.shape(base),
         relationships: base.state.relationships ?? [],
         edit, revision: base.state.revision, scope: panel.baseScope || scope });
-      const state = api.describeShape(shape);
-      api.requireNames(shape);
-      requirePassedChecks(buildValidation(api, shape, recipe, scope, project.revisions[0].revision + 1));
-      return { parts: state.parts, preview: Buffer.from(encodePreview(state.preview)).toString("base64") };
+      api.requireSolidShape(shape);
+      return { parts: api.partInfo(shape), preview: Buffer.from(encodePreview(api.previewShape(shape))).toString("base64") };
     }
     const materials = new Map([
       ["panel.json", jsonBytes({ ...panel, values })],

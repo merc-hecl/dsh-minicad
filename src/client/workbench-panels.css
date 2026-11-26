@@ -181,5 +181,7 @@ html[data-input-modality="keyboard"] :is(.mc-native-input, .mc-version-library, 
 .mc-parameter-number > span:first-child { min-width: 0; flex: 1; }
 .mc-parameter-number input { width: 100%; min-width: 0; }
 .mc-parameter-number > span:last-child:not(:first-child) { flex: none; color: var(--mc-muted); font-size: 12px; }
+.mc-parameter-slider { flex-basis: 100%; }
 .mc-parameter-options { max-width: 100%; overflow-x: auto; }
-.mc-parameter-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 14px; }
+.mc-parameter-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 14px; }
+.mc-parameter-auto-preview { display: flex; align-items: center; gap: 6px; margin-inline-end: auto; font-size: 12px; }

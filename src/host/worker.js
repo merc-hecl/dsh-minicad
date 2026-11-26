@@ -39,6 +39,7 @@ const retryableReads = new Set([
 ]);
 const allocationFailure =
   /VirtualAlloc failed|low_level_alloc|out of memory|cannot allocate memory|could not allocate memory|not enough memory/i;
+const previewIdleTime = 8000, previewSessionLimit = 24;
 
 export function createWorker({
   dataDir = join(
@@ -53,6 +54,7 @@ export function createWorker({
   let queue = Promise.resolve(),
     stopped = false,
     current,
+    previewProcess,
     modeling,
     sequence = 0;
   const activeJournal = (params) => modeling && modeling.projectId === params.projectId
@@ -91,14 +93,23 @@ export function createWorker({
       } else target.kill("SIGTERM");
     });
   }
-  function launch(method, params, signal, directory) {
+  function closePreview() {
+    if (!previewProcess) return;
+    clearTimeout(previewProcess.timer);
+    return previewProcess.closing ??= stop(previewProcess.child);
+  }
+  async function launch(method, params, signal, directory) {
+    const preview = method === "preview_panel";
+    if (previewProcess && (!preview || previewProcess.directory !== directory || previewProcess.closing))
+      await closePreview();
     return new Promise((resolve, reject) => {
       if (stopped) return reject(localizedError("MiniCAD 已关闭", "MiniCAD is closed"));
       if (signal?.aborted) return reject(localizedError("操作已取消", "Operation cancelled"));
       const id = ++sequence;
-      const child = spawnProcess(
+      let session = preview && !previewProcess?.closing && previewProcess?.child.exitCode === null ? previewProcess : undefined;
+      const child = session?.child ?? spawnProcess(
         process.execPath,
-        [script, "--data-dir", dataDir],
+        [script, "--data-dir", dataDir, ...(preview ? ["--preview-session"] : [])],
         {
           windowsHide: true,
           ...(directory ? { cwd: directory } : {}),
@@ -106,14 +117,25 @@ export function createWorker({
           env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
         },
       );
+      if (!session) child.stdin.on("error", () => {});
+      if (preview && !session) {
+        const active = session = previewProcess = { child, directory, requests: 0 };
+        child.once("close", () => {
+          clearTimeout(active.timer);
+          if (previewProcess === active) previewProcess = undefined;
+        });
+      }
+      clearTimeout(session?.timer);
       current = child;
       let stderr = "",
         response,
         aborted = false,
         timedOut = false;
-      child.stderr.on("data", (chunk) => {
+      const log = (chunk) => {
         stderr = (stderr + chunk).slice(-4000);
-      });
+      };
+      child.stderr.on("data", log);
+      const lines = createInterface({ input: child.stdout });
       const abort = () => {
         aborted = true;
         void stop(child);
@@ -126,16 +148,25 @@ export function createWorker({
       const cleanup = () => {
         clearTimeout(timer);
         signal?.removeEventListener("abort", abort);
+        child.stderr.off("data", log);
+        child.off("close", finish);
+        child.off("error", fail);
+        lines.close();
         if (current === child) current = undefined;
       };
-      createInterface({ input: child.stdout }).on("line", (line) => {
+      lines.on("line", (line) => {
         try {
           const parsed = JSON.parse(line);
           if (parsed.id === id) response = parsed;
         } catch {
         }
+        if (session && response && !aborted && !timedOut) {
+          if (++session.requests >= previewSessionLimit) closePreview();
+          else session.timer = setTimeout(closePreview, previewIdleTime).unref();
+          finish(0);
+        }
       });
-      child.on("error", (error) => {
+      function fail(error) {
         cleanup();
         reject(
           Object.assign(
@@ -146,10 +177,10 @@ export function createWorker({
             },
           ),
         );
-      });
-      child.on("close", (code) => {
+      }
+      function finish(code) {
         cleanup();
-        if (response) {
+        if (response && !(session && (aborted || timedOut))) {
           if (response.error)
             reject(
               Object.assign(new Error(response.error), {
@@ -178,9 +209,12 @@ export function createWorker({
               },
             ),
           );
-      });
-      child.stdin.on("error", () => {});
-      child.stdin.end(JSON.stringify({ id, method, params }) + "\n");
+      }
+      child.once("close", finish);
+      child.once("error", fail);
+      const request = JSON.stringify({ id, method, params }) + "\n";
+      if (session) child.stdin.write(request);
+      else child.stdin.end(request);
     });
   }
   function call(method, params = {}, signal) {
@@ -248,7 +282,7 @@ export function createWorker({
     processState: (params) => { const journal = activeJournal(params); return journal ? journal.describe(journal.latest()) : null; },
     dispose: () => {
       stopped = true;
-      return stop(current);
+      return closePreview() ?? stop(current);
     },
   };
 }

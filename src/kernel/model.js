@@ -464,7 +464,7 @@ export function replacePart(shape, id, replacement) {
   return assembly(shape.parts.map(part => part.id === id ? { ...part, shape: replacement,
     name: replacement.solids().length === 1 ? solidNames(replacement)[0] : part.name } : part));
 }
-export function describeShape(shape) {
+export function requireSolidShape(shape) {
   if (
     !(shape instanceof cad.Part || shape instanceof Assembly) ||
     !shape.isValid() ||
@@ -473,6 +473,10 @@ export function describeShape(shape) {
     shape.volume <= 0
   )
     throw localizedError("模型必须包含有效的封闭实体；当前版本未被覆盖", "The model must contain valid closed solids. The previous version is preserved.");
+}
+
+export function describeShape(shape) {
+  requireSolidShape(shape);
   const box = shape.bbox(),
     size = vector(box.size);
   const metrics = {
