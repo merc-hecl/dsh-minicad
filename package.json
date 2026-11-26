@@ -1,6 +1,6 @@
 {
   "name": "dsh-minicad",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "MIT",
   "type": "module",
   "description": "Exact CAD modeling, inspection and revision history for DeepSeek Harness agents.",
