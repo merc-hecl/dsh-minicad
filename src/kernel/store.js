@@ -458,7 +458,9 @@ export class Store {
         relationships: base.state.relationships ?? [],
         edit, revision: base.state.revision, scope: panel.baseScope || scope });
       api.requireSolidShape(shape);
-      return { parts: api.partInfo(shape), preview: Buffer.from(encodePreview(api.previewShape(shape))).toString("base64") };
+      const parts = api.partInfo(shape);
+      const mesh = api.previewShape(shape, { interactive: args.interactive === true });
+      return { parts, preview: Buffer.from(encodePreview(mesh)).toString("base64") };
     }
     const materials = new Map([
       ["panel.json", jsonBytes({ ...panel, values })],

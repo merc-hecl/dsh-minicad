@@ -248,6 +248,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
           if (color) geometry.setAttribute("color", color);
           geometry.setIndex(new THREE.BufferAttribute(indices, 1));
           const mesh = new THREE.Mesh(geometry, state.surface.material);
+          mesh.visible = !state.wire;
           mesh.userData.sharedAttributes = true;
           partGroup.add(mesh);
         }
@@ -286,8 +287,12 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
       state.explodedActive = active;
       invalidate();
     };
-    state.setExplode = explode => {
+    state.setExplode = (explode, preview, parts) => {
       state.explode = Number.isFinite(explode) ? Math.max(0, Math.min(1, explode)) : 0;
+      if (state.explode > 0 && !state.explodedGroup) {
+        state.buildExploded(preview, parts);
+        if (state.explodedGroup) state.theme();
+      }
       state.applyExplode();
     };
     state.setExplodeAxis = axis => {
@@ -944,7 +949,7 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     const bounds = new THREE.Box3().setFromObject(mesh);
     s.bounds.copy(bounds);
     bounds.getCenter(s.center);
-    s.buildExploded(preview, design.parts);
+    if (s.explode > 0) s.buildExploded(preview, design.parts);
     s.applySection();
     s.applyExplode();
     s.theme();
@@ -970,8 +975,8 @@ export function Viewport({ id, active = true, presentation = "workbench", histor
     runtime.current?.setSection(section);
   }, [section, design?.previewData]);
   useEffect(() => {
-    runtime.current?.setExplode(explode);
-  }, [explode, design?.previewData]);
+    runtime.current?.setExplode(explode, design?.previewData, design?.parts);
+  }, [explode, design?.previewData, design?.parts]);
   useEffect(() => {
     runtime.current?.setExplodeAxis(explodeAxis);
   }, [explodeAxis, design?.previewData]);

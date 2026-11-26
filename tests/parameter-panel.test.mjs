@@ -119,8 +119,12 @@ test("direct panel adjustments preview without saving, use a fixed baseline, ret
     const belowMinimum = await worker.call("preview_panel", { ...panelTarget, values: { thickness: 4 } });
     near(previewHeight(belowMinimum.preview), 4);
     await assert.rejects(worker.call("preview_panel", { ...panelTarget, expectedRevision: 2, values: { thickness: 8 } }), error => error.status === 409);
-    const previewed = await worker.call("preview_panel", { ...panelTarget, values: { thickness: 7.5 } });
+    const adjustment = { ...panelTarget, values: { thickness: 7.5 } };
+    const dragging = await worker.call("preview_panel", { ...adjustment, interactive: true });
+    const previewed = await worker.call("preview_panel", adjustment);
+    near(previewHeight(dragging.preview), 7.5);
     near(previewHeight(previewed.preview), 7.5);
+    assert.ok(decodePreview(Buffer.from(dragging.preview, "base64")).edges.length < decodePreview(Buffer.from(previewed.preview, "base64")).edges.length);
     const afterPreview = await worker.call("get", target);
     assert.deepEqual(afterPreview.revisions, second.revisions);
     assert.deepEqual(afterPreview.parameterPanel, second.parameterPanel);

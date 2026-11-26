@@ -672,6 +672,7 @@ export function Workbench({
   const displayedDesign = useMemo(() => originalDesign && ({ ...originalDesign,
     previewData: visiblePreview(originalDesign.previewData, originalDesign.parts, diffOpen || versionLibraryOpen ? [] : hiddenParts) }), [originalDesign, hiddenParts, diffOpen, versionLibraryOpen]);
   const viewExtent = useMemo(() => {
+    if (!viewOpen) return null;
     const positions = displayedDesign?.previewData?.positions;
     if (!positions?.length) return null;
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -682,7 +683,7 @@ export function Workbench({
         if (value > max[axis]) max[axis] = value;
       }
     return { min, max };
-  }, [displayedDesign?.previewData]);
+  }, [viewOpen, displayedDesign?.previewData]);
   const timelapseBounds = useMemo(() => {
     if (!timelapseOpen || !timelapseFrames.length) return null;
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];

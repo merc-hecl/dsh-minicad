@@ -546,9 +546,9 @@ export function compareGeometry(base, target) {
   return { ...result, changedParts };
 }
 
-export function previewShape(shape) {
+export function previewShape(shape, { interactive = false } = {}) {
   if (shape instanceof Assembly) {
-    const previews = shape.parts.map(p => previewShape(p.shape));
+    const previews = shape.parts.map(p => previewShape(p.shape, { interactive }));
     const lists = { positions: [], normals: [], indices: [], edges: [], faceIndices: [], edgeIndices: [], faceColors: [] };
     let vertex = 0, face = 0, edge = 0;
     previews.forEach((p, i) => {
@@ -570,10 +570,12 @@ export function previewShape(shape) {
     }));
   }
   const size = vector(shape.bbox().size);
+  const meshTolerance = Math.max(0.01, Math.max(...size) * 0.0003);
+  const toleranceScale = interactive ? 3 : 1;
   const meshes = cad.faceMeshes(
     shape,
-    Math.max(0.01, Math.max(...size) * 0.0003),
-    (0.15 * 180) / Math.PI,
+    toleranceScale * meshTolerance,
+    (toleranceScale * 0.15 * 180) / Math.PI,
   );
   const cornerCount = meshes.reduce(
     (sum, mesh) => sum + mesh.triangles.length,
@@ -628,15 +630,16 @@ export function previewShape(shape) {
     raw.dispose();
   });
   const brepEdges = topologyItems(shape, "edges");
+  const curveSegments = interactive ? 12 : 32;
   const segments = brepEdges.reduce(
-    (sum, edge) => sum + (edge.geomType === "line" ? 1 : 32),
+    (sum, edge) => sum + (edge.geomType === "line" ? 1 : curveSegments),
     0,
   );
   const edges = new Float32Array(segments * 6);
   const edgeIndices = new Uint32Array(segments);
   let offset = 0;
   for (const [edgeIndex, edge] of brepEdges.entries()) {
-    const count = edge.geomType === "line" ? 1 : 32;
+    const count = edge.geomType === "line" ? 1 : curveSegments;
     let previous = edge.pointAt(0);
     for (let i = 1; i <= count; i++) {
       const point = edge.pointAt(i / count);

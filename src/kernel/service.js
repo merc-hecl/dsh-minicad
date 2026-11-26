@@ -30,6 +30,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       diagnostics: error.diagnostics,
     };
   }
+  if (previewSession) reply.residentBytes = process.memoryUsage.rss();
   process.stdout.write(JSON.stringify(reply) + "\n", previewSession ? undefined : () => process.exit(0));
   if (!previewSession) break;
 }

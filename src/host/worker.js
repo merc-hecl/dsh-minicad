@@ -39,7 +39,7 @@ const retryableReads = new Set([
 ]);
 const allocationFailure =
   /VirtualAlloc failed|low_level_alloc|out of memory|cannot allocate memory|could not allocate memory|not enough memory/i;
-const previewIdleTime = 8000, previewSessionLimit = 24;
+const previewIdleTime = 8000, previewMemoryGrowthLimit = 128 * 1024 ** 2;
 
 export function createWorker({
   dataDir = join(
@@ -119,7 +119,7 @@ export function createWorker({
       );
       if (!session) child.stdin.on("error", () => {});
       if (preview && !session) {
-        const active = session = previewProcess = { child, directory, requests: 0 };
+        const active = session = previewProcess = { child, directory };
         child.once("close", () => {
           clearTimeout(active.timer);
           if (previewProcess === active) previewProcess = undefined;
@@ -161,7 +161,9 @@ export function createWorker({
         } catch {
         }
         if (session && response && !aborted && !timedOut) {
-          if (++session.requests >= previewSessionLimit) closePreview();
+          session.initialResidentBytes ??= response.residentBytes;
+          const memoryGrowth = response.residentBytes - session.initialResidentBytes;
+          if (memoryGrowth >= previewMemoryGrowthLimit || allocationFailure.test(response.error ?? "")) closePreview();
           else session.timer = setTimeout(closePreview, previewIdleTime).unref();
           finish(0);
         }
