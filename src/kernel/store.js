@@ -42,18 +42,23 @@ const cleanName = (name) =>
 const equalBytes = (a, b) =>
   a === null ? b === null : b !== null && a.equals(b);
 
-async function evaluateRecipe(api, args, { directory, shape, edit, revision, scope, resourceRead = () => {}, checkpoint, log }) {
+async function evaluateRecipe(api, args, { directory, shape, relationships, edit, revision, scope, resourceRead = () => {}, checkpoint, log }) {
+  if (args.relationshipOperations !== undefined) {
+    const { editRelationships } = await relationshipKernel();
+    return editRelationships(shape, relationships, api.values(args.relationshipOperations, args.parameters));
+  }
   const resources = {};
   if (edit) {
     const operations = api.normalizeOperations(api.values(args.operations, args.parameters), shape, revision, scope);
-    return api.editShape(shape, operations, {}, {
+    const result = api.editShape(shape, operations, {}, {
       readModel: name => api.readModel(directory, name, resources, resourceRead), checkpoint,
     });
+    return { shape: result, relationships };
   }
   const current = args.part ? shape.part(args.part).shape : shape;
   const result = await api.buildShape(args.source, args.parameters, inside(directory, "build.js"), resources,
     resourceRead, directory, checkpoint, log, current);
-  return args.part ? api.replacePart(shape, args.part, result) : result;
+  return { shape: args.part ? api.replacePart(shape, args.part, result) : result, relationships };
 }
 
 function buildValidation(api, shape, args, scope, revision) {
@@ -411,8 +416,11 @@ export class Store {
         api.requireNames(result);
         const difference = api.compareShapes(original, result);
         const tolerance = Math.max(1, saved.state.metrics.volume) * 1e-8;
-        if (trial.validation.passed === false || [difference.added, difference.removed].some(region => region && region.metrics.volume > tolerance))
-          throw Object.assign(localizedError("面板初始值未保持当前模型或尺寸检查失败", "Panel defaults must preserve the current model and pass dimensional checks"), { validation: trial.validation });
+        const relationshipsChanged = panel.relationshipOperations &&
+          !isDeepStrictEqual(saved.state.relationships ?? [], candidate.state.relationships ?? []);
+        if (trial.validation.passed === false || relationshipsChanged ||
+            [difference.added, difference.removed].some(region => region && region.metrics.volume > tolerance))
+          throw Object.assign(localizedError("面板初始值未保持当前模型或尺寸检查失败", "Panel defaults must preserve the current model and its relationship values and pass dimensional checks"), { validation: trial.validation });
       } finally { original.dispose(); result.dispose(); }
       const current = this.project(key, project.modelFile);
       this.expect(current.head, args);
@@ -428,7 +436,8 @@ export class Store {
     }
   }
   panelRecipe(panel) {
-    return { operations: panel.operations, source: panel.source, part: panel.part, checks: panel.checks };
+    return { operations: panel.operations, relationshipOperations: panel.relationshipOperations,
+      source: panel.source, part: panel.part, checks: panel.checks };
   }
   async adjustPanel(key, args, preview) {
     const project = this.project(key, args.modelFile);
@@ -445,7 +454,8 @@ export class Store {
     const edit = Boolean(panel.operations);
     if (preview) {
       const api = await this.kernel(), scope = api.modelScope(key, project.modelFile);
-      const shape = await evaluateRecipe(api, recipe, { directory: project.directory, shape: await this.shape(base),
+      const { shape } = await evaluateRecipe(api, recipe, { directory: project.directory, shape: await this.shape(base),
+        relationships: base.state.relationships ?? [],
         edit, revision: base.state.revision, scope: panel.baseScope || scope });
       const state = api.describeShape(shape);
       api.requireNames(shape);
@@ -503,7 +513,7 @@ export class Store {
     const base = panelExecution?.base || (args.baseModelFile ? this.snapshot(key, args.baseRevision, args.baseModelFile) : saved);
     const relationshipEdit = args.relationshipOperations !== undefined;
     const materials = new Map(panelExecution?.materials);
-    const operation = { tool: relationshipEdit ? "cad_edit_relationships" : panelExecution?.panelId ? "cad_apply_panel"
+    const operation = { tool: panelExecution?.panelId ? "cad_apply_panel" : relationshipEdit ? "cad_edit_relationships"
       : args.file ? "cad_import" : edit ? "cad_edit" : "cad_build", kernel: api.kernelName,
       inputModel: args.baseModelFile || modelFile, inputRevision: base?.state.revision || 0,
       ...(panelExecution?.panelId ? { panelId: panelExecution.panelId, parameters, changes: panelExecution.changes } : {}),
@@ -543,10 +553,7 @@ export class Store {
     } : undefined;
     const baseShape = base ? await this.shape(base) : null;
     let shape = baseShape, relationships = base?.state.relationships ?? [], metadata;
-    if (relationshipEdit) {
-      const { editRelationships } = await relationshipKernel();
-      ({ shape, relationships } = editRelationships(baseShape, relationships, args.relationshipOperations));
-    } else if (args.file) {
+    if (args.file) {
       const bytes = fs.readFileSync(inside(directory, args.file));
       resourceRead(args.file, bytes);
       if (args.metadataFile) {
@@ -557,11 +564,11 @@ export class Store {
       shape = api.readShape(bytes, args.file, metadata?.parts, metadata?.entities);
       if (metadata?.geometryIds) run.geometryIds = metadata.geometryIds;
     } else {
-      shape = await evaluateRecipe(api, recipe, {
-        directory, shape, edit, revision: base?.state.revision || 0,
+      ({ shape, relationships } = await evaluateRecipe(api, recipe, {
+        directory, shape, relationships, edit, revision: base?.state.revision || 0,
         scope: panelExecution?.scope || api.modelScope(key, args.baseModelFile || modelFile),
         resourceRead, checkpoint, log: (...args) => journal.log(run, format(...args)),
-      });
+      }));
     }
     if (metadata?.relationships !== undefined) {
       const { importRelationships } = await relationshipKernel();

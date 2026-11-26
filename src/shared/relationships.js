@@ -13,11 +13,14 @@ export const relationshipDefinition = object({
   parameters: jsonObject,
 });
 
+const relationshipUpdate = object({ op: { const: "update" }, id: text, values: jsonObject });
+export const relationshipUpdatesSchema = { type: "array", minItems: 1, maxItems: 100, items: relationshipUpdate };
+
 export const relationshipOperationsSchema = {
   type: "array", minItems: 1, maxItems: 100,
   items: { anyOf: [
     object({ op: { const: "define" }, relationship: relationshipDefinition }),
-    object({ op: { const: "update" }, id: text, values: jsonObject }),
+    relationshipUpdate,
     object({ op: { const: "remove" }, id: text }),
   ] },
 };

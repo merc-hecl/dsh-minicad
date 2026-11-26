@@ -238,3 +238,71 @@ test("choice, toggle and integer controls preview and save a checked assembly wh
     assert.deepEqual(process.changes.map(({ key, from, to }) => ({ key, from, to })), [{ key: "finish", from: "red", to: "blue" }]);
   } finally { await worker.dispose(); await rm(dataDir, { recursive: true, force: true }); }
 });
+
+test("relationship controls preview and save absolute joint poses with the assembly", { timeout: 120000 }, async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "minicad-panel-joints-"));
+  const worker = createWorker({ dataDir });
+  try {
+    const project = await worker.call("create");
+    const target = { projectId: project.id, modelFile: "model.smp" };
+    const part = (id, center) => ({ op: "add_part", id, name: id, tool: { shape: "box", size: [2, 2, 2], center } });
+    await worker.call("edit", { ...target, expectedRevision: 0, operations: [
+      part("base", [0, 0, -10]), part("upper", [5, 0, 0]), part("lower", [15, 0, 5]), part("tip", [20, 0, 10]),
+    ] });
+    const bind = (id, kind, parent, child, parameters) => ({ op: "define", relationship: {
+      id, kind, parameters, endpoints: ["parent", "child"].map((role, index) => ({
+        role, entity: { kind: "part", id: [parent, child][index] },
+      })),
+    } });
+    await worker.call("edit_relationships", { ...target, expectedRevision: 1, operations: [
+      bind("shoulder", "assembly.revolute", "base", "upper", { origin: [0, 0, 0], axis: [0, 0, 1], angle: 0, limits: { min: -90, max: 90 } }),
+      bind("elbow", "assembly.revolute", "upper", "lower", { origin: [10, 0, 5], axis: [0, 0, 1], angle: 0 }),
+      bind("tool", "assembly.fixed", "lower", "tip", {}),
+    ] });
+    const panel = {
+      title: label("关节角度", "Joint angles"),
+      fields: ["shoulder", "elbow"].map(key => ({ key, type: "number", label: label(key), value: 0, unit: "°" })),
+      relationshipOperations: ["shoulder", "elbow"].map(id => ({ op: "update", id, values: { angle: { parameter: id } } })),
+      checks: [sizeCheck("z", 22), { measurement: {
+        kind: "coordinate", axis: "y", at: "max", entity: { kind: "solids", selector: { part: "tip", one: true } },
+      }, max: 12 }],
+    };
+    const { parameterPanel } = await worker.call("publish_panel", { ...target, expectedRevision: 2, panel });
+    const fullTurn = { ...panel, fields: panel.fields.map(field => field.key === "elbow" ? { ...field, value: 360 } : field) };
+    await assert.rejects(worker.call("publish_panel", { ...target, expectedRevision: 2, panel: fullTurn }), /初始值未保持/);
+    assert.equal((await worker.call("get", target)).parameterPanel.id, parameterPanel.id);
+    const adjust = (method, expectedRevision, shoulder, elbow) => worker.call(method, {
+      ...target, expectedRevision, panelId: parameterPanel.id, values: { shoulder, elbow },
+    });
+    const pose = parts => parts.find(item => item.id === "tip").center;
+    const checkTip = (parts, expected) => pose(parts).forEach((value, index) => near(value, expected[index]));
+    const preview = await adjust("preview_panel", 2, 90, -90);
+    checkTip(preview.parts, [10, 10, 10]);
+    const before = await worker.call("get", target);
+    assert.equal(before.head, 2);
+    checkTip(before.design.parts, [20, 0, 10]);
+
+    await assert.rejects(adjust("preview_panel", 2, 91, -90), { code: "JOINT_LIMIT" });
+    const beforeFailure = await readFile(join(project.directory, "model.smp"));
+    await assert.rejects(adjust("apply_panel", 2, 90, 0), error => error.validation?.passed === false);
+    assert.equal((await worker.call("get", target)).head, 2);
+    assert.deepEqual(await readFile(join(project.directory, "model.smp")), beforeFailure);
+
+    const applied = await adjust("apply_panel", 2, 90, -90);
+    assert.equal(applied.head, 3);
+    assert.equal(applied.revisions[0].actor, "user");
+    checkTip(applied.design.parts, [10, 10, 10]);
+    assert.deepEqual(applied.design.relationships.slice(0, 2).map(item => item.parameters.angle), [90, -90]);
+    assert.deepEqual(applied.parameterPanel.fields.map(field => field.value), [90, -90]);
+    const [run] = await worker.call("process_history", { ...target, revision: 3 });
+    assert.equal(run.purpose, "panel_apply");
+    assert.deepEqual(run.changes.map(change => change.to), [90, -90]);
+
+    const second = await adjust("apply_panel", 3, -90, 90);
+    checkTip(second.design.parts, [10, -10, 10]);
+    const restored = await worker.call("restore", { ...target, expectedRevision: 4, revision: 2 });
+    checkTip(restored.design.parts, [20, 0, 10]);
+    assert.deepEqual(restored.parameterPanel.fields.map(field => field.value), [0, 0]);
+    assert.deepEqual(restored.design.relationships.slice(0, 2).map(item => item.parameters.angle), [0, 0]);
+  } finally { await worker.dispose(); await rm(dataDir, { recursive: true, force: true }); }
+});

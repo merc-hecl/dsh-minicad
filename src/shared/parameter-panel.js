@@ -1,5 +1,6 @@
 import { object, text, operationsSchema, checksSchema, validate } from "./cad-schema.js";
 import { localizedError } from "./errors.js";
+import { relationshipUpdatesSchema } from "./relationships.js";
 
 const label = object({ zh: text, en: text });
 const keyLabel = { key: text, label, group: label };
@@ -15,6 +16,8 @@ export const parameterPanelSchema = object({
       options: { type: "array", minItems: 2, maxItems: 8, items: object({ value: choice, label }) } }, ["key", "label", "type", "value", "options"]),
   ] } },
   operations: operationsSchema,
+  relationshipOperations: { ...relationshipUpdatesSchema,
+    description: "Ordered updates of existing relationships on the pinned baseline. Bind adjustable values with {parameter:'key'}, e.g. [{op:'update',id:'joint-id',values:{angle:{parameter:'angle'}}}]." },
   source: { ...text, description: "Self-contained build(parameters,cad) function; cad.current is the pinned baseline." },
   part: { ...text, description: "For source only: stable assembly part ID. For operations, put part on each operation." },
   checks: checksSchema,
@@ -34,7 +37,7 @@ export function definePanel(panel) {
   if (!panel.fields.length) return null;
   if (new Set(panel.fields.map(field => field.key)).size !== panel.fields.length)
     throw localizedError("调整项名称重复", "Duplicate adjustment keys");
-  if (Boolean(panel.operations) === Boolean(panel.source) || !panel.checks?.length)
+  if ([panel.operations, panel.relationshipOperations, panel.source].filter(Boolean).length !== 1 || !panel.checks?.length)
     throw localizedError("参数面板需要一种执行方式和尺寸检查", "A parameter panel needs exactly one execution recipe and dimensional checks");
   for (const field of panel.fields) {
     if (field.type === "choice" && new Set(field.options.map(option => option.value)).size !== field.options.length)
