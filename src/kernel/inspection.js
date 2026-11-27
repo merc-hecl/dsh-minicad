@@ -515,8 +515,10 @@ export function measureShape(shape, requests, scope, revision) {
       }
       case "coordinate": {
         const item = entity(shape, request.entity, scope, revision);
-        if (request.at === "min" || request.at === "max")
-          return { kind: request.kind, axis: request.axis, at: request.at, value: item.bbox()[request.at][request.axis], unit: "mm" };
+        if (request.at && request.at !== "center") {
+          const bound = request.at === "bbox_center" ? "center" : request.at;
+          return { kind: request.kind, axis: request.axis, at: request.at, value: item.bbox()[bound][request.axis], unit: "mm" };
+        }
         value = naturalCenter(item)[["x", "y", "z"].indexOf(request.axis)];
         unit = "mm";
         break;

@@ -26,6 +26,10 @@ test("building edits recut the host wall and preserve the other parts and saved 
     assert.equal((await worker.call("get", target)).head, 0);
     const details = await worker.call("read_building", { ...target, runId: trial.runId, kind: "opening" });
     assert.deepEqual(details.building.elements, [window, doorway]);
+    const windowCenterX = { kind: "coordinate", at: "bbox_center", axis: "x",
+      entity: { kind: "solids", selector: { part: window.id, one: true } } };
+    const measured = await worker.call("measure", { ...target, expectedRevision: 0, runId: trial.runId, measurements: [windowCenterX] });
+    near(measured.items[0].value, 1400);
     const initial = await worker.call("commit", { ...target, expectedRevision: 0, runId: trial.runId, summary: "保存单层建筑" });
     assert.equal(initial.head, 1);
     near(part(initial, exterior.id).volume, 4000 * 200 * 2700 - 1000 * 200 * 1200);
@@ -36,7 +40,8 @@ test("building edits recut the host wall and preserve the other parts and saved 
     assert.equal(part(initial, doorway.id), undefined);
 
     const shifted = { ...window, offset: 1750 };
-    const edited = await worker.call("edit_building", { ...target, expectedRevision: 1, summary: "移动南窗", operations: [upsert(shifted)] });
+    const edited = await worker.call("edit_building", { ...target, expectedRevision: 1, summary: "移动南窗",
+      operations: [upsert(shifted)], checks: [{ measurement: windowCenterX, expected: 2250 }] });
     assert.equal(edited.head, 2);
     assert.deepEqual(edited.diagnostics.buildingChanges.rebuiltPartIds, [exterior.id, window.id]);
     near(part(edited, window.id).center[0], 2250);

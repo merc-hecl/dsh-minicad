@@ -227,7 +227,7 @@ export function apply(ctx) {
   );
   register(
     "cad_measure",
-    "Measure exact model geometry without mutation. Use cad_measurement_types for an unfamiliar kind. Use coordinate with at:min or at:max for signed world coordinates of bounds, size for overall extents, and distance for minimum 3D gaps. Each from/to/entity selector must resolve to one shape.",
+    "Measure exact model geometry without mutation. Use cad_measurement_types for an unfamiliar kind. Use coordinate with at:bbox_center for a bounding-box midpoint or at:min or at:max for a signed bound, size for overall extents, and distance for minimum 3D gaps. Each from/to/entity selector must resolve to one shape.",
     schema({ ...readTarget, measurements: measurementsSchema }, ["modelFile", "expectedRevision", "measurements"]),
     call("measure"),
   );
